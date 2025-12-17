@@ -1,0 +1,180 @@
+------------------------------------------------------
+      name:  <unnamed>
+       log:  C:/Users/ji252/Documents/GitHub/multnomah
+> -county-tax/code/logs/00_log_multnomah_2025-12-14.lo
+> g
+  log type:  text
+ opened on:  14 Dec 2025, 22:26:10
+
+. 
+. ** Set Seed 
+. set seed 56403
+
+. 
+. ** Set scheme
+. set scheme plotplainblind
+
+. 
+. ** IPUMS Key 
+. global ipums_key "59cba10d8a5da536fc06b59d6d6ae51613
+> 094627862c736d87e4430b"
+
+. 
+end of do-file
+
+. import delimited "C:\Users\ji252\Documents\GitHub\mu
+> ltnomah-county-tax\data\covid\us-counties.csv"
+(encoding automatically selected: ISO-8859-1)
+(6 vars, 2,502,832 obs)
+
+. tab state
+
+                   state |      Freq.     Percent     
+>    Cum.
+-------------------------+----------------------------
+> -------
+                 Alabama |     52,312        2.09     
+>    2.09
+                  Alaska |     20,568        0.82     
+>    2.91
+          American Samoa |        239        0.01     
+>    2.92
+                 Arizona |     11,934        0.48     
+>    3.40
+                Arkansas |     59,032        2.36     
+>    5.76
+              California |     45,693        1.83     
+>    7.58
+                Colorado |     49,527        1.98     
+>    9.56
+             Connecticut |      7,091        0.28     
+>    9.84
+                Delaware |      3,131        0.13     
+>    9.97
+    District of Columbia |        798        0.03     
+>   10.00
+                 Florida |     53,362        2.13     
+>   12.13
+                 Georgia |    124,889        4.99     
+>   17.12
+                    Guam |        790        0.03     
+>   17.16
+                  Hawaii |      3,982        0.16     
+>   17.31
+                   Idaho |     33,184        1.33     
+>   18.64
+                Illinois |     79,502        3.18     
+>   21.82
+                 Indiana |     71,921        2.87     
+>   24.69
+                    Iowa |     77,070        3.08     
+>   27.77
+                  Kansas |     79,294        3.17     
+>   30.94
+                Kentucky |     92,572        3.70     
+>   34.64
+               Louisiana |     50,902        2.03     
+>   36.67
+                   Maine |     13,097        0.52     
+>   37.19
+                Maryland |     19,645        0.78     
+>   37.98
+           Massachusetts |     11,914        0.48     
+>   38.45
+                Michigan |     65,202        2.61     
+>   41.06
+               Minnesota |     67,883        2.71     
+>   43.77
+             Mississippi |     64,147        2.56     
+>   46.33
+                Missouri |     89,600        3.58     
+>   49.91
+                 Montana |     40,656        1.62     
+>   51.54
+                Nebraska |     69,255        2.77     
+>   54.31
+                  Nevada |     12,867        0.51     
+>   54.82
+           New Hampshire |      8,612        0.34     
+>   55.16
+              New Jersey |     17,417        0.70     
+>   55.86
+              New Mexico |     25,445        1.02     
+>   56.88
+                New York |     45,692        1.83     
+>   58.70
+          North Carolina |     77,809        3.11     
+>   61.81
+            North Dakota |     40,499        1.62     
+>   63.43
+Northern Mariana Islands |      1,832        0.07     
+>   63.50
+                    Ohio |     69,101        2.76     
+>   66.26
+                Oklahoma |     59,923        2.39     
+>   68.66
+                  Oregon |     27,784        1.11     
+>   69.77
+            Pennsylvania |     52,441        2.10     
+>   71.86
+             Puerto Rico |     58,397        2.33     
+>   74.20
+            Rhode Island |      4,704        0.19     
+>   74.38
+          South Carolina |     36,091        1.44     
+>   75.83
+            South Dakota |     49,552        1.98     
+>   77.81
+               Tennessee |     74,719        2.99     
+>   80.79
+                   Texas |    193,519        7.73     
+>   88.52
+                    Utah |     22,919        0.92     
+>   89.44
+                 Vermont |     11,758        0.47     
+>   89.91
+          Virgin Islands |      2,492        0.10     
+>   90.01
+                Virginia |    103,128        4.12     
+>   94.13
+              Washington |     30,893        1.23     
+>   95.36
+           West Virginia |     42,238        1.69     
+>   97.05
+               Wisconsin |     55,993        2.24     
+>   99.29
+                 Wyoming |     17,815        0.71     
+>  100.00
+-------------------------+----------------------------
+> -------
+                   Total |  2,502,832      100.00
+
+. help date
+
+. python search
+no Python installation found; minimum version required
+>  is 2.7.
+r(111);
+
+. python query
+------------------------------------------------------
+    Python Settings
+      set python_exec      C:\ProgramData\miniconda3\e
+> nvs\ipums\python.exe
+      set python_userpath  
+
+    Python system information
+      initialized          no
+      version              3.11.14
+      architecture         64-bit
+      library path         C:\ProgramData\miniconda3\e
+> nvs\ipums\python311.dll
+
+. set python_exec  C:\ProgramData\miniconda3\envs\ipums\python311.dll
+file C:\ProgramData\miniconda3\envs\ipums\python311.dll is not a .exe file
+r(198);
+
+. do "C:\Users\ji252\AppData\Local\Temp\STD8e8_000001.tmp"
+
+. ** Preliminaries 
+. capture log close 

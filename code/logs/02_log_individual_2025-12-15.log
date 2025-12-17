@@ -1,0 +1,721 @@
+--------------------------------------------------------------------
+      name:  log_02
+       log:  C:/Users/ji252/Documents/GitHub/multnomah-county-tax/co
+> de/logs/02_log_individual_2025-12-15.log
+  log type:  text
+ opened on:  16 Dec 2025, 10:32:06
+
+. 
+. ** Run Program 
+. capture program drop hdfe_catyear_plot
+
+. program define hdfe_catyear_plot
+  1.     version 16.0
+  2.     syntax varname(numeric) [if] [in] [fw aw pw iw] , ///
+>         CAT(varname) YEAR(varname) ABSORB(string) ///
+>         [ SAMPLE(varname) SVAL(real 1) ///
+>           WVAR(varname) WTYPE(string) ///
+>           VCE(string) ///
+>           TITLE(string asis) XTITLE(string asis) YTITLE(string asi
+> s) ///
+>           NOCI ///
+>           BASEYEAR(integer 0) ///
+>           SAVING(string asis) REPLACE ///
+>           DEBUG DEBUGDETAIL ]
+  3. 
+.                   
+.     // ---------------------------
+.     // Debug helpers
+.     // ---------------------------
+.         dis "test"
+  4.     local __dbg = ("`debug'" != "" | "`debugdetail'" != "")
+  5.     local __dbgdetail = ("`debugdetail'" != "")
+  6. 
+.     if `__dbg' {
+  7.         di as txt "--------------------------------------------
+> ----------------"
+  8.         di as txt "hdfe_catyear_plot DEBUG START"
+  9.         di as txt "Outcome   : `varlist'"
+ 10.         di as txt "CAT()     : `cat'"
+ 11.         di as txt "YEAR()    : `year'"
+ 12.         di as txt "ABSORB()  : `absorb'"
+ 13.         di as txt "SAMPLE()  : `sample'   SVAL(): `sval'"
+ 14.         di as txt "Weights   : weight=`weight' exp=`exp' wvar=`
+> wvar' wtype=`wtype'"
+ 15.         di as txt "VCE()     : `vce'"
+ 16.         di as txt "BASEYEAR(): `baseyear'   NOCI: `noci'"
+ 17.         di as txt "SAVING()  : `saving'   REPLACE: `replace'"
+ 18.         di as txt "IF/IN     : `if' `in'"
+ 19.         di as txt "--------------------------------------------
+> ----------------"
+ 20.     }
+ 21. 
+.     // Requirements
+.     capture which reghdfe
+ 22.     if _rc {
+ 23.         di as error "reghdfe not found. Install with: ssc insta
+> ll reghdfe, replace"
+ 24.         exit 198
+ 25.     }
+ 26. 
+.     // Mark sample
+.     if `__dbg' di as txt "[Step 1] Marking estimation sample..."
+ 27.     marksample touse, strok
+ 28.     quietly replace `touse' = `touse' & !missing(`varlist', `ca
+> t', `year')
+ 29.     if "`sample'" != "" quietly replace `touse' = `touse' & (`s
+> ample' == `sval')
+ 30. 
+.     quietly count if `touse'
+ 31.     if `__dbg' di as txt "  N (after filters): " %12.0gc r(N)
+ 32.     if r(N) == 0 {
+ 33.         di as error "No observations available after applying i
+> f/in/sample filters."
+ 34.         exit 2000
+ 35.     }
+ 36. 
+.     // Weights (default fw=perwt unless user passed weights)
+.     if `__dbg' di as txt "[Step 2] Resolving weights..."
+ 37.     local wgt ""
+ 38.     if "`weight'" != "" {
+ 39.         local wgt "[`weight'=`exp']"
+ 40.         if `__dbg' di as txt "  Using caller-provided weights: 
+> `wgt'"
+ 41.     }
+ 42.     else {
+ 43.         if "`wvar'" == "" local wvar "perwt"
+ 44.         if "`wtype'" == "" local wtype "fw"
+ 45.         capture confirm variable `wvar'
+ 46.         if _rc {
+ 47.             di as error "Default weight variable `wvar' not fou
+> nd. Either create it or pass weights explicitly."
+ 48.             exit 111
+ 49.         }
+ 50.         local wgt "[`wtype'=`wvar']"
+ 51.         if `__dbg' di as txt "  Using default weights: `wgt'"
+ 52.     }
+ 53. 
+.     // Ensure cat/year numeric for factor vars
+.     if `__dbg' di as txt "[Step 3] Harmonizing CAT/YEAR types..."
+ 54.     tempvar __cat __year
+ 55.     local cattype : type `cat'
+ 56.     if substr("`cattype'",1,3) == "str" {
+ 57.         quietly encode `cat' if `touse', gen(`__cat')
+ 58.         local catv `__cat'
+ 59.         if `__dbg' di as txt "  Encoded string CAT -> `catv'"
+ 60.     }
+ 61.     else {
+ 62.         local catv `cat'
+ 63.         if `__dbg' di as txt "  CAT already numeric -> `catv'"
+ 64.     }
+ 65. 
+.     local yeartype : type `year'
+ 66.     if substr("`yeartype'",1,3) == "str" {
+ 67.         quietly destring `year' if `touse', gen(`__year') force
+ 68.         capture assert !missing(`__year') if `touse'
+ 69.         if _rc {
+ 70.             di as error "Year variable is string and could not 
+> be cleanly converted to numeric."
+ 71.             exit 459
+ 72.         }
+ 73.         local yearv `__year'
+ 74.         if `__dbg' di as txt "  Destring YEAR -> `yearv'"
+ 75.     }
+ 76.     else {
+ 77.         local yearv `year'
+ 78.         if `__dbg' di as txt "  YEAR already numeric -> `yearv'
+> "
+ 79.     }
+ 80. 
+.     // Guard: category variable should not also be absorbed
+.     if `__dbg' di as txt "[Step 4] Validating absorb()..."
+ 81.     if regexm(" `absorb' ", " `catv' ") {
+ 82.         di as error "Category variable `catv' appears in absorb
+> (): `absorb'. Remove it from absorb() for this run."
+ 83.         exit 198
+ 84.     }
+ 85. 
+.     // Levels
+.     if `__dbg' di as txt "[Step 5] Collecting year and category le
+> vels..."
+ 86.     quietly levelsof `yearv' if `touse', local(yrs)
+ 87.     quietly levelsof `catv'  if `touse', local(cats)
+ 88. 
+.     if `__dbg' {
+ 89.         di as txt "  Years: `yrs'"
+ 90.         di as txt "  Cats : `cats'"
+ 91.     }
+ 92. 
+.     if "`yrs'" == "" | "`cats'" == "" {
+ 93.         di as error "No year or category levels found in estima
+> tion sample."
+ 94.         exit 2000
+ 95.     }
+ 96. 
+.     // Base year sanity check (optional)
+.     if "`baseyear'" != "" {
+ 97.         if `__dbg' di as txt "[Step 5b] Checking baseyear()..."
+ 98.         local found = 0
+ 99.         foreach y of local yrs {
+100.             if `y' == `baseyear' local found = 1
+101.         }
+102.         if `found' == 0 {
+103.             di as error "baseyear(`baseyear') not found in esti
+> mation sample years: `yrs'"
+104.             exit 459
+105.         }
+106.         if `__dbg' di as txt "  baseyear OK: `baseyear'"
+107.     }
+108. 
+.     // Regression
+.     if `__dbg' di as txt "[Step 6] Running reghdfe..."
+109.     if "`vce'" == "" local vce "robust"
+110.     if `__dbg' {
+111.         di as txt "  Command:"
+112.         di as txt "    reghdfe `varlist' i.`catv'#i.`yearv' if 
+> `touse' `wgt', absorb(`absorb') vce(`vce') nocons"
+113.     }
+114. 
+.     quietly reghdfe `varlist' i.`catv'#i.`yearv' if `touse' `wgt',
+>  ///
+>         absorb(`absorb') vce(`vce') nocons
+115. 
+.     // Existing coefficient names
+.     if `__dbg' di as txt "[Step 7] Extracting coefficients..."
+116.     local bnames : colnames e(b)
+117.     if `__dbg' {
+118.         local nb : word count `bnames'
+119.         di as txt "  # coefficients in e(b): `nb'"
+120.     }
+121.     if `__dbgdetail' {
+122.         di as txt "  First up to 30 coef names:"
+123.         local shown = 0
+124.         foreach bn of local bnames {
+125.             local ++shown
+126.             di as txt "    `bn'"
+127.             if `shown' >= 30 continue, break
+128.         }
+129.     }
+130. 
+.     // Critical value for CI (fallback to normal if df_r missing)
+.     tempname crit
+131.     capture scalar `crit' = invttail(e(df_r), 0.025)
+132.     if _rc scalar `crit' = invnormal(0.975)
+133.     if `__dbg' di as txt "  CI critical value used: " %9.4f sca
+> lar(`crit')
+134. 
+.     // Post to temp dataset
+.     if `__dbg' di as txt "[Step 8] Posting cat×year coefficients t
+> o a temp dataset..."
+135.     tempfile coefdata
+136.     tempname posth
+137.     postfile `posth' int cat_level int year double b se ll ul u
+> sing `coefdata', replace
+138. 
+.     local posted = 0
+139.     foreach bn of local bnames {
+140.         // Match: <c>.<catv>#<y>.<yearv>
+.         if regexm("`bn'", "^([0-9]+)\.`catv'#([0-9]+)\.`yearv'$") 
+> {
+141.             local c = real(regexs(1))
+142.             local y = real(regexs(2))
+143. 
+.             scalar __b  = _b[`bn']
+144.             scalar __se = _se[`bn']
+145.             scalar __ll = __b - scalar(`crit')*__se
+146.             scalar __ul = __b + scalar(`crit')*__se
+147. 
+.             post `posth' (`c') (`y') (scalar(__b)) (scalar(__se)) 
+> (scalar(__ll)) (scalar(__ul))
+148.             local ++posted
+149.         }
+150.     }
+151.     postclose `posth'
+152. 
+.     if `__dbg' di as txt "  Rows posted: `posted'"
+153.     if `posted' == 0 {
+154.         di as error "No cat×year coefficients matched the expec
+> ted naming pattern. Plot cannot be produced."
+155.         exit 459
+156.     }
+157. 
+.     preserve
+158.         use `coefdata', clear
+159. 
+.         if `__dbgdetail' {
+160.             di as txt "[DebugDetail] First 20 rows of coefficie
+> nt dataset:"
+161.             list in 1/20, abbrev(24)
+162.         }
+163. 
+.         // Attach value label if exists
+.         local vlab : value label `catv'
+164.         if "`vlab'" != "" {
+165.             label values cat_level `vlab'
+166.             if `__dbg' di as txt "  Applied value label to cat_
+> level: `vlab'"
+167.         }
+168. 
+.         // Optional normalization to baseyear (within-category)
+.         if `baseyear' != 0 {
+169.             if `__dbg' di as txt "[Step 9] Normalizing to basey
+> ear(`baseyear')..."
+170.             bysort cat_level: egen base_b = max(cond(year==`bas
+> eyear', b, .))
+171.             quietly count if missing(base_b)
+172.             if r(N) > 0 {
+173.                 di as error "Some categories have no observatio
+> ns in baseyear(`baseyear'). Cannot normalize."
+174.                 if `__dbgdetail' {
+175.                     di as txt "Categories missing baseyear:"
+176.                     bysort cat_level: gen __hasbase = !missing(
+> base_b)
+177.                     tab cat_level if __hasbase==0
+178.                     drop __hasbase
+179.                 }
+180.                 exit 459
+181.             }
+182.             replace b  = b  - base_b
+183.             replace ll = ll - base_b
+184.             replace ul = ul - base_b
+185.             drop base_b
+186.         }
+187. 
+.         // Build twoway spec
+.         if `__dbg' di as txt "[Step 10] Building plot command..."
+188.         local plots ""
+189.         local k = 0
+190.         foreach c of local cats {
+191.             quietly count if cat_level == `c'
+192.             if r(N) == 0 continue
+193. 
+.             if "`noci'" == "" {
+194.                 local plots `plots' (rcap ll ul year if cat_lev
+> el==`c', sort)
+195.                 local ++k
+196.             }
+197.             local plots `plots' (connected b year if cat_level=
+> =`c', sort)
+198.             local ++k
+199.         }
+200. 
+.         if `__dbgdetail' {
+201.             di as txt "  twoway plot spec (truncated to 200 cha
+> rs):"
+202.             local tmp = substr("`plots'", 1, 200)
+203.             di as txt "    `tmp'..."
+204.         }
+205. 
+.         // Titles
+.         if "`xtitle'" == "" local xtitle `"`year'"'
+206.         if "`ytitle'" == "" {
+207.             if `baseyear' != 0 local ytitle `"`varlist' (relati
+> ve to `baseyear')"'
+208.             else                 local ytitle `"`varlist' (adju
+> sted mean)"'
+209.         }
+210.         if "`title'"  == "" local title  `"`varlist' by `cat' o
+> ver `year'"'
+211. 
+.         if `__dbg' {
+212.             di as txt "  xtitle: `xtitle'"
+213.             di as txt "  ytitle: `ytitle'"
+214.             di as txt "  title : `title'"
+215.         }
+216. 
+.         // X axis labels: use actual year values present in the co
+> ef dataset
+.         levelsof year, local(xyrs)
+217.         if `__dbg' di as txt "  X-axis years used: `xyrs'"
+218. 
+.         twoway `plots', ///
+>             xtitle(`xtitle') ytitle(`ytitle') title(`title') ///
+>             xlabel(`xyrs', angle(45)) ///
+>             legend(position(6) cols(1))
+219. 
+.         // Save graph
+.         if "`saving'" != "" {
+220.             local savepath `"`saving'"'
+221.             if !regexm(`"`savepath'"', "\.gph$") local savepath
+>  `"`savepath'.gph"'
+222.             if `__dbg' di as txt "[Step 11] Saving graph to: `s
+> avepath'"
+223.             graph save `"`savepath'"', `replace'
+224.         }
+225. 
+.     restore
+226. 
+.     if `__dbg' {
+227.         di as txt "hdfe_catyear_plot DEBUG END"
+228.         di as txt "--------------------------------------------
+> ----------------"
+229.     }
+230. end
+
+. 
+. 
+. ** Load ACS Data 
+. use "${data}working/acs_migration_file", replace 
+
+. 
+. ** Define sample 
+. drop if qmigplc1 == 4                                   // FAILED 
+> EDIT OF MIGPLACE 
+(388,364 observations deleted)
+
+. drop if inlist(state_fips_o, 2, 15)     // ALASKA AND HAWAII 
+(136,571 observations deleted)
+
+. 
+. ** Define indicator for being in Multnomah County in origin/destin
+> ation year
+. gen multnomah_o = state_fips_o == 41 & county_fips_o == 51
+
+. gen multnomah_d = state_fips_d == 41 & county_fips_d == 51
+
+. 
+. ** Define samples 
+. gen sample_1 = multnomah_o == 1                                 //
+>  Multnomah in origin-year 
+
+. gen sample_2 = multnomah_o != 1                                 //
+>  Not in Multnomah
+
+. label var sample_1 "Out-migration Sample"
+
+. label var sample_1 "In-migration Sample"
+
+. 
+. ** Define moving indicator 
+. gen out_1 = same_county == 0 
+
+. label var out_1 "Moved out of Multnomah"
+
+. gen out_2 = multnomah_d == 1 
+
+. label var out_2 "Moved to Multnomah"
+
+. 
+. ** Define variables of interest
+. 
+. ** Age 
+. recode age      (18/24 = 1 "18-24")     ///
+>                         (25/44 = 2 "25-44")             ///
+>                         (45/64 = 3 "45-64")     ///
+>                         (65/max = 4 "65+"),     ///
+>         gen(cat_age)
+(20,893,859 differences between age and cat_age)
+
+. label var cat_age "Age categories"
+
+. 
+. ** Sex  
+. gen cat_sex = sex == 2 
+
+. label var cat_sex "Female indicator"
+
+. label define lb_cat_sex 0 "Male" 1 "Female"
+
+. label values cat_sex lb_cat_sex 
+
+. 
+. ** Marital Status               
+. recode marst    (1 = 1 "Married")                               //
+> /
+>                                 (2/3 = 2 "Seperated")             
+>       ///
+>                                 (4/5 = 3 "Divourced / Widowed") //
+> /
+>                                 (6 = 4 "Single"),                 
+>               ///
+>         gen(cat_married)
+(9,061,905 differences between marst and cat_married)
+
+. label var cat_married "Marriage categories"
+
+. 
+. ** Kids at home 
+. recode nchild   (0 = 0 "0 Children")                              
+>       ///
+>                                 (1 = 1 "1 Child")                 
+>                               ///
+>                                 (2 = 2 "2 Children")              
+>                       ///
+>                                 (3/max = 3 "3+ Children"),        
+>                       ///
+>         gen(cat_child)
+(412,920 differences between nchild and cat_child)
+
+. label var cat_child "Number of Children"
+
+. 
+. ** Education 
+. recode educd    (min/61 = 1 "Less than HS")     ///
+>                                 (62/71 = 2 "HS Diploma")          
+>       ///
+>                                 (80/100 = 3 "Some College")     //
+> /
+>                                 (101/max = 4 "College Degree"), //
+> /
+>         gen(cat_educ)
+(20,893,859 differences between educd and cat_educ)
+
+. label var cat_educ "Education categories"
+
+. 
+. ** Earnings / Income 
+. gen tmp1 = cpi99 if year == 2023
+(18,380,619 missing values generated)
+
+. egen tmp2 = mean(tmp1)
+
+. gen cpi =  cpi99 / tmp2 
+
+. drop tmp1 tmp2 
+
+. 
+. ** Loop over income variables 
+. foreach var of varlist inctot incwage incearn ftotinc {
+  2.         
+.         ** Update CPI 
+.         gen real_`var' = round(`var' * cpi) 
+  3.         
+.         ** Categorical variables 
+.         recode real_`var'       (min/-1 = 1 "Negative income")    
+>       ///
+>                                                 (0 = 2 "$0")      
+>                                       ///
+>                                                 (1/24999 = 3 "$1-$
+> 25K")                         ///
+>                                                 (25000/49999 = 4 "
+> $25K-$50K")           ///
+>                                                 (50000/99999 = 5 "
+> $50K-$100K")          ///
+>                                                 (100000/199999 = 6
+>  "$100K-$200K")       ///
+>                                                 (200000/max = 7 "$
+> 200K+") ,             ///
+>                         gen(cat_`var')
+  4.                         
+.         ** Tab
+.         tab cat_`var', m 
+  5.         
+. }
+(20,893,859 differences between real_inctot and cat_inctot)
+
+      RECODE of |
+    real_inctot |      Freq.     Percent        Cum.
+----------------+-----------------------------------
+Negative income |     20,759        0.10        0.10
+             $0 |  1,748,089        8.37        8.47
+        $1-$25K |  6,204,378       29.69       38.16
+      $25K-$50K |  4,981,113       23.84       62.00
+     $50K-$100K |  4,947,578       23.68       85.68
+    $100K-$200K |  2,211,136       10.58       96.26
+         $200K+ |    780,806        3.74      100.00
+----------------+-----------------------------------
+          Total | 20,893,859      100.00
+(20,893,859 differences between real_incwage and cat_incwage)
+
+      RECODE of |
+   real_incwage |      Freq.     Percent        Cum.
+----------------+-----------------------------------
+             $0 |  8,182,418       39.16       39.16
+        $1-$25K |  3,428,895       16.41       55.57
+      $25K-$50K |  3,290,630       15.75       71.32
+     $50K-$100K |  3,729,590       17.85       89.17
+    $100K-$200K |  1,743,819        8.35       97.52
+         $200K+ |    518,507        2.48      100.00
+----------------+-----------------------------------
+          Total | 20,893,859      100.00
+(20,893,859 differences between real_incearn and cat_incearn)
+
+      RECODE of |
+   real_incearn |      Freq.     Percent        Cum.
+----------------+-----------------------------------
+Negative income |     16,135        0.08        0.08
+             $0 |  7,365,326       35.25       35.33
+        $1-$25K |  3,756,344       17.98       53.31
+      $25K-$50K |  3,476,928       16.64       69.95
+     $50K-$100K |  3,876,560       18.55       88.50
+    $100K-$200K |  1,823,201        8.73       97.23
+         $200K+ |    579,365        2.77      100.00
+----------------+-----------------------------------
+          Total | 20,893,859      100.00
+(20,893,767 differences between real_ftotinc and cat_ftotinc)
+
+      RECODE of |
+   real_ftotinc |      Freq.     Percent        Cum.
+----------------+-----------------------------------
+Negative income |      7,238        0.03        0.03
+             $0 |    226,387        1.08        1.12
+        $1-$25K |  2,249,309       10.77       11.88
+      $25K-$50K |  3,258,513       15.60       27.48
+     $50K-$100K |  5,975,505       28.60       56.08
+    $100K-$200K |  6,147,777       29.42       85.50
+         $200K+ |  3,029,130       14.50      100.00
+----------------+-----------------------------------
+          Total | 20,893,859      100.00
+
+. 
+. ** Label variable 
+. label var cat_inctot "Total personal income categories (real 2023 
+> USD)"
+
+. label var cat_incwage "Total wage income categories (real 2023 USD
+> )"
+
+. label var cat_incearn "Total earned income categories (real 2023 U
+> SD)"
+
+. label var cat_ftotinc "Total family income categories (real 2023 U
+> SD)"
+
+. 
+. ** Local categorical variables
+. local catvars "cat_sex cat_married cat_age cat_child cat_educ cat_
+> ftotinc"
+
+. 
+. ** Loop over out- and in-migration 
+. forvalues i = 1/2 {
+  2.         
+.         if `i' == 1 local ytitle_txt "Out-migration rate (%)"
+  3.         if `i' == 2 local ytitle_txt "In-migration rate (%)"
+  4. 
+.         ** Loop over categories
+.         foreach cat of local catvars {
+  5.                 
+.                 ** FEs 
+.                 local othercats : list catvars - cat            
+  6. 
+.                 ** Run Regressions
+.                 hdfe_catyear_plot out_`i' if sample_`i' == 1,     
+>               ///
+>                         cat(`cat')                                
+>                                                       ///
+>                         year(year)                                
+>                                                       ///
+>                         absorb(state_fips_o county_fips_o `otherca
+> ts')          ///
+>                         wvar(perwt) wtype(fw)                     
+>                                       ///
+>                         ytitle("`ytitle_txt'")                    
+>                                       ///
+>                         saving("${results}fig_`cat'_`i'") replace 
+> debug 
+  7.                 
+.         } // END CAT LOOP
+  8.         
+. } // END SAMPLE LOOP 
+test
+------------------------------------------------------------
+hdfe_catyear_plot DEBUG START
+Outcome   : out_1
+CAT()     : cat_sex
+YEAR()    : year
+ABSORB()  : state_fips_o county_fips_o cat_married cat_age cat_child
+>  cat_educ cat_ftotinc
+SAMPLE()  :    SVAL(): 1
+Weights   : weight= exp= wvar=perwt wtype=fw
+VCE()     : 
+BASEYEAR(): 0   NOCI: 
+SAVING()  : C: invalid name
+r(198);
+
+end of do-file
+
+r(198);
+
+. clear
+
+. clear all
+
+. do "C:\Users\ji252\AppData\Local\Temp\STD67b0_00003s.tmp"
+
+. 
+. ** Preliminaries 
+. capture log close 
+
+. clear matrix
+
+. clear all 
+
+. set more off 
+
+. 
+. ** Name of project 
+. global pr_name "multnomah"
+
+. 
+. ** Date of run 
+. global date "`: di %tdCY-N-D daily("$S_DATE", "DMY")'"
+
+. 
+. ** Set Directories
+. global dir "C:/Users/ji252/Documents/GitHub/multnomah-county-tax/"
+>       
+
+. global code     "${dir}code/"                           // CODE FI
+> LEPATH
+
+. global data     "${dir}data/"                           // DATA FI
+> LEPATH
+
+. global results  "${dir}results/"                        // RESULTS
+>  FILEPATH
+
+. global logs     "${code}logs/"                          // LOG FIL
+> E SUB-FILEPATH
+
+. 
+. ** Set WD 
+. cd ${dir}
+C:\Users\ji252\Documents\GitHub\multnomah-county-tax
+
+. 
+end of do-file
+
+. do "C:\Users\ji252\AppData\Local\Temp\STD67b0_00003t.tmp"
+
+. 
+. ** Set Seed 
+. set seed 56403
+
+. 
+. ** Set scheme
+. set scheme plotplainblind
+
+. 
+. ** Set parameters 
+. local overwrite_csv = 0
+
+. global start_year_acs = 2015
+
+. global end_year_acs = 2023
+
+. 
+end of do-file
+
+. do "C:\Users\ji252\Documents\GitHub\multnomah-county-tax\code\02_i
+> ndiv_analysis.do"
+
+. /*****************************************************************
+> **************
+> File Name:              02_indiv_analysis.do
+> Creator:                John Iselin
+> Date Update:    November 29, 2025
+> 
+> Called by: 00_multnomah.do
+> 
+> Purpose: Preform individual-level migration analysis. 
+> 
+> Authors: John Iselin 
+> 
+> For more information, contact john.iselin@yale.edu
+> 
+> ******************************************************************
+> *************/
+. 
+. ** Start log file 
+. capture log close log_02
