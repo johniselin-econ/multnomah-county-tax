@@ -10,6 +10,10 @@ Authors: John Iselin
 
 For more information, contact joiselin@gmail.com
 
+** TO-DO LIST 
+Set up API for DOL Data on childcare 
+
+
 *******************************************************************************/
 
 ** INSTALLATION 
@@ -19,6 +23,10 @@ For more information, contact joiselin@gmail.com
 * ssc install reghdfe
 * ssc install fre 
 * ssc install coefplot
+* ssc install sdid 
+* ssc install estout 
+* ssc install sdid_event
+* ssc install geodist
 
 ** Preliminaries 
 capture log close 
@@ -60,7 +68,7 @@ set scheme plotplainblind
 ** Set parameters 
 local overwrite_csv = 0
 global start_year_acs = 2015
-global end_year_acs = 2023
+global end_year_acs = 2024
 
 ** CALL R CODE TO IMPORT IPUMS DATA 
 rcall script "${code}R/api_code.R", ///
@@ -83,6 +91,10 @@ rcall script "${code}R/api_code.R", ///
 ** 		- https://www.irs.gov/statistics/soi-tax-stats-county-data
 ** (e) NYTimes Covid-19 Cases and Deaths by county
 ** 		- https://github.com/nytimes/covid-19-data
+** (f) County-level childcare cost data via DOL 
+** 		- www.dol.gov/sites/dolgov/files/WB/NDCP2022.xlsx
+** (g) County-level Unemployment data via BLS 
+** 		- https://www.bls.gov/lau/
 do ${code}01_clean_data.do
 
 ** ANALYSIS (02)
@@ -94,8 +106,10 @@ do ${code}02_descriptives.do
 do ${code}02_sdid_analysis.do 
 
 ** Individual-level Model
-do ${code}02_indiv_analysis_clean.do 
+*do ${code}02_indiv_analysis.do 
 
+** Multinomial Logit Model
+do ${code}02_multi_analysis.do 
 
 ** End log file
 capture log close

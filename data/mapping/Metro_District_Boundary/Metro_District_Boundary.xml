@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?><metadata>
+    <idinfo>
+        <citation>
+            <citeinfo>
+                <origin/>
+                <pubdate>19880101</pubdate>
+                <title>Metro District Boundary</title>
+                <geoform>vector digital data</geoform>
+            </citeinfo>
+        </citation>
+        <descript>
+            <abstract>The political boundary showing the area that is subject to Metro's regulatory and taxing authority and the area that has elected representation on the Metro Council.  The Oregon Legislature drew the Metro boundary that covers the Portland metropolitan area. Date of last data update: 2025-04-21 This is official RLIS data. Contact Person: Al Mowbray al.mowbray@oregonmetro.gov 503-797-1843 RLIS Metadata Viewer: https://gis.oregonmetro.gov/rlis-metadata/#/details/177 RLIS Terms of Use: https://rlisdiscovery.oregonmetro.gov/pages/terms-of-use</abstract>
+            <purpose>For general mapping and analysis.</purpose>
+            <supplinf>The Metro district boundary serves as the agency''''s political boundary. Residents living inside the Metro boundary vote for representatives to the Metro Council, and their land is subject to Metro''''s regulatory and taxing authority. The Metro district boundary is different from the urban growth boundary. Some areas are inside the urban growth boundary but outside the Metro boundary, and some areas are inside the Metro boundary but outside the urban growth boundary. People who live inside the urban growth boundary but outside the Metro legal boundary are not subject to Metro taxes or regulation. They are not represented on the Metro Council, nor can they vote in Metro elections. For more information about boundaries, please visit https://storymaps.arcgis.com/stories/38ccd032a789496f959d02ea2cc44414</supplinf>
+        </descript>
+        <timeperd>
+            <timeinfo>
+                <sngdate>
+                    <caldate>20250421</caldate>
+                </sngdate>
+            </timeinfo>
+            <current>Ground condition</current>
+        </timeperd>
+        <status>
+            <progress>Complete</progress>
+            <update>As needed</update>
+        </status>
+        <spdom>
+            <bounding>
+                <westbc>-123.153528597</westbc>
+                <eastbc>-122.367487422</eastbc>
+                <northbc>45.70263875</northbc>
+                <southbc>45.2339647</southbc>
+            </bounding>
+        </spdom>
+        <keywords>
+            <theme>
+                <themekt>None</themekt>
+                <themekey>Boundary</themekey>
+                <themekey>Metro boundary</themekey>
+                <themekey>Metro jurisdiction</themekey>
+            </theme>
+            <place>
+                <placekt>None</placekt>
+                <placekey>Portland</placekey>
+                <placekey>Multnomah County</placekey>
+                <placekey>Washington County</placekey>
+                <placekey>Clackamas County</placekey>
+                <placekey>Oregon</placekey>
+            </place>
+        </keywords>
+        <accconst>None</accconst>
+        <useconst>This database and GIS data are made available under the RLIS Open Database End User License Agreement. See https://rlisdiscovery.oregonmetro.gov/pages/open-database-license.</useconst>
+        <browse>
+            <browsen>http://library.oregonmetro.gov/rlisdiscovery/browse_graphic/metro.png</browsen>
+            <browsed>The Metro boundary displayed as a blue polygon on a gray basemap of the region for orientation.</browsed>
+            <browset>PNG</browset>
+        </browse>
+    </idinfo>
+    <dataqual>
+        <posacc>
+            <horizpa>
+                <horizpar>Registered to tax lots. Street center lines were digitized from aerial orthophotography at +/- 10 feet accuracy. Tax lots were fit to the street centerlines. Beaverton, Oregon City and Tigard planning areas were improved to +/- 5 feet accuracy. Multnomah County was created with coordinate geometry using better control.</horizpar>
+            </horizpa>
+        </posacc>
+        <lineage>
+            <procstep>
+                <procdesc>The boundary was digitized based on the 1979 adopted legal description of the boundary. The boundary was registered to the ODOT detailed street map.</procdesc>
+                <procdate>1989</procdate>
+            </procstep>
+            <procstep>
+                <procdesc>The boundary was registered to the tax lot layer.</procdesc>
+                <procdate>1993</procdate>
+            </procstep>
+            <procstep>
+                <procdesc>This layer was positionally adjusted to the most recent parcel base adjustments for both Multnomah and Clackamas Counties.</procdesc>
+                <procdate>199801</procdate>
+            </procstep>
+            <procstep>
+                <procdesc>This layer was reprojected to the NAD83/91 projection (also known as HPGN) as part of a conversion of all RLIS map layers.</procdesc>
+                <procdate>199807</procdate>
+            </procstep>
+            <procstep>
+                <procdesc>Projection information (.prj file), compatible with ArcGIS 8.1, was added to the layer.</procdesc>
+                <procdate>20010715</procdate>
+            </procstep>
+            <procstep>
+                <procdesc>The met_fill.shp has been renamed to metro.shp. The met_line.shp was removed from RLIS Lite, due to the fact that metro.shp can be symolized with an outline if a line is needed.</procdesc>
+                <procdate>20100129</procdate>
+            </procstep>
+            <procstep>
+                <procdesc>Metro ordinance 11-1264B adopted 10/20/11 brought four new areas into the UGB plus an additional small area that had been a hole in the UGB. These areas were also added to the Metro District Boundary as a result of 2009 Oregon State Legislation that automatically expands the Metro District Boundary with UGB expansions.</procdesc>
+                <procdate>20120117</procdate>
+            </procstep>
+            <procstep>
+                <procdesc>The course of the Metro District Boundary that follows the boundary between the states of Oregon and Washington was updated to precise state boundary line coordinates. The boundary between Oregon and Washington is defined by ORS 186.520 which lists latitude and longitude coordinate stations connected by a series of straight lines along length of the boundary.</procdesc>
+                <procdate>20120423</procdate>
+            </procstep>
+        </lineage>
+    </dataqual>
+    <spdoinfo>
+        <direct>Vector</direct>
+        <ptvctinf>
+            <sdtsterm>
+                <sdtstype/>
+            </sdtsterm>
+        </ptvctinf>
+    </spdoinfo>
+    <eainfo>
+        <detailed>
+            <enttyp>
+                <enttypl>Metro.dbf</enttypl>
+                <enttypd>Description of the Metro polygon attributes</enttypd>
+            </enttyp>
+            <attr>
+                <attrlabl>Area</attrlabl>
+                <attrdef>Area in square feet.</attrdef>
+                <attrdomv>
+                                        					
+                    
+                    <udom>NA</udom>
+                                        				
+                
+                </attrdomv>
+            </attr>
+        </detailed>
+    </eainfo>
+    <distinfo>
+        <distrib>
+            <cntinfo>
+                <cntorgp>
+                    <cntorg>Metro Data Resource Center</cntorg>
+                </cntorgp>
+                <cntaddr>
+                    <addrtype>unknown</addrtype>
+                    <address>600 NE Grand Ave.</address>
+                    <city>Portland</city>
+                    <state>OR</state>
+                    <postal>97232</postal>
+                </cntaddr>
+                <cntvoice>503 797-1742</cntvoice>
+                <cntfax>503 797-1909</cntfax>
+                <cntemail>drc@oregonmetro.gov</cntemail>
+            </cntinfo>
+        </distrib>
+        <resdesc>Email drc@oregonmetro.gov or call 503-797-1742 for further instructions.</resdesc>
+        <distliab>The information in this file was derived from digital databases on Metro's GIS. Care was taken in the creation of this file. Metro cannot accept any responsibility for errors, omissions, or positional accuracy. There are no warranties, expressed or implied.</distliab>
+        <stdorder>
+            <digform>
+                <digtinfo>
+                    <formname>Shapefile</formname>
+                    <transize>0</transize>
+                </digtinfo>
+                <digtopt>
+                    <onlinopt>
+                        <computer>
+                            <networka>
+                                <networkr>http://www.oregonmetro.gov/rlisdiscovery</networkr>
+                            </networka>
+                        </computer>
+                        <accinstr>Email drc@oregonmetro.gov or call 503-797-1742 for further instructions.</accinstr>
+                    </onlinopt>
+                    <offoptn>
+                        <offmedia/>
+                        <recfmt>ISO 9660</recfmt>
+                    </offoptn>
+                </digtopt>
+            </digform>
+            <fees>No cost</fees>
+        </stdorder>
+    </distinfo>
+    <metainfo>
+        <metd>20250421</metd>
+        <metc>
+            <cntinfo>
+                <cntorgp>
+                    <cntorg>Metro Data Resource Center</cntorg>
+                    <cntper>Al Mowbray</cntper>
+                </cntorgp>
+                <cntaddr>
+                    <addrtype>mailing and physical</addrtype>
+                    <address>600 NE Grand Ave.</address>
+                    <city>Portland</city>
+                    <state>OR</state>
+                    <postal>97232</postal>
+                </cntaddr>
+                <cntvoice>503-797-1843</cntvoice>
+                <cntfax>503-797-1909</cntfax>
+                <cntemail>al.mowbray@oregonmetro.gov</cntemail>
+            </cntinfo>
+        </metc>
+        <metstdn>FGDC Content Standard for Digital Geospatial Metadata</metstdn>
+        <metstdv>FGDC-STD-001-1998</metstdv>
+        <mettc>local time</mettc>
+    </metainfo>
+</metadata>

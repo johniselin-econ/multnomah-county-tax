@@ -21,6 +21,8 @@ data/working/*
 data/demographic/CAINC1/*.csv
 data/demographic/CAINC1/*.xml
 data/demographic/CAINC1/*.html
+data/demographic/CAINC1/*.html
+data/demographic/bls/*
 
 # Local configuration files
 profile.do

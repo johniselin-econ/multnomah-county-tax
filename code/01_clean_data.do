@@ -3,26 +3,39 @@
 * Author(s): 		John Iselin 
 * Date Updated:		October 19, 2025
 
-*** Demographic data via IPUMS NHGIS 
+**** Data that has been / will be automatically download
+
+** Demographic data via IPUMS NHGIS 
 ** Via https://www.nhgis.org/
 ** Downloaded on October 19, 2025
 ** EXTRACT DETAILS in "nhgis0031_ts_nominal_county_codebook"
 
-*** Economic data via BEA Regional Economic Accounts (CAINC1)
+** Economic data via BEA Regional Economic Accounts (CAINC1)
 ** Via https://apps.bea.gov/regional/downloadzip.htm
 
-*** ACS individual data via IPUMS USA 
+** ACS individual data via IPUMS USA 
 ** Via https://usa.ipums.org/usa/index.shtml
 ** Downloaded via R program 
 
-*** IRS SOI County-Level Migration Files
+** IRS SOI County-Level Migration Files
 ** Via https://www.irs.gov/statistics/soi-tax-stats-migration-data
 
-*** IRS SOI County-Level Files
+** IRS SOI County-Level Files
 ** Via https://www.irs.gov/statistics/soi-tax-stats-county-data
 
-*** NYTimes COVID Cases and Deaths 
+** NYTimes COVID Cases and Deaths 
 ** Via https://github.com/nytimes/covid-19-data
+
+**** Data that must be manually downloaded
+
+** DOL Childcare Cost Data 
+** Via www.dol.gov/sites/dolgov/files/WB/NDCP2022.xlsx
+
+** BLS Unemployment data 
+** Via https://download.bls.gov/pub/time.series/la/la.data.64.County 
+
+** County Centroids (center of population)
+** Via https://arc-gis-hub-home-arcgishub.hub.arcgis.com/datasets/myUTK::popcenterstate-us-csv/about
 
 *******************************************************************************/
 
@@ -84,27 +97,231 @@ program define unsuppress
     }
 end
 
-//--------------------------------------------------
-// STEP -1: Acquire raw data (automated where possible)
-//--------------------------------------------------
-/*
-This block downloads public-use source data directly from official URLs if not present locally.
 
-Automated downloads included:
-  - IRS SOI county-to-county migration: countyinflowYYZZ.csv / countyoutflowYYZZ.csv
-  - IRS SOI county data: YYincyallagi.csv
-  - BEA Regional Economic Accounts (CAINC1): CAINC1.zip (unzips to CAINC1__ALL_AREAS_*.csv and related files)
+** Create a gross-migration file via ACS 
+capture program drop acs_make_gross_migration
+program define acs_make_gross_migration
+    version 16.0
+    /*
+      Build county-year gross migration totals from ACS microdata with origin/destination counties.
 
-*/
+      Outputs (wide):
+        persons_in_*, persons_out_*, persons_net_*
+        households_in_*, households_out_*, households_net_*
+        dollars_in_*, dollars_out_*, dollars_net_*
 
-* Ensure expected directory structure exists
+      Move-type indices (mirrors your IRS convention as closely as possible):
+        1 = Non-movers (same county)
+        2 = All movers (different county) = 4 + 5
+        3 = Domestic movers (same as 2 here; foreign already dropped upstream)
+        4 = Within-state movers (different county, same state)
+        5 = Inter-state movers (different state)
+    */
+
+    syntax using/ [if] [in], SAVING(string) [REPLACE] ///
+        [ IDSFILE(string) ///
+          YEARVAR(name) ORIGFIPS(name) DESTFIPS(name) ///
+          PERSONWT(name) HHWT(name) HEADVAR(name) INCOME(name) SAMPLE(string)]
+
+    // Defaults consistent with your 01_clean_data.do
+    if "`idsfile'"  == "" local idsfile  "${data}working/ids"
+    if "`yearvar'"  == "" local yearvar  year
+    if "`origfips'" == "" local origfips fips_o
+    if "`destfips'" == "" local destfips fips_d
+    if "`personwt'" == "" local personwt perwt
+    if "`hhwt'"     == "" local hhwt     hhwt
+    if "`headvar'"  == "" local headvar  hh_head
+    if "`income'"   == "" local income   inctot
+
+    // Load microdata (optionally subset via if/in)
+    use "`using'" `if' `in', clear
+	
+	if "`sample'" != "" keep if `sample'
+
+    // Basic checks
+    foreach v in `yearvar' `origfips' `destfips' `personwt' `hhwt' `headvar' `income' {
+        capture confirm variable `v'
+        if _rc {
+            di as err "Required variable `v' not found in `using'."
+            exit 198
+        }
+    }
+
+    // Keep only valid year/origin/destination
+    drop if missing(`yearvar') | missing(`origfips') | missing(`destfips')
+
+    // Income: treat missing as 0 (keep negatives as reported)
+    replace `income' = 0 if missing(`income')
+
+    // Build weighted components at the person level
+    gen double persons_wt = `personwt'
+    gen double dollars_wt = `income' * `personwt'
+    gen double households_wt = `hhwt' if `headvar' == 1
+    replace households_wt = 0 if missing(households_wt)
+
+    // Collapse to origin-destination-year flow first
+    keep `yearvar' `origfips' `destfips' persons_wt dollars_wt households_wt
+    collapse (sum) persons=persons_wt dollars=dollars_wt households=households_wt, ///
+        by(`yearvar' `origfips' `destfips')
+
+    // Derive state/county components for mover-type logic
+    gen int state_o  = floor(`origfips'/1000)
+    gen int state_d  = floor(`destfips'/1000)
+
+    gen byte same_county = (`origfips' == `destfips')
+    gen byte same_state  = (state_o == state_d)
+    gen byte within_state_mover = same_state & !same_county
+    gen byte inter_state_mover  = !same_state
+
+    // -----------------------
+    // IN-MIGRATION (by destination county)
+    // -----------------------
+    preserve
+        gen long fips = `destfips'
+        gen int state_fips  = floor(fips/1000)
+        gen int county_fips = mod(fips, 1000)
+
+        // type 1/4/5 components
+        foreach m in persons households dollars {
+            gen double `m'_1 = `m' if same_county
+            gen double `m'_4 = `m' if within_state_mover
+            gen double `m'_5 = `m' if inter_state_mover
+        }
+
+        collapse (sum) persons_1 persons_4 persons_5 ///
+                       households_1 households_4 households_5 ///
+                       dollars_1 dollars_4 dollars_5, ///
+                by(`yearvar' fips state_fips county_fips)
+
+        // build 2 and 3
+        gen double persons_2    = persons_4 + persons_5
+        gen double persons_3    = persons_2
+        gen double households_2 = households_4 + households_5
+        gen double households_3 = households_2
+        gen double dollars_2    = dollars_4 + dollars_5
+        gen double dollars_3    = dollars_2
+
+        // rename to *_in_*
+        foreach t in 1 2 3 4 5 {
+            rename persons_`t'    persons_in_`t'
+            rename households_`t' households_in_`t'
+            rename dollars_`t'    dollars_in_`t'
+        }
+
+        tempfile __in
+        save `__in', replace
+    restore
+
+    // -----------------------
+    // OUT-MIGRATION (by origin county)
+    // -----------------------
+    preserve
+        gen long fips = `origfips'
+        gen int state_fips  = floor(fips/1000)
+        gen int county_fips = mod(fips, 1000)
+
+        foreach m in persons households dollars {
+            gen double `m'_1 = `m' if same_county
+            gen double `m'_4 = `m' if within_state_mover
+            gen double `m'_5 = `m' if inter_state_mover
+        }
+
+        collapse (sum) persons_1 persons_4 persons_5 ///
+                       households_1 households_4 households_5 ///
+                       dollars_1 dollars_4 dollars_5, ///
+                by(`yearvar' fips state_fips county_fips)
+
+        gen double persons_2    = persons_4 + persons_5
+        gen double persons_3    = persons_2
+        gen double households_2 = households_4 + households_5
+        gen double households_3 = households_2
+        gen double dollars_2    = dollars_4 + dollars_5
+        gen double dollars_3    = dollars_2
+
+        foreach t in 1 2 3 4 5 {
+            rename persons_`t'    persons_out_`t'
+            rename households_`t' households_out_`t'
+            rename dollars_`t'    dollars_out_`t'
+        }
+
+        tempfile __out
+        save `__out', replace
+    restore
+
+    // -----------------------
+    // Merge in/out; compute net
+    // -----------------------
+    use `__in', clear
+    merge 1:1 `yearvar' fips state_fips county_fips using `__out', nogen
+
+    // Replace missings with 0 prior to net calcs (counties can be only in or only out)
+    foreach m in persons households dollars {
+        foreach t in 1 2 3 4 5 {
+            replace `m'_in_`t'  = 0 if missing(`m'_in_`t')
+            replace `m'_out_`t' = 0 if missing(`m'_out_`t')
+        }
+    }
+
+    // Net = in - out (types 2/3/4/5 are the meaningful migration nets; 1 will be ~0 by construction)
+    foreach m in persons households dollars {
+        foreach t in 2 3 4 5 {
+            gen double `m'_net_`t' = `m'_in_`t' - `m'_out_`t'
+        }
+    }
+
+    // Merge names
+    merge m:1 state_fips county_fips using "`idsfile'", keep(master match) nogen
+
+    // Labels
+    label var fips "County FIPS (state*1000 + county)"
+    label var state_fips "State FIPS"
+    label var county_fips "County FIPS"
+
+    label var persons_in_2  "Persons, in-migration, all movers"
+    label var persons_out_2 "Persons, out-migration, all movers"
+    label var persons_net_2 "Persons, net migration, all movers"
+
+    label var households_in_2  "Households, in-migration, all movers (HH heads)"
+    label var households_out_2 "Households, out-migration, all movers (HH heads)"
+    label var households_net_2 "Households, net migration, all movers (HH heads)"
+
+    label var dollars_in_2  "Dollars, in-migration, all movers (INCTOT*PERWT)"
+    label var dollars_out_2 "Dollars, out-migration, all movers (INCTOT*PERWT)"
+    label var dollars_net_2 "Dollars, net migration, all movers (INCTOT*PERWT)"
+
+    order `yearvar' fips state_fips county_fips state_name county_name, first
+    sort `yearvar' state_fips county_fips
+    compress
+
+    // Save
+    save "`saving'", `replace'
+	clear
+	
+end
+
+********************************************************************************
+** STEP 1: Download and check non-IPUMS data 
+********************************************************************************
+
+** Ensure expected directory structure exists
 capture mkdir "${data}"
 capture mkdir "${data}working"
 capture mkdir "${data}demographic"
 capture mkdir "${data}demographic/CAINC1"
 capture mkdir "${data}demographic/nhgis0031_csv"
+capture mkdir "${data}demographic/dol"
+capture mkdir "${data}demographic/bls"
 capture mkdir "${data}irs"
 capture mkdir "${data}covid"
+
+** This block downloads public-use source data directly from official URLs if 
+** not present locally.
+/*
+Automated downloads included:
+  - IRS SOI county-to-county migration: countyinflowYYZZ.csv / countyoutflowYYZZ.csv
+  - IRS SOI county data: YYincyallagi.csv
+  - BEA Regional Economic Accounts (CAINC1): CAINC1.zip (unzips to CAINC1__ALL_AREAS_*.csv and related files)
+*/
 
 * ----------------------------
 * IRS SOI: migration files
@@ -184,11 +401,38 @@ if "`covid_file'"=="" {
     copy "`covid_url'" "`covid_dir'/covid_nyt.csv", replace
 }
 
+** This block checks that non-automatically downloaded data are present: 
+/*
+Non-automtated downloads included:
+  - DOL childcare data (through 2022)
+  - BLS unemployment data 
+*/
+
+** Define paths 
+local dol_dir "${data}demographic/dol/NDCP2022.xlsx"
+local bls_dir "${data}demographic/bls/la.data.64.County" 
+
+capture confirm file `dol_dir' // Check if the file exists
+
+if _rc != 0 {
+    display "Error: The file `dol_dir' was not found."
+    display "Execution of the do-file is stopping."
+    exit // Stops the do-file/program
+}
+
+capture confirm file `bls_dir' // Check if the file exists
+
+if _rc != 0 {
+    display "Error: The file `bls_dir' was not found."
+    display "Execution of the do-file is stopping."
+    exit // Stops the do-file/program
+}
 
 
-//-----------------------------------------------------------
-// STEP 1: Import and Clean Demographic Data via IPUMS + BEA  
-//-----------------------------------------------------------
+
+********************************************************************************
+** STEP 2: Clean demographic + economic data via IPUMS, BLS, and BEA 
+********************************************************************************
 
 ** Import data 
 import delimited 	///
@@ -243,6 +487,14 @@ make_fips state_fips county_fips, gen(fips)
 
 ** Save as state and county Ids 
 save "${data}working/ids", replace 
+
+** Save state IDS 
+keep state_fips state_name 
+duplicates drop 
+
+** Save as state and county Ids 
+save "${data}working/state_ids", replace 
+
 clear  
 
 ** (2) Population data 
@@ -320,7 +572,7 @@ reshape long value, i(fips linecode) j(year)
 reshape wide value, i(fips year ) j(linecode)
 
 ** Keep years 
-keep if inrange(year, 2015, 2023)
+keep if inrange(year, 2015, ${end_year_acs})
 
 ** Rename values 
 rename value2 population 
@@ -339,13 +591,100 @@ drop ct
 destring population, replace 
 destring per_capita_income, replace 
 
+** Extrapolate through 2024 
+expand 2 if year == 2023, gen(tag)
+replace year = 2024 if tag == 1 
+replace population = . if tag == 1 
+replace per_capita_income = . if tag == 1 
+
+** Get list of all counties 
+qui levelsof fips, local(fips)
+
+** Loop over variables
+foreach v of varlist population per_capita_income {
+	
+	** Loop over all FIPS 
+    foreach c of local fips {
+		
+		quietly{
+			
+			regress `v' year if fips == `c' & tag != 1 
+			predict `v'_hat
+			replace `v' = `v'_hat if fips == `c' & year == 2024
+			drop `v'_hat
+			
+		} // END QUIET
+    } // END FIPS LOOP 
+} // END VAR LOOP 
+
+** Drop tag 
+drop tag
+
 ** Save data
 save "${data}working/bea_economics", replace 
 
-//----------------------------------------------------
-// STEP 2: Import and Clean NYTimes COVID-19 Data 
-//----------------------------------------------------
- 
+** Load BLS Unemployment data 
+import delimited "${data}demographic\bls\la.data.64.County", clear 
+
+** Keep annual average 
+keep if period == "M13"
+drop period 
+
+** Keep only Unemployment Rate 
+gen measure = substr(series_id, 20,1)
+keep if measure == "3"
+drop measure 
+
+** Keep years 
+keep if inrange(year, 2015, ${end_year_acs})
+tab year 
+
+** Define counties 
+gen fips = substr(series_id, 6,5)
+destring fips, replace 
+drop series_id 
+isid fips year 
+
+** Drop PR 
+drop if fips > 60000
+drop footnote_codes 
+
+** Update names 
+rename value unemp 
+order year fips unemp 
+
+destring unemp, replace 
+
+** Save data
+save "${data}working/bls_unemployment", replace 
+
+** Load County Centroids 
+import delimited "${data}demographic\PopCenterCounty_US.csv", clear 
+
+** Keep required years (2010)
+keep if year == 2010 
+
+** Keep required variables 
+keep geographicindentifier latitude longitude 
+
+** Rename 
+rename geographicindentifier fips 
+rename latitude lat 
+rename longitude lon 
+
+** Drop PR 
+drop if fips > 60000
+
+** Save data
+save "${data}working/pop_centers", replace 
+
+
+
+
+********************************************************************************
+** STEP 3: Import and Clean NYTimes COVID-19 Data 
+********************************************************************************
+
 ** Import data 
 import delimited using "${data}covid/covid_nyt.csv", varnames(1) clear case(lower) 
 
@@ -421,33 +760,36 @@ merge m:1 fips using "${data}working/population_2020", keep(match) nogen
 ** Save file 
 save ${data}working/covid_cleaned.dta, replace 
 
-** Generate Clustering Variables 
-
 ** Keep one observation per month 
-keep year month fips state_name county_name cases_cum deaths_cum population
-collapse (sum) cases deaths population, by(year month fips state_name county_name) 
+keep year month fips state_name county_name cases deaths population
+collapse (sum) cases deaths (mean) population, by(year month fips state_name county_name) 
 sort year month fips 
 egen date = group(year month)
 drop year month 
 
+** Calculate cumulative cases and deaths 
+bysort fips (date): gen cases_cum = sum(cases)
+bysort fips (date): gen deaths_cum = sum(deaths)
+
 ** Generate per capita figures
-replace cases = 1000 * cases / population
-replace deaths = 1000 * deaths / population
-drop population 
+replace cases_cum = 1000 * cases_cum / population
+replace cases_cum = 1000 * cases_cum / population
+drop population cases deaths
 
 ** Reshape wide 
-reshape wide cases deaths, i(fips state_name county_name) j(date)
+reshape wide cases_cum deaths_cum, i(fips state_name county_name) j(date)
 
 ** Save file 
 save ${data}working/covid_cleaned_wide.dta, replace 
 clear
 
-//----------------------------------------------------
-// STEP 3: Import and Clean ACS Micro Data via IPUMS 
-//----------------------------------------------------
+
+********************************************************************************
+** STEP 4: Import and Clean IPUMS ACS Data via IPUMS 
+********************************************************************************
 
 ** Load data 
-forvalues y = 2015(1)2023 {
+forvalues y = 2015(1)$end_year_acs {
 	
 	** Import CSV
 	import delimited using "${data}acs/acs_`y'", varnames(1) clear case(lower)
@@ -460,7 +802,7 @@ forvalues y = 2015(1)2023 {
 } // END YEAR LOOP 
 
 ** Append data 
-forvalues y = 2015(1)2023 {
+forvalues y = 2015(1)$end_year_acs {
 	
 	append using `acs_`y''	
 	
@@ -526,15 +868,16 @@ compress
 ** Save 
 save "${data}working/acs_migration_file", replace 
 
-// Keep only observations with valid origin/destination counties and YEAR
+** Keep only observations with valid origin/destination counties and YEAR
 drop if missing(year) | missing(fips_o) | missing(fips_d)
 
-// Clean income (treat missing as 0; keep negative values as reported)
+** Clean income (treat missing as 0; keep negative values as reported)
 replace inctot = 0 if missing(inctot)
 gen double income_wt = inctot * perwt
 label var income_wt "Person income (INCTOT) weighted by PERWT"
 
-// --- Persons + income totals by origin/destination/year
+** Persons + income totals by origin/destination/year
+
 preserve
 keep year fips_o fips_d perwt income_wt
 collapse (sum) persons=perwt income_total=income_wt, by(year fips_o fips_d)
@@ -542,18 +885,18 @@ tempfile acs_pi
 save `acs_pi'
 restore
 
-// --- Households by origin/destination/year
-// Use HHWT among household heads (RELATE==1) if available; else PERNUM==1 fallback.
+** Households by origin/destination/year
+** Use HHWT among household heads (RELATE==1)
 
 preserve
-keep if hh_head
+keep if hh_head == 1 
 keep year fips_o fips_d hhwt
 collapse (sum) households=hhwt, by(year fips_o fips_d)
 tempfile acs_hh
 save `acs_hh'
 restore
 
-// --- Merge persons/income with households
+** Merge persons/income with households
 use `acs_pi', clear
 merge 1:1 year fips_o fips_d using `acs_hh', nogen
 
@@ -561,7 +904,7 @@ label var persons "Estimated number of persons (sum PERWT)"
 label var households "Estimated number of households (sum HHWT among heads)"
 label var income_total "Estimated total personal income (sum INCTOT*PERWT)"
 
-// --- Derive state/county components for merges with name crosswalk
+** Derive state/county components for merges with name crosswalk
 gen int state_fips_o  = floor(fips_o/1000)
 gen int county_fips_o = mod(fips_o,1000)
 gen int state_fips_d  = floor(fips_d/1000)
@@ -572,65 +915,74 @@ label var county_fips_o "County FIPS (origin)"
 label var state_fips_d "State FIPS (destination)"
 label var county_fips_d "County FIPS (destination)"
 
-// --- Merge in names (from NHGIS IDs snapshot)
-preserve
-use "${data}working/ids", clear
-rename (state_fips county_fips state_name county_name) (state_fips_o county_fips_o state_name_o county_name_o)
-tempfile ids_o
-save `ids_o'
-keep state_fips_o state_name_o 
-duplicates drop 
-tempfile state_ids_o
-save `state_ids_o'
-restore
-merge m:1 state_fips_o county_fips_o using `ids_o', keep(master match) nogen
-drop state_name_o 
-merge m:1 state_fips_o using `state_ids_o', keep(master match) nogen
+** Merge in names (from NHGIS IDs snapshot)
 
-preserve
-use "${data}working/ids", clear
-rename (state_fips county_fips state_name county_name) (state_fips_d county_fips_d state_name_d county_name_d)
-tempfile ids_d
-save `ids_d'
-keep state_fips_d state_name_d 
-duplicates drop 
-tempfile state_ids_d
-save `state_ids_d'
-restore
 
-merge m:1 state_fips_d county_fips_d using `ids_d', keep(master match) nogen
-drop state_name_d
-merge m:1 state_fips_d using `state_ids_d', keep(master match) nogen
+** Loop over orgin and destination states
+foreach x in "d" "o" {
+	
+	preserve
+	
+	** Load County IDs 
+	use "${data}working/ids", clear
+	
+	** Rename 
+	rename 	(state_fips county_fips state_name county_name)	///
+			(state_fips_`x' county_fips_`x' state_name_`x' county_name_`x')
+		
+	** Save as temporary file 	
+	tempfile ids_`x'
+	save `ids_`x''
+	
+	** Restore and merge data 
+	restore
+	merge m:1 state_fips_`x' county_fips_`x' using `ids_`x'', keep(master match) nogen
+
+} // END ORIGIN - DESTINATION LOOP 
+
+** Organize data 
 order year ///
     state_fips_o county_fips_o state_name_o county_name_o fips_o ///
     state_fips_d county_fips_d state_name_d county_name_d fips_d ///
     persons households income_total
 
+** Sort data 
 sort year state_fips_o county_fips_o state_fips_d county_fips_d
 
+** Identify other counties (suppression)
 replace county_name_o = "Other" if county_fips_o == 0 
 replace county_name_d = "Other" if county_fips_d == 0 
 
+** Save data
 save "${data}working/acs_county_flow", replace
+clear 
 
-// Optional: Multnomah-focused flow extract (origin = Multnomah County, OR)
-// Multnomah County, OR = state 41, county 051
-preserve
-keep if state_fips_o == 41 & county_fips_o == 51
-save "${data}working/multnomah_acs_flow", replace
-clear
+** Create gross-migration files for ACS 
 
+** All (18+)
+acs_make_gross_migration using "${data}working/acs_migration_file", ///
+    saving("${data}working/acs_county_gross_18plus") replace 
 
-
-//----------------------------------------------------
-// STEP 4: Import and Clean IRS Migration Data 
-//----------------------------------------------------
-
-** Loop over years 
-forvalues y = 15(1)21 {
+** ADD No-Kids-in-HH 
+** REPLACE BELOW WITH MAX EDUCATION IN HH 	
 	
-	local start = `y'
-	local end = `y' + 1 
+** College-degrees 
+acs_make_gross_migration  using "${data}working/acs_migration_file", ///
+    saving("${data}working/acs_county_gross_college") replace sample("educd >= 101")
+	
+** No college  
+acs_make_gross_migration using "${data}working/acs_migration_file", ///
+    saving("${data}working/acs_county_gross_nocollege") replace sample("educd < 101")
+	
+********************************************************************************
+** STEP 5: Import and Clean IRS Migration Data 
+********************************************************************************
+	
+** Loop over years 
+forvalues y = 16(1)22 {
+	
+	local start = `y' - 1
+	local end = `y'  
 	
 	** Import data (out)
 	import delimited "${data}irs/countyoutflow`start'`end'.csv", clear 
@@ -638,8 +990,8 @@ forvalues y = 15(1)21 {
 	** Describe data 
 	des 
 	
-	** Generate year 
-	gen year = 2000 + `y' 
+	** Generate year (end year)
+	gen year = 2000 + `y'
 	
 	** Drop Regional Values 
 	drop if y2_state == "DS"
@@ -879,7 +1231,7 @@ foreach file in "irs_county_gross_in" "irs_county_gross_out" "irs_county_flow"{
 	
 		
 	** Loop over years 
-	forvalues y = 15(1)21 {
+	forvalues y = 16(1)22 {
 
 		** Append 
 		append using "${data}working/`file'_`y'"
@@ -1032,9 +1384,9 @@ foreach a in "n1" "n2" "agi" {
 save "${data}working/irs_county_gross", replace 
 clear
 
-//-----------------------------------------------------
-// STEP 4: Import and Clean IRS County-Level Aggr. Data 
-//-----------------------------------------------------
+********************************************************************************
+** STEP 6: Import and Clean IRS County-Level Aggr. Data 
+********************************************************************************
 
 ** Loop over years 
 forvalues y = 15(1)22 {
@@ -1117,6 +1469,85 @@ make_fips state_fips county_fips, gen(fips)
 
 ** Save file 
 save "${data}working/irs_county_all", replace 
+
+********************************************************************************
+** STEP 7: Import and Clean DOL Childcare Cost Data 
+********************************************************************************
+
+** Import data 
+import excel using "${data}demographic/dol/NDCP2022.xlsx", firstrow case(lower) clear
+
+** Drop if not in 50 states + DC 
+drop if state_fips == 72
+
+** Keep in year range 
+keep if inrange(studyyear, 2015, 2022)
+
+** Keep required variables 
+keep county_fips_code studyyear me 	///
+	mcinfant mctoddler mcpreschool 	///
+	mfccinfant mfcctoddler mfccpreschool
+	
+rename county_fips fips 
+rename studyyear year 
+
+** Fill-in missing variables 
+xtset fips year 
+tsfill, full
+
+** Interpotate
+foreach var of varlist me mc* mf* {
+	bys fips: ipolate `var' year, g(tmp1)
+	replace `var' = tmp1 if missing(`var')
+	drop tmp1
+} // END VAR LOOP 
+
+** Generate value as a percent of median income 
+gen mc_infant_med = mcinfant / me 
+gen mc_toddler_med = mctoddler / me 
+gen mc_preschool_med = mcpreschool / me 
+gen mf_infant_med = mfccinfant / me 
+gen mf_toddler_med = mfcctoddler / me 
+gen mf_preschool_med = mfccpreschool / me 
+
+** Drop unnecc. variables 
+drop me mcinfant mctoddler mcpreschool mfcc* 
+
+** Inflate forwards by two years, by county and variable 
+local ct = ${end_year_acs} - 2022 + 1 
+expand `ct' if year == 2022
+by fips year, sort: replace year = year + _n - 1 if year == 2022 & _n > 1
+
+** Get list of all counties 
+qui levelsof fips, local(fips)
+
+** Loop over variables
+foreach v of varlist mc_* mf_* {
+	
+	** Replace 2023 + 2024 values with missings 
+    replace `v' = . if year > 2022
+	
+	** Loop over all FIPS 
+    foreach c of local fips {
+		
+		quietly{
+			
+			** Run if not missing too many observations 
+			count if !missing(`v') & fips == `c' 
+			if `r(N)' > 3 {
+				regress `v' year if fips == `c'
+				predict `v'_hat
+				replace `v' = `v'_hat if fips == `c' & year > 2022
+				drop `v'_hat
+			} // END IF-STATEMENT
+			else drop if fips == `c'
+		} // END QUIET
+    } // END FIPS LOOP 
+} // END VAR LOOP 
+
+** Save file 
+save "${data}working/dol_childcare", replace 
+
 
 ** Close log
 log close log_01

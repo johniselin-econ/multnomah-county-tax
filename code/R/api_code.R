@@ -86,11 +86,16 @@ download_ipums_acs <- function(project_root,
       workedyr  <- var_spec("WORKEDYR", data_quality_flags = TRUE)
       empstat   <- var_spec("EMPSTAT",  data_quality_flags = TRUE)
       empstatd  <- var_spec("EMPSTATD", data_quality_flags = TRUE)
-      inctot    <- var_spec("INCTOT",   data_quality_flags = TRUE)
-      incwage   <- var_spec("INCWAGE",  data_quality_flags = TRUE)
+      inctot <- var_spec("INCTOT", data_quality_flags = TRUE) 
+      incwage <- var_spec("INCWAGE", data_quality_flags = TRUE) 
+      incbus00 <- var_spec("INCBUS00", data_quality_flags = TRUE) 
+      incearn <- var_spec("INCEARN", data_quality_flags = TRUE) 
+      incinvst <- var_spec("INCINVST", data_quality_flags = TRUE) 
+      incwelfr <- var_spec("INCWELFR", data_quality_flags = TRUE) 
+      incsupp <- var_spec("INCSUPP", data_quality_flags = TRUE) 
+      incother <-  var_spec("INCOTHER", data_quality_flags = TRUE)
       ftotinc   <- var_spec("FTOTINC",  data_quality_flags = TRUE)
-      incearn   <- var_spec("INCEARN",  data_quality_flags = TRUE)
-      
+
       migrate1   <- var_spec("MIGRATE1",   data_quality_flags = FALSE)
       migrate1d  <- var_spec("MIGRATE1D",  data_quality_flags = TRUE)
       migplac1   <- var_spec("MIGPLAC1",   data_quality_flags = TRUE)
@@ -103,14 +108,14 @@ download_ipums_acs <- function(project_root,
         description = extract_name,
         samples     = paste0("us", y, "a"),
         variables   = list(
-          "YEAR", "SAMPLE", "SERIAL", "HHWT", "PERWT", "CLUSTER", "STRATA", "CPI99",
+          "YEAR", "SAMPLE", "SERIAL", "HHWT", "PERWT", "CLUSTER", "CPI99",
           "STATEFIP", "COUNTYFIP",
           "PERNUM", "RELATED",
-          "NCHILD", "YNGCH", "Nchlt5",
+          "NCHILD", "YNGCH", "Nchlt5",  "SPLOC", 
           "AGE", "SEX", "RACE", "HISPAN", "MARST", "CITIZEN", "SCHOOL", "EDUCD",
-          inctot, ftotinc, incwage, incearn,
+          inctot, ftotinc, incwage, incearn, incbus00, incinvst, incwelfr, incsupp, incother,
           gq, workedyr, empstat, empstatd,
-          migrate1, migrate1d, migplac1, migcounty1, pwcounty, pwstate2
+          migrate1, migrate1d, migplac1, migcounty1, pwcounty, pwstate2 
         )
       ) |>
         submit_extract() |>

@@ -1,0 +1,914 @@
+---------------------------------------------------------------------------------------------------------------------------
+      name:  log_02
+       log:  C:/Users/ji252/Documents/GitHub/multnomah-county-tax/code/logs/02_log_individual_2026-01-03.log
+  log type:  text
+ opened on:   3 Jan 2026, 22:34:04
+
+. 
+. 
+. ** ---------------------------------------------------------------------------
+. ** Program: hdfe_catyear_plot
+. **
+. ** - Runs:      reghdfe y i.cat#i.year, absorb(...) nocons
+. ** - Posts:     cell means and CIs for each cat×year coefficient
+. ** - Plots:     one connected series per category + optional CI caps
+. ** - Exports:   PDF via graph export
+. **
+. ** Notes:
+. ** - Legend uses category VALUE LABELS. We store those labels immediately after
+. **   levelsof (before moving into the posted coefficient dataset) to avoid any
+. **   issues from dataset swaps.
+. ** - CI and line use the same color; CI uses 50% opacity.
+. ** ---------------------------------------------------------------------------
+. ** ---------------------------------------------------------------------------
+. ** Program: hdfe_catyear_plot
+. **
+. ** Purpose:
+. **   1) Run reghdfe with a CAT × YEAR interaction and absorbed fixed effects.
+. **   2) Use margins (rather than reghdfe coefficients) to compute conditional means:
+. **        margins i.CAT, over(YEAR)
+. **   3) Plot margins by YEAR with one series per CAT (CI optional).
+. **
+. ** Notes:
+. **   - baseyear(0) => plot levels (conditional means).
+. **   - baseyear(#) => plot within-CAT differences relative to that year.
+. ** ---------------------------------------------------------------------------
+. capture program drop hdfe_catyear_plot
+
+. program define hdfe_catyear_plot
+  1.     version 16.0
+  2. 
+.     syntax varname(numeric) [if] [in] [fw aw pw iw] , ///
+>         CAT(varname) YEAR(varname) ABSORB(string) ///
+>         [ WVAR(varname) WTYPE(string) ///
+>           VCE(string) ///
+>           TITLE(string) XTITLE(string) YTITLE(string) ///
+>           NOCI ///
+>           BASEYEAR(integer 0) ///
+>           SAVING(string) REPLACE ///
+>           DEBUG DEBUGDETAIL ]
+  3. 
+.     ** -----------------------------------------------------------------------
+.     ** Configuration: project root for relative paths
+.     ** -----------------------------------------------------------------------
+.     local __project_root "C:/Users/ji252/Documents/GitHub/multnomah-county-tax/"
+  4. 
+.     ** -----------------------------------------------------------------------
+.     ** Debug flags
+.     ** -----------------------------------------------------------------------
+.     local __dbg 0
+  5.     local __dbgdetail 0
+  6.     if "`debug'" != "" local __dbg 1
+  7.     if "`debugdetail'" != "" {
+  8.         local __dbg 1
+  9.         local __dbgdetail 1
+ 10.     }
+ 11. 
+.     if `__dbg' {
+ 12.         di as txt "------------------------------------------------------------"
+ 13.         di as txt "hdfe_catyear_plot DEBUG START"
+ 14.         di as txt "Outcome   : `varlist'"
+ 15.         di as txt "CAT()     : `cat'"
+ 16.         di as txt "YEAR()    : `year'"
+ 17.         di as txt "ABSORB()  : `absorb'"
+ 18.         di as txt "Weights   : weight=`weight' exp=`exp' wvar=`wvar' wtype=`wtype'"
+ 19.         di as txt "VCE()     : `vce'"
+ 20.         di as txt "BASEYEAR(): `baseyear'   NOCI: `noci'"
+ 21.         di as txt "SAVING()  : `saving'   REPLACE: `replace'"
+ 22.         di as txt "IF/IN     : `if' `in'"
+ 23.         di as txt "------------------------------------------------------------"
+ 24.     }
+ 25. 
+.     ** -----------------------------------------------------------------------
+.     ** Requirements
+.     ** -----------------------------------------------------------------------
+.     capture which reghdfe
+ 26.     if _rc {
+ 27.         di as error "reghdfe not found. Install with: ssc install reghdfe, replace"
+ 28.         exit 198
+ 29.     }
+ 30. 
+.     ** -----------------------------------------------------------------------
+.     ** Mark sample
+.     ** -----------------------------------------------------------------------
+.     if `__dbg' di as txt "[Step 1] Marking estimation sample..."
+ 31.     marksample touse, strok
+ 32.     quietly replace `touse' = `touse' & !missing(`varlist', `cat', `year')
+ 33. 
+.     quietly count if `touse'
+ 34.     if `__dbg' di as txt "  N (after filters): " %12.0gc r(N)
+ 35.     if r(N) == 0 {
+ 36.         di as error "No observations available after applying if/in filters."
+ 37.         exit 2000
+ 38.     }
+ 39. 
+.     ** -----------------------------------------------------------------------
+.     ** Weights (default fw=perwt unless caller provided weights)
+.     ** -----------------------------------------------------------------------
+.     if `__dbg' di as txt "[Step 2] Resolving weights..."
+ 40.     local wgt ""
+ 41.     if "`weight'" != "" {
+ 42.         local wgt "[`weight'=`exp']"
+ 43.         if `__dbg' di as txt "  Using caller-provided weights: `wgt'"
+ 44.     }
+ 45.     else {
+ 46.         if "`wvar'"  == "" local wvar  "perwt"
+ 47.         if "`wtype'" == "" local wtype "fw"
+ 48.         capture confirm variable `wvar'
+ 49.         if _rc {
+ 50.             di as error "Default weight variable `wvar' not found. Either create it or pass weights explicitly."
+ 51.             exit 111
+ 52.         }
+ 53.         local wgt "[`wtype'=`wvar']"
+ 54.         if `__dbg' di as txt "  Using default weights: `wgt'"
+ 55.     }
+ 56. 
+.     ** -----------------------------------------------------------------------
+.     ** Ensure CAT/YEAR numeric for factor variables
+.     ** -----------------------------------------------------------------------
+.     if `__dbg' di as txt "[Step 3] Harmonizing CAT/YEAR types..."
+ 57.     tempvar __cat __year
+ 58. 
+.     local cattype : type `cat'
+ 59.     if substr("`cattype'", 1, 3) == "str" {
+ 60.         quietly encode `cat' if `touse', gen(`__cat')
+ 61.         local catv `__cat'
+ 62.         if `__dbg' di as txt "  Encoded string CAT -> `catv'"
+ 63.     }
+ 64.     else {
+ 65.         local catv `cat'
+ 66.         if `__dbg' di as txt "  CAT already numeric -> `catv'"
+ 67.     }
+ 68. 
+.     local yeartype : type `year'
+ 69.     if substr("`yeartype'", 1, 3) == "str" {
+ 70.         quietly destring `year' if `touse', gen(`__year') force
+ 71.         capture assert !missing(`__year') if `touse'
+ 72.         if _rc {
+ 73.             di as error "Year variable is string and could not be cleanly converted to numeric."
+ 74.             exit 459
+ 75.         }
+ 76.         local yearv `__year'
+ 77.         if `__dbg' di as txt "  Destring YEAR -> `yearv'"
+ 78.     }
+ 79.     else {
+ 80.         local yearv `year'
+ 81.         if `__dbg' di as txt "  YEAR already numeric -> `yearv'"
+ 82.     }
+ 83. 
+.     ** -----------------------------------------------------------------------
+.     ** Guard: CAT should not also be absorbed
+.     ** -----------------------------------------------------------------------
+.     if `__dbg' di as txt "[Step 4] Validating absorb()..."
+ 84.     if regexm(" `absorb' ", " `catv' ") {
+ 85.         di as error "Category variable `catv' appears in absorb(): `absorb'. Remove it from absorb() for this run."
+ 86.         exit 198
+ 87.     }
+ 88. 
+.     ** -----------------------------------------------------------------------
+.     ** Levels and labels (save labels NOW, before switching datasets)
+.     ** -----------------------------------------------------------------------
+.     if `__dbg' di as txt "[Step 5] Collecting year and category levels..."
+ 89.     quietly levelsof `yearv' if `touse', local(yrs)
+ 90.     quietly levelsof `catv'  if `touse', local(cats)
+ 91.     local vlab : value label `catv'
+ 92. 
+.     if "`yrs'" == "" | "`cats'" == "" {
+ 93.         di as error "No year or category levels found in estimation sample."
+ 94.         exit 2000
+ 95.     }
+ 96. 
+.     if `__dbg' {
+ 97.         di as txt "  Years: `yrs'"
+ 98.         di as txt "  Cats : `cats'"
+ 99.         di as txt "  CAT value label: `vlab'"
+100.     }
+101. 
+.     ** Save category label text into locals (avoids label-loss during preserve/use)
+.     foreach c of local cats {
+102.         local __key "`c'"
+103.         local __key : subinstr local __key "-" "m", all
+104. 
+.         local __lab "`c'"
+105.         if "`vlab'" != "" {
+106.             local __tmp : label `vlab' `c'
+107.             if "`__tmp'" != "" local __lab "`__tmp'"
+108.         }
+109.         local __lab : subinstr local __lab `"""' "", all
+110.         local __lab_`__key' "`__lab'"
+111.     }   // END CAT LABEL SAVE LOOP
+112. 
+.     ** -----------------------------------------------------------------------
+.     ** Base year sanity check (only if baseyear != 0)
+.     ** -----------------------------------------------------------------------
+.     if `baseyear' != 0 {
+113.         if `__dbg' di as txt "[Step 5b] Checking baseyear()..."
+114.         local found 0
+115.         foreach y of local yrs {
+116.             if `y' == `baseyear' local found 1
+117.         }
+118.         if `found' == 0 {
+119.             di as error "baseyear(`baseyear') not found in estimation sample years: `yrs'"
+120.             exit 459
+121.         }
+122.         if `__dbg' di as txt "  baseyear OK: `baseyear'"
+123.     }   // END BASEYEAR CHECK
+124. 
+.     ** -----------------------------------------------------------------------
+.     ** Regression (supports margins over CAT × YEAR)
+.     ** -----------------------------------------------------------------------
+.     if `__dbg' di as txt "[Step 6] Running reghdfe..."
+125.     if "`vce'" == "" local vce "robust"
+126.     if `__dbg' {
+127.         di as txt "  Command:"
+128.         di as txt "    reghdfe `varlist' i.`catv'##i.`yearv' if `touse' `wgt', absorb(`absorb') vce(`vce')"
+129.     }
+130. 
+.     quietly reghdfe `varlist' i.`catv'##i.`yearv' if `touse' `wgt', ///
+>         absorb(`absorb') vce(`vce')
+131. 
+.     ** -----------------------------------------------------------------------
+.     ** Margins: conditional means by CAT over YEAR (save to dataset)
+.     ** -----------------------------------------------------------------------
+.     if `__dbg' di as txt "[Step 7] Computing margins and saving results..."
+132.     tempfile __margdata
+133.     quietly margins, at(`catv'=(`cats') `yearv'=(`yrs')) saving(`__margdata', replace) post
+134. 
+.     ** -----------------------------------------------------------------------
+.     ** Plot using the saved margins dataset
+.     ** -----------------------------------------------------------------------
+.     preserve
+135. 
+.         use `__margdata', clear
+136. 
+.         ** Identify CAT and YEAR columns in margins output
+.         ** We compute margins using at(): at(cat levels × year levels). The saved dataset
+.         ** therefore stores the grid in _at1 (cat) and _at2 (year) in the order supplied.
+.         capture confirm variable _at1
+137.         if _rc {
+138.             di as error "margins output missing _at1. Ensure margins is called with: margins, at(`catv'=(`cats') `year
+> v'=(`yrs')) saving(...)"
+139.             exit 459
+140.         }
+141.         capture confirm variable _at2
+142.         if _rc {
+143.             di as error "margins output missing _at2. Ensure margins is called with: margins, at(`catv'=(`cats') `year
+> v'=(`yrs')) saving(...)"
+144.             exit 459
+145.         }
+146. 
+.         ** Standardize variable names
+.         rename _at1 cat_level
+147.         rename _at2 year
+148. 
+.         capture confirm variable _margin
+149.         if _rc {
+150.             di as error "margins output missing _margin. Cannot proceed."
+151.             exit 459
+152.         }
+153.         rename _margin b
+154. 
+.         capture confirm variable _se_margin
+155.         if !_rc rename _se_margin se
+156.         else {
+157.             capture confirm variable _se
+158.             if !_rc rename _se se
+159.         }
+160. 
+.         capture confirm variable _ci_lb
+161.         if !_rc rename _ci_lb ll
+162.         capture confirm variable _ci_ub
+163.         if !_rc rename _ci_ub ul
+164. if `__dbgdetail' {
+165.             di as txt "[DebugDetail] First 8 rows of margins dataset:"
+166.             list in 1/8, abbrev(24)
+167.         }
+168. 
+.         ** Ensure year is numeric and sorted
+.         capture confirm numeric variable year
+169.         if _rc {
+170.             di as error "Year in margins dataset is not numeric; cannot plot on x-axis."
+171.             exit 459
+172.         }
+173. 
+.         ** Optional normalization to baseyear (within-category)
+.         if `baseyear' != 0 {
+174.             if `__dbg' di as txt "[Step 8] Normalizing margins to baseyear(`baseyear')..."
+175.             bysort cat_level: egen base_b = max(cond(year==`baseyear', b, .))
+176.             quietly count if missing(base_b)
+177.             if r(N) > 0 {
+178.                 di as error "Some categories have no observations in baseyear(`baseyear'). Cannot normalize."
+179.                 exit 459
+180.             }
+181.             replace b  = b  - base_b
+182.             capture confirm variable ll
+183.             if !_rc replace ll = ll - base_b
+184.             capture confirm variable ul
+185.             if !_rc replace ul = ul - base_b
+186.             drop base_b
+187.         }   // END BASEYEAR NORMALIZATION
+188. 
+.         ** X axis labels (years present in margins results)
+.         levelsof year, local(xyrs)
+189.         if `__dbg' di as txt "  X-axis years used: `xyrs'"
+190. 
+.         ** -------------------------------------------------------------------
+.         ** Plot styling: use plotplainblind palette if available (scheme-level)
+.         ** -------------------------------------------------------------------
+.         local __oldscheme "`c(scheme)'"
+191.         capture set scheme plotplainblind
+192.         if _rc {
+193.             if `__dbg' di as txt "  plotplainblind scheme not available; using current scheme: `__oldscheme'"
+194.         }
+195.         else {
+196.             if `__dbg' di as txt "  Using scheme: plotplainblind (was `__oldscheme')"
+197.         }
+198. 
+.         ** -------------------------------------------------------------------
+.         ** Build twoway spec + legend mapping (one label per series)
+.         **   - CI and line share the same pstyle; CI uses 50% opacity.
+.         ** -------------------------------------------------------------------
+.         if `__dbg' di as txt "[Step 9] Building plot command..."
+199.         local plots ""
+200.         local leg_order ""
+201.         local leg_labels ""
+202.         local pnum 0
+203. 
+.         local cats_n : word count `cats'
+204.         local legrows 1
+205.         if `cats_n' > 4 local legrows 2
+206. 
+.         local i 0
+207.         foreach c of local cats {
+208.             quietly count if cat_level == `c'
+209.             if r(N) == 0 continue
+210. 
+.             local ++i
+211.             local pstyle "p`i'"
+212. 
+.             ** Retrieve pre-saved label text (safe key)
+.             local __key "`c'"
+213.             local __key : subinstr local __key "-" "m", all
+214.             local serieslab "`__lab_`__key''"
+215. 
+.             ** CI (excluded from legend)
+.             if "`noci'" == "" {
+216.                 local ++pnum
+217.                 local plots `plots' ///
+>                     (rcap ll ul year if cat_level==`c', sort ///
+>                         pstyle(`pstyle') lcolor(%50))
+218.             }
+219. 
+.             ** Line (in legend)
+.             local ++pnum
+220.             local plots `plots' ///
+>                 (connected b year if cat_level==`c', sort ///
+>                     pstyle(`pstyle') lp(solid) msym(O) )
+221. 
+.             local leg_order  `leg_order' `pnum'
+222.             local leg_labels `leg_labels' label(`pnum' `serieslab')
+223.         }   // END CATEGORY PLOT LOOP
+224. 
+.         if `"`plots'"' == `""' {
+225.             di as error "No series were built for plotting (plotspec empty)."
+226.             exit 2000
+227.         }
+228. 
+.         if `__dbgdetail' {
+229.             di as txt "  legend order: `leg_order'"
+230.             di as txt "  legend labels: `leg_labels'"
+231.             di as txt "  legend rows: `legrows'"
+232.         }
+233. 
+.         ** -------------------------------------------------------------------
+.         ** Titles (safe quoting)
+.         ** -------------------------------------------------------------------
+.         local xtitle_input ""
+234.         local ytitle_input ""
+235.         local title_input  ""
+236. 
+.         if `"`xtitle'"' == `""' local xtitle_input "xtitle(Year)"
+237.         else                    local xtitle_input `"xtitle(`"`xtitle'"')"'
+238. 
+.         if `"`ytitle'"' == `""' {
+239.             if `baseyear' != 0 local ytitle_input `"ytitle(`"`varlist' (relative to `baseyear')"')"'
+240.             else              local ytitle_input `"ytitle(`"`varlist' (adjusted mean)"')"'
+241.         }
+242.         else {
+243.             local ytitle_input `"ytitle(`"`ytitle'"')"'
+244.         }
+245. 
+.         if `"`title'"' != `""' local title_input `"title(`"`title'"')"'
+246. 
+.                 ** ------------------------------------------------------------
+.                 ** Y-axis: round "nice" ticks (e.g., 0,2,4,6,8,10)
+.                 ** Uses CI bounds to set max, then rounds to a nice step.
+.                 ** ------------------------------------------------------------
+. 
+.                 quietly summarize ll, meanonly
+247.                 local __ymin = r(min)
+248. 
+.                 quietly summarize ul, meanonly
+249.                 local __ymax = r(max)
+250. 
+.                 ** Always include 0 on axis
+.                 if `__ymin' > 0 local __ymin = 0
+251.                 if `__ymax' < 0 local __ymax = 0
+252. 
+.                 ** If plotting levels (baseyear==0), anchor at 0
+.                 if `baseyear' == 0 local __ymin = 0
+253. 
+.                 ** Add a little headroom (5%)
+.                 local __ymax = `__ymax' * 1.05
+254. 
+.                 ** Decide on a "nice" step aiming for ~5 intervals
+.                 local __span = `__ymax' - `__ymin'
+255.                 if `__span' <= 0 local __span = 1
+256. 
+.                 local __rawstep = `__span'/5
+257. 
+.                 ** Snap step to {1,2,5} * 10^k
+.                 local __k = floor(log10(`__rawstep'))
+258.                 local __base = 10^`__k'
+259.                 local __mant = `__rawstep'/`__base'
+260. 
+.                 local __m = 1
+261.                 if `__mant' > 1  local __m = 2
+262.                 if `__mant' > 2  local __m = 5
+263.                 if `__mant' > 5  local __m = 10
+264. 
+.                 local __ystep = `__m' * `__base'
+265. 
+.                 ** Round max up to nearest multiple of step; min down similarly
+.                 local __yhigh = ceil(`__ymax'/`__ystep') * `__ystep'
+266.                 local __ylow  = floor(`__ymin'/`__ystep') * `__ystep'
+267. 
+.                 ** For levels, ensure bottom is exactly 0
+.                 if `baseyear' == 0 local __ylow = 0
+268. 
+.                 local __yaxis_opts `"yscale(range(`__ylow' `__yhigh')) ylabel(`__ylow'(`__ystep')`__yhigh')"'
+269. 
+.         twoway `plots', ///
+>             `xtitle_input' ///
+>             `ytitle_input' ///
+>             `title_input' ///
+>             xlabel(`xyrs', angle(45)) ///
+>                         `__yaxis_opts' ///           
+>                         legend(order(`leg_order') `leg_labels' rows(`legrows') position(6)) 
+270. 
+.         ** Restore scheme (if we successfully switched)
+.         capture set scheme `__oldscheme'
+271. 
+.         ** -------------------------------------------------------------------
+.         ** Export figure (PDF) - robust path handling
+.         ** -------------------------------------------------------------------
+.         if "`saving'" != "" {
+272. 
+.             local outpath `"`saving'"'
+273.             local outpath : subinstr local outpath `"""' "", all
+274.             local outpath : subinstr local outpath "\" "/" , all
+275. 
+.             ** Prepend project root if relative
+.             if !regexm("`outpath'", "^[A-Za-z]:/") & substr("`outpath'", 1, 1) != "/" {
+276.                 local outpath "`__project_root'`outpath'"
+277.             }
+278. 
+.             ** Ensure .pdf extension
+.             if !regexm("`outpath'", "\.pdf$") local outpath "`outpath'.pdf"
+279. 
+.             ** Ensure output directory exists
+.             local p = strrpos("`outpath'", "/")
+280.             if `p' > 0 {
+281.                 local outdir = substr("`outpath'", 1, `p' - 1)
+282.                 if !direxists("`outdir'") {
+283.                     if `__dbg' di as txt "  Creating output directory: `outdir'"
+284.                     capture mkdir "`outdir'"
+285.                     if _rc & !direxists("`outdir'") {
+286.                         di as error "Output directory does not exist and could not be created: `outdir'"
+287.                         exit 601
+288.                     }
+289.                 }
+290.             }
+291. 
+.             if `__dbg' di as txt "[Step 10] Exporting graph to: `outpath'"
+292. 
+.             if "`replace'" != "" graph export "`outpath'", as(pdf) replace
+293.             else                graph export "`outpath'", as(pdf)
+294. 
+.         }   // END PDF EXPORT
+295. 
+.     restore    // END PRESERVE BLOCK
+296. 
+.     if `__dbg' {
+297.         di as txt "hdfe_catyear_plot DEBUG END"
+298.         di as txt "------------------------------------------------------------"
+299.     }
+300. 
+. end
+
+. 
+. 
+. ** ---------------------------------------------------------------------------
+. ** Load ACS migration data
+. ** ---------------------------------------------------------------------------
+. use "${data}working/acs_migration_file", replace
+
+. 
+. ** Sample restrictions
+. drop if year == 2015                                    // Sample: 2016-2024
+(2,334,973 observations deleted)
+
+. drop if qmigplc1 == 4                                   // Error in migration place 
+(352,701 observations deleted)
+
+. drop if inlist(state_fips_o, 2, 15)     // Alaska and Hawaii
+(121,793 observations deleted)
+
+. drop if inlist(state_fips_d, 2, 15)     // Alaska and Hawaii
+(3,283 observations deleted)
+
+. drop if ftotinc < 0                                     // Negative Family Income       
+(6,650 observations deleted)
+
+. 
+. ** ---------------------------------------------------------------------------
+. ** Multnomah indicators and samples
+. ** ---------------------------------------------------------------------------
+. gen multnomah_o = (state_fips_o == 41 & county_fips_o == 51)
+
+. gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
+
+. 
+. gen sample_1 = (multnomah_o == 1)      // Multnomah in origin-year
+
+. gen sample_2 = (multnomah_o != 1)      // Not Multnomah in origin-year
+
+. label var sample_1 "Out-migration Sample"
+
+. label var sample_2 "In-migration Sample"
+
+. 
+. gen out_1 = (same_county == 0)
+
+. replace out_1 = out_1 * 100
+(595,379 real changes made)
+
+. label var out_1 "Moved out of Multnomah"
+
+. 
+. gen out_2 = (multnomah_d == 1)
+
+. replace out_2 = out_2 * 100 
+(45,758 real changes made)
+
+. label var out_2 "Moved to Multnomah"
+
+. 
+. 
+. ** ---------------------------------------------------------------------------
+. ** Covariate categories
+. ** ---------------------------------------------------------------------------
+. 
+. ** Age
+. recode age ///
+>     (18/24   = 1 "18-24") ///
+>     (25/44   = 2 "25-44") ///
+>     (45/64   = 3 "45-64") ///
+>     (65/max  = 4 "65+"), ///
+>     gen(cat_age)
+(18,599,394 differences between age and cat_age)
+
+. label var cat_age "Age categories"
+
+. tab year cat_age, m 
+
+           |               Age categories
+      year |     18-24      25-44      45-64        65+ |     Total
+-----------+--------------------------------------------+----------
+      2016 |   206,275    681,232    846,523    558,580 | 2,292,610 
+      2017 |   206,971    696,216    844,761    566,503 | 2,314,451 
+      2018 |   205,714    699,682    839,747    593,206 | 2,338,349 
+      2019 |   203,493    701,941    842,626    631,905 | 2,379,965 
+      2020 |   161,890    561,063    658,321    517,867 | 1,899,141 
+      2021 |   202,653    709,754    814,479    666,776 | 2,393,662 
+      2022 |   206,559    733,853    829,567    699,446 | 2,469,425 
+      2023 |   209,002    742,050    827,783    732,956 | 2,511,791 
+-----------+--------------------------------------------+----------
+     Total | 1,602,557  5,525,791  6,503,807  4,967,239 |18,599,394 
+
+. 
+. ** Sex
+. gen cat_sex = (sex == 2)
+
+. label var cat_sex "Female indicator"
+
+. label define lb_cat_sex 0 "Male" 1 "Female", replace
+
+. label values cat_sex lb_cat_sex
+
+. tab year cat_sex, m 
+
+           |   Female indicator
+      year |      Male     Female |     Total
+-----------+----------------------+----------
+      2016 | 1,090,334  1,202,276 | 2,292,610 
+      2017 | 1,103,337  1,211,114 | 2,314,451 
+      2018 | 1,116,006  1,222,343 | 2,338,349 
+      2019 | 1,137,455  1,242,510 | 2,379,965 
+      2020 |   909,892    989,249 | 1,899,141 
+      2021 | 1,145,216  1,248,446 | 2,393,662 
+      2022 | 1,180,781  1,288,644 | 2,469,425 
+      2023 | 1,201,529  1,310,262 | 2,511,791 
+-----------+----------------------+----------
+     Total | 8,884,550  9,714,844 |18,599,394 
+
+. 
+. ** Marital status
+. recode marst ///
+>     (1       = 1 "Married") ///
+>     (2/3     = 2 "Separated") ///
+>     (4/5     = 3 "Divorced / Widowed") ///
+>     (6       = 4 "Single"), ///
+>     gen(cat_married)
+(8,068,972 differences between marst and cat_married)
+
+. label var cat_married "Marriage categories"
+
+. tab year cat_married, m 
+
+           |             Marriage categories
+      year |   Married  Separated  Divorced      Single |     Total
+-----------+--------------------------------------------+----------
+      2016 | 1,261,634     80,404    413,269    537,303 | 2,292,610 
+      2017 | 1,274,293     81,205    413,129    545,824 | 2,314,451 
+      2018 | 1,285,669     81,588    418,553    552,539 | 2,338,349 
+      2019 | 1,310,889     79,924    429,659    559,493 | 2,379,965 
+      2020 | 1,046,686     60,822    334,828    456,805 | 1,899,141 
+      2021 | 1,299,638     78,841    428,859    586,324 | 2,393,662 
+      2022 | 1,350,232     80,022    438,900    600,271 | 2,469,425 
+      2023 | 1,370,379     81,736    447,393    612,283 | 2,511,791 
+-----------+--------------------------------------------+----------
+     Total |10,199,420    624,542  3,324,590  4,450,842 |18,599,394 
+
+. 
+. ** Kids at home
+. recode nchild ///
+>     (0       = 0 "0 Children") ///
+>     (1       = 1 "1 Child") ///
+>     (2       = 2 "2 Children") ///
+>     (3/max   = 3 "3+ Children"), ///
+>     gen(cat_child)
+(365,849 differences between nchild and cat_child)
+
+. label var cat_child "Number of Children"
+
+. tab year cat_child, m 
+
+           |             Number of Children
+      year | 0 Childre    1 Child  2 Childre  3+ Childr |     Total
+-----------+--------------------------------------------+----------
+      2016 | 1,452,062    400,633    283,333    156,582 | 2,292,610 
+      2017 | 1,466,883    403,205    286,850    157,513 | 2,314,451 
+      2018 | 1,491,999    404,136    286,508    155,706 | 2,338,349 
+      2019 | 1,536,068    407,702    282,511    153,684 | 2,379,965 
+      2020 | 1,222,983    325,117    228,478    122,563 | 1,899,141 
+      2021 | 1,547,192    408,652    284,211    153,607 | 2,393,662 
+      2022 | 1,600,339    421,608    290,905    156,573 | 2,469,425 
+      2023 | 1,636,623    425,992    293,010    156,166 | 2,511,791 
+-----------+--------------------------------------------+----------
+     Total |11,954,149  3,197,045  2,235,806  1,212,394 |18,599,394 
+
+.  
+. ** Age of youngest kid at home
+. recode yngch ///
+>     (99      = 0 "0 Children") ///
+>     (0/4     = 1 "0-4") ///
+>     (5/12    = 2 "5-12") ///
+>     (13/17   = 3 "13-17")       ///
+>         (18/max   = 4 "18+"), ///
+>     gen(cat_yngch)
+(18,227,828 differences between yngch and cat_yngch)
+
+. label var cat_yngch "Age of youngest child"
+
+. tab year cat_yngch, m 
+
+           |                 Age of youngest child
+      year | 0 Childre        0-4       5-12      13-17        18+ |     Total
+-----------+-------------------------------------------------------+----------
+      2016 | 1,452,062    207,881    228,212    134,024    270,431 | 2,292,610 
+      2017 | 1,466,883    210,732    229,654    134,864    272,318 | 2,314,451 
+      2018 | 1,491,999    208,644    225,939    134,432    277,335 | 2,338,349 
+      2019 | 1,536,068    204,521    223,163    133,433    282,780 | 2,379,965 
+      2020 | 1,222,983    159,336    175,909    106,712    234,201 | 1,899,141 
+      2021 | 1,547,192    197,580    220,415    135,631    292,844 | 2,393,662 
+      2022 | 1,600,339    202,468    227,989    140,047    298,582 | 2,469,425 
+      2023 | 1,636,623    200,769    227,658    138,945    307,796 | 2,511,791 
+-----------+-------------------------------------------------------+----------
+     Total |11,954,149  1,591,931  1,758,939  1,058,088  2,236,287 |18,599,394 
+
+. 
+. ** Education
+. recode educd ///
+>     (min/61  = 1 "Less than HS") ///
+>     (62/71   = 2 "HS Diploma") ///
+>     (80/100  = 3 "Some College") ///
+>     (101/max = 4 "College Degree"), ///
+>     gen(cat_educ)
+(18,599,394 differences between educd and cat_educ)
+
+. label var cat_educ "Education categories"
+
+. tab year cat_educ, m 
+
+           |            Education categories
+      year | Less than  HS Diplom  Some Coll  College D |     Total
+-----------+--------------------------------------------+----------
+      2016 |   262,765  1,127,069    192,478    710,298 | 2,292,610 
+      2017 |   251,499  1,127,939    198,403    736,610 | 2,314,451 
+      2018 |   244,787  1,132,392    203,083    758,087 | 2,338,349 
+      2019 |   238,196  1,140,095    207,954    793,720 | 2,379,965 
+      2020 |   180,225    895,904    167,670    655,342 | 1,899,141 
+      2021 |   232,821  1,121,399    209,987    829,455 | 2,393,662 
+      2022 |   230,695  1,146,143    218,619    873,968 | 2,469,425 
+      2023 |   230,474  1,160,808    223,179    897,330 | 2,511,791 
+-----------+--------------------------------------------+----------
+     Total | 1,871,462  8,851,749  1,621,373  6,254,810 |18,599,394 
+
+. 
+. 
+. ** ---------------------------------------------------------------------------
+. ** Real income (2024 USD) and income categories
+. ** ---------------------------------------------------------------------------
+. gen tmp1 = cpi99 if year == ${end_year_acs}
+(16,087,603 missing values generated)
+
+. egen tmp2 = mean(tmp1)
+
+. gen cpi = cpi99 / tmp2
+
+. drop tmp1 tmp2
+
+. 
+. foreach var of varlist inctot incwage incearn ftotinc {
+  2. 
+.     gen real_`var' = round(`var' * cpi)
+  3. 
+.     recode real_`var' ///
+>         (min/-1        = 1 "Negative income") ///
+>         (0             = 2 "$0") ///
+>         (1/24999       = 3 "$1-$25K") ///
+>         (25000/49999   = 4 "$25K-$50K") ///
+>         (50000/99999   = 5 "$50K-$100K") ///
+>         (100000/199999 = 6 "$100K-$200K") ///
+>         (200000/max    = 7 "$200K+"), ///
+>         gen(cat_`var')
+  4. 
+.     tab cat_`var', missing
+  5. 
+. } // END INCOME LOOP
+(18,599,394 differences between real_inctot and cat_inctot)
+
+      RECODE of |
+    real_inctot |      Freq.     Percent        Cum.
+----------------+-----------------------------------
+Negative income |     13,784        0.07        0.07
+             $0 |  1,543,026        8.30        8.37
+        $1-$25K |  5,499,375       29.57       37.94
+      $25K-$50K |  4,437,923       23.86       61.80
+     $50K-$100K |  4,418,963       23.76       85.56
+    $100K-$200K |  1,979,627       10.64       96.20
+         $200K+ |    706,696        3.80      100.00
+----------------+-----------------------------------
+          Total | 18,599,394      100.00
+(18,599,394 differences between real_incwage and cat_incwage)
+
+      RECODE of |
+   real_incwage |      Freq.     Percent        Cum.
+----------------+-----------------------------------
+             $0 |  7,285,808       39.17       39.17
+        $1-$25K |  3,029,728       16.29       55.46
+      $25K-$50K |  2,930,153       15.75       71.22
+     $50K-$100K |  3,324,596       17.87       89.09
+    $100K-$200K |  1,558,827        8.38       97.47
+         $200K+ |    470,282        2.53      100.00
+----------------+-----------------------------------
+          Total | 18,599,394      100.00
+(18,599,394 differences between real_incearn and cat_incearn)
+
+      RECODE of |
+   real_incearn |      Freq.     Percent        Cum.
+----------------+-----------------------------------
+Negative income |     12,185        0.07        0.07
+             $0 |  6,563,174       35.29       35.35
+        $1-$25K |  3,320,031       17.85       53.20
+      $25K-$50K |  3,094,920       16.64       69.84
+     $50K-$100K |  3,454,824       18.57       88.42
+    $100K-$200K |  1,629,491        8.76       97.18
+         $200K+ |    524,769        2.82      100.00
+----------------+-----------------------------------
+          Total | 18,599,394      100.00
+(18,599,354 differences between real_ftotinc and cat_ftotinc)
+
+      RECODE of |
+   real_ftotinc |      Freq.     Percent        Cum.
+----------------+-----------------------------------
+             $0 |    199,614        1.07        1.07
+        $1-$25K |  1,988,486       10.69       11.76
+      $25K-$50K |  2,872,603       15.44       27.21
+     $50K-$100K |  5,305,908       28.53       55.74
+    $100K-$200K |  5,494,926       29.54       85.28
+         $200K+ |  2,737,857       14.72      100.00
+----------------+-----------------------------------
+          Total | 18,599,394      100.00
+
+. 
+. label var cat_inctot  "Total personal income categories (real ${end_year_acs} USD)"
+
+. label var cat_incwage "Total wage income categories (real ${end_year_acs} USD)"
+
+. label var cat_incearn "Total earned income categories (real ${end_year_acs} USD)"
+
+. label var cat_ftotinc "Total family income categories (real ${end_year_acs} USD)"
+
+. 
+. 
+. ** ---------------------------------------------------------------------------
+. ** Analysis loops
+. ** ---------------------------------------------------------------------------
+. 
+. ** Categorical variables to iterate over
+. local catvars "cat_yngch cat_sex cat_married cat_age cat_child cat_educ cat_ftotinc"
+
+. 
+. forvalues i = 1/2 {
+  2. 
+.     if `i' == 1 local ytitle_txt "Out-migration rate (%)"
+  3.     if `i' == 2 local ytitle_txt "In-migration rate (%)"
+  4. 
+.     foreach cat of local catvars {
+  5. 
+.         ** Absorb all other categories (but not the focal one)
+.         local othercats : list catvars - cat
+  6. 
+.         ** Run regression and plot
+.         hdfe_catyear_plot out_`i' if sample_`i' == 1, ///
+>             cat(`cat') ///
+>             year(year) ///
+>             absorb(state_fips_o county_fips_o `othercats') ///
+>             wvar(perwt) wtype(fw) ///
+>                         xtitle("ACS Survey Year (t=2)") ///
+>             ytitle("`ytitle_txt'") ///
+>             saving("${results}fig_`cat'_`i'") ///
+>             replace
+  7.                         
+.     } // END CAT LOOP
+  8. 
+. } // END SAMPLE LOOP
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/fig_cat_yngch_1.pdf saved as PDF format
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/fig_cat_sex_1.pdf saved as PDF format
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/fig_cat_married_1.pdf saved as PDF format
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/fig_cat_age_1.pdf saved as PDF format
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/fig_cat_child_1.pdf saved as PDF format
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/fig_cat_educ_1.pdf saved as PDF format
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/fig_cat_ftotinc_1.pdf saved as PDF format
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/fig_cat_yngch_2.pdf saved as PDF format
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/fig_cat_sex_2.pdf saved as PDF format
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/fig_cat_married_2.pdf saved as PDF format
+--Break--
+r(1);
+
+end of do-file
+--Break--
+r(1);
+
+end of do-file
+
+--Break--
+r(1);
+
+. do "C:\Users\ji252\AppData\Local\Temp\STD9074_000044.tmp"
+
+. 
+. ** Start log file 
+. capture log close log_02

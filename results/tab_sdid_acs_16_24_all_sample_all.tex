@@ -1,0 +1,18 @@
+{
+\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}
+\begin{tabular}{l*{6}{c}}
+\hline\hline
+            &     Returns   &               &  Exemptions   &               &         AGI   &               \\
+            &\multicolumn{1}{c}{(1)}&\multicolumn{1}{c}{(2)}&\multicolumn{1}{c}{(3)}&\multicolumn{1}{c}{(4)}&\multicolumn{1}{c}{(5)}&\multicolumn{1}{c}{(6)}\\
+            &\multicolumn{1}{c}{No Covariates}&\multicolumn{1}{c}{Covariates}&\multicolumn{1}{c}{No Covariates}&\multicolumn{1}{c}{Covariates}&\multicolumn{1}{c}{No Covariates}&\multicolumn{1}{c}{Covariates}\\
+\hline
+Treated     &      -1.501   &      -1.501   &      -1.765   &      -1.765   &      -3.359** &      -3.359***\\
+            &     (1.362)   &     (1.451)   &     (1.204)   &     (1.146)   &     (1.436)   &     (1.267)   \\
+\hline
+Number of Counties&         337   &         337   &         337   &         337   &         337   &         337   \\
+Pre-treatment mean&       0.793   &       0.793   &       0.381   &       0.381   &       0.588   &       0.588   \\
+\hline\hline
+\multicolumn{7}{l}{\footnotesize Standard errors in parentheses}\\
+\multicolumn{7}{l}{\footnotesize * p<0.10, ** p<0.05, *** p<0.01}\\
+\end{tabular}
+}
