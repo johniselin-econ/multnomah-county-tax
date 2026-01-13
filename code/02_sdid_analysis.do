@@ -1,13 +1,21 @@
 /*******************************************************************************
 File Name: 		02_sdid_analysis.do
 Creator: 		John Iselin
-Date Update:	November 26, 2025
+Date Update:	January 13, 2025
 
 Called by: 00_multnomah.do
 
-Purpose: Preform synthetic difference-in-difference estiamtion. 
+Purpose: Perform synthetic difference-in-difference estimation.
 
-Authors: John Iselin 
+Outputs:
+- sdid_weights.dta/xlsx: Synthetic control weights for each specification
+- sdid_results.dta/xlsx: Treatment effects, SEs, p-values for each specification
+- fig_speccurve_*.pdf/jpg: Specification curve plots
+
+TODO:
+1) Recreate IRS sample with solely counties in ACS sample.
+
+Authors: John Iselin
 
 For more information, contact john.iselin@yale.edu
 
@@ -25,14 +33,14 @@ local reps = 100
 use "${data}working/irs_county_gross", replace 
 
 ** Keep required variables 
-keep year fips state* county* *_net_3 *_out_1 *_out_2 
+keep year fips state* county* *_net_3 *_out_1 *_out_2 *_in_3 *_out_3
 order year fips state* county* 
 
 ** Merge with ACS Data 
 merge 1:1 year fips using "${data}working/acs_county_gross_18plus", gen(merge_acs_1)
 
 ** Keep require variables 
-keep year fips state* county* *_net_3 *_out_1 *_out_2 merge_acs_*
+keep year fips state* county* *_net_3 *_out_1 *_out_2 *_in_3 *_out_3 merge_acs_*
 
 ** Label acs samples 
 rename persons_* acs1_persons_* 
@@ -43,7 +51,7 @@ rename dollars_* acs1_dollars_*
 merge 1:1 year fips using "${data}working/acs_county_gross_college", gen(merge_acs_2)
 
 ** Keep require variables 
-keep year fips state* county* *_net_3 *_out_1 *_out_2 merge_acs_*
+keep year fips state* county* *_net_3 *_out_1 *_out_2 *_in_3 *_out_3  merge_acs_*
 
 ** Label acs samples 
 rename persons_* acs2_persons_*
@@ -54,7 +62,7 @@ rename dollars_* acs2_dollars_*
 merge 1:1 year fips using "${data}working/acs_county_gross_nocollege", gen(merge_acs_3)
 
 ** Keep require variables 
-keep year fips state* county* *_net_3 *_out_1 *_out_2 merge_acs_*
+keep year fips state* county* *_net_3 *_out_1 *_out_2 *_in_3 *_out_3 merge_acs_*
 
 ** Label acs samples 
 rename persons_* acs3_persons_*
@@ -118,7 +126,8 @@ drop if ct < 7
 drop ct 
 
 ** Generate IRS sample 
-gen irs_sample = inrange(year, 2016, 2022)
+gen irs_sample_1 = inrange(year, 2016, 2022) 
+gen irs_sample_2 = inrange(year, 2016, 2022) & merge_acs_1 != 1 
 
 ** Generate ACS Period Indicators 
 gen acs_period_1 = merge_acs_1 != 1 & inrange(year, 2016, 2022)
@@ -129,8 +138,11 @@ gen tmp = merge_acs_1 != 1
 bysort fips: egen ct_tmp = total(tmp)
 replace acs_period_1 = 0 if ct_tmp != 9 
 replace acs_period_2 = 0 if ct_tmp != 9 
+replace irs_sample_2 = 0 if ct_tmp != 9
 drop tmp ct_tmp
 
+tab year irs_sample_1 
+tab year irs_sample_2 
 tab year acs_period_1 
 tab year acs_period_2
 tab state_name acs_period_1 	
@@ -192,7 +204,7 @@ collapse (mean) cases_cum* deaths_cum* [fw = population], by(kmean)
 reshape long cases_cum deaths_cum, i(kmean) j(time)
 xtset kmean time 
 xtline cases_cum 
-graph export "${results}fig_kmeans.jpg", as(jpg) name("Graph") quality(100) replace 		
+graph export "${results}sdid/fig_kmeans.jpg", as(jpg) name("Graph") quality(100) replace 		
 clear  
 
 ** Restore 	
@@ -211,42 +223,69 @@ foreach v of local covariates {
 ** Define outcome variables (IRS)
 foreach x in "n1" "n2" "agi" {
 	
-	gen `x'_rate_irs = 100 * (`x'_net_3 / (`x'_out_1 + `x'_out_2))
+	if "`x'" == "n1" local xtxt "returns"
+	else if "`x'" == "n2" local xtxt "exemptions"
+	else if "`x'" == "agi" local xtxt "AGI"
+	
+	** Loop over migration type 
+	foreach y in "net" "in" "out" {
+		
+			if "`y'" == "net" local ytxt "Net domestic migration"
+			else if "`y'" == "in" local ytxt "Domestic in-migration"
+			else if "`y'" == "out" local ytxt "Domestic out-migration"
+		
+			** Generate
+			gen `x'_`y'_rate_irs = 100 * (`x'_`y'_3 / (`x'_out_1 + `x'_out_2))
+
+			** Label var 
+			label var `x'_`y'_rate_irs	"`ytxt' rate, `xtxt' (%)"
+			
+	} // END MIGRATION TYPE LOOP 
 	
 } // END OUTCOME TYPE LOOP 
 
-** Label var 
-label var n1_rate_irs	"Net domestic migration rate, returns (%)"
-label var n2_rate_irs 	"Net domestic migration rate, exemptions (%)"
-label var agi_rate_irs 	"Net domestic migration rate, AGI (%)"
-
-
 ** Define outcome variables (ACS)
-** Loop over three datasets (18+ = 1, college degree == 2, no college degree == 3)
+
+** Rename for loop 
+rename acs*_households_* acs*_n1_*
+rename acs*_persons_* acs*_n2_*
+rename acs*_dollars_* acs*_agi_*
+
+** Loop over sample 
+** (18+ = 1, college degree == 2, no college degree == 3)
 forvalues i = 1/3{
 	
-	if `i' == 1 local txt "(18+)"
-	else if `i' == 2 local txt "(College)"
-	else if `i' == 3 local txt "(No College)"
+	if `i' == 1 local itxt ""
+	else if `i' == 2 local itxt " (College)"
+	else if `i' == 3 local itxt " (No College)"
 	
-	gen n1_rate_acs`i' = 100 * (acs`i'_households_net_3 / (acs`i'_households_out_1 + acs`i'_households_out_2))
-	gen n2_rate_acs`i' = 100 * (acs`i'_persons_net_3 / (acs`i'_persons_out_1 + acs`i'_persons_out_2))
-	gen agi_rate_acs`i' = 100 * (acs`i'_dollars_net_3 / (acs`i'_dollars_out_1 + acs`i'_dollars_out_2))
-	
-	label var n1_rate_acs`i' 	"Net domestic migration rate `txt', HHs (%)"
-	label var n2_rate_acs`i' 	"Net domestic migration rate `txt', persons (%)"
-	label var agi_rate_acs`i' 	"Net domestic migration rate `txt', total income (%)"
-	
-} // END DATA LOOP 
 
-** Generate triple-difference vars 
-gen n1_rate_acs4 = n1_rate_acs2 - n1_rate_acs3
-gen n2_rate_acs4 = n2_rate_acs2 - n2_rate_acs3
-gen agi_rate_acs4 = agi_rate_acs2 - agi_rate_acs3
+	** Define outcome variables (IRS)
+	foreach x in "n1" "n2" "agi" {
+		
+		if "`x'" == "n1" local xtxt "HHs"
+		else if "`x'" == "n2" local xtxt "persons"
+		else if "`x'" == "agi" local xtxt "total income"
+	
+		
+		** Loop over migration type 
+		foreach y in "net" "in" "out" {
+			
+				if "`y'" == "net" local ytxt "Net domestic migration"
+				else if "`y'" == "in" local ytxt "Domestic in-migration"
+				else if "`y'" == "out" local ytxt "Domestic out-migration"
+			
+				** Generate
+				gen `x'_`y'_rate_acs`i' = 100 * (acs`i'_`x'_`y'_3 / (acs`i'_`x'_out_1 + acs`i'_`x'_out_2))
 
-label var n1_rate_acs4 		"Net domestic migration rate (College less No College), HHs (%)"
-label var n2_rate_acs4 		"Net domestic migration rate (College less No College), persons (%)"
-label var agi_rate_acs4 	"Net domestic migration rate (College less No College), total income (%)"
+				** Label var 
+				label var `x'_`y'_rate_acs`i' "`ytxt' rate, `xtxt'`itxt' (%)"
+				
+		} // END MIGRATION TYPE LOOP 
+		
+	} // END OUTCOME TYPE LOOP 
+	
+} // END SAMPLE LOOP 
 
 ** Declare panel
 xtset fips year 
@@ -255,18 +294,58 @@ xtset fips year
 egen unique = tag(fips)
 tab year unique
 
+** Label var 
+label var year "Year (destination)"
+
+** Before your loops, set up weights dataset
+preserve
+clear
+set obs 0
+gen fips = .
+gen weight = .
+gen sample_data = ""
+gen out = ""
+gen sample = ""
+gen controls = .
+gen exclusion = .
+save "${results}sdid/sdid_weights.dta", replace
+clear
+restore
+
+** Set up treatment effects dataset
+preserve
+clear
+set obs 0
+gen sample_data = ""
+gen sample = ""
+gen outcome = ""
+gen controls = .
+gen exclusion = .
+gen tau = .
+gen se = .
+gen pval = .
+gen ci_lower = .
+gen ci_upper = .
+gen n_counties = .
+gen pre_mean = .
+save "${results}sdid/sdid_results.dta", replace
+clear
+restore 
+
 ** Loop over IRS and ACS Samples  
-foreach data of varlist acs_period_1 acs_period_2 irs_sample {
+foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 
 	** Different sets of outcome variables 
-	if "`data'" == "irs_sample" local out_type "irs"
-	else local out_type "acs1 acs2 acs3 acs4"
+	if "`data'" == "irs_sample_1" local out_type "irs"
+	else if "`data'" == "irs_sample_2" local out_type "irs"
+	else local out_type "acs1 acs2"
 
 	** Loop over Outcome var type 
 	foreach type of local out_type {
 		
 		** Labels 
-		if "`data'" == "irs_sample" local out_txt "irs_16_22"
+		if "`data'" == "irs_sample_1" local out_txt "irs_full_16_22"
+		if "`data'" == "irs_sample_2" local out_txt "irs_389_16_22"
 		else if "`data'" == "acs_period_1" & "`type'" == "acs1" local out_txt "acs_16_22_all"
 		else if "`data'" == "acs_period_1" & "`type'" == "acs2" local out_txt "acs_16_22_col"
 		else if "`data'" == "acs_period_1" & "`type'" == "acs3" local out_txt "acs_16_22_noc"
@@ -287,131 +366,207 @@ foreach data of varlist acs_period_1 acs_period_2 irs_sample {
 				if `exl' == 1 replace sample = 0 if year == 2020 
 				
 				** Clear stored values 
-				eststo clear 		
+				eststo clear 
 				
-				** Loop over outcomes 
-				foreach out of varlist n1_rate_`type' n2_rate_`type' agi_rate_`type' {
-				
-					** Store label 
-					local label : variable label `out'
+				** Loop over migration type 
+				foreach migr in "net" "in" "out" {
 					
-					** Loop over inclusion of covariates
-					forvalues c = 0/1 {
+					** Loop over outcomes 
+					foreach out of varlist	n1_`migr'_rate_`type'	///
+											n2_`migr'_rate_`type' 	///
+											agi_`migr'_rate_`type' {
 					
-						** Covariates 
-						if `c' == 0 local covars ""
-						else if `c' == 1 local covars "covariates(`covariates', projected)"
+						** Store label 
+						local label : variable label `out'
 						
-						** File Name 
-						if `exl' == 0 local path "${results}fig_`out_txt'_`out'_`c'_`samp'_"
-						if `exl' == 1 local path "${results}fig_`out_txt'_`out'_`c'_`samp'_excl2020_"
-	
+						** Loop over inclusion of covariates
+						forvalues c = 0/1 {
 						
-						** Run SDID
-						eststo sdid_`out'_`c': sdid `out' fips year Treated	///
-							if sample == 1,			 	///
-							vce(placebo) 				///
-							`covar'						///
-							reps(`reps')				///
-							graph graph_export("`path'", .pdf) 
+							** Covariates 
+							if `c' == 0 local covars ""
+							else if `c' == 1 local covars "covariates(`covariates', projected)"
 							
-						** Estadd counties  
-						qui summ `out' if year == 2021 & sample == 1
-						estadd scalar count = r(N)	
+							** File Name 
+							if `exl' == 0 local path "${results}sdid/fig_`out_txt'_`out'_`c'_`samp'_"
+							if `exl' == 1 local path "${results}sdid/fig_`out_txt'_`out'_`c'_`samp'_excl2020_"
+		
 							
-						** Estadd mean 
-						qui summ `out' if multnomah == 1 & Treated == 0 
-						estadd scalar mean = r(mean)
-
-						** Run event-study 
-						sdid_event `out' fips year Treated			///
-							if sample == 1,			 			///
-							`covar'								///
-							vce(placebo) 						///
-							brep(`reps') 						///
-							placebo(all)
-						
-						** Create Figure 
-						
-						** Store max year 
-						qui summ year if multnomah == 1 & sample == 1
-						local max_yr = r(max)
-						dis "`max_yr'"
-						
-						** Move results from matrix to data 
-						qui count if multnomah == 1 & sample == 1
-						local ct = r(N)
-						local ct = `ct' + 1
-						matrix list e(H)
-						mat res = e(H)[2..`ct',1..5]
-			
-						** Move Matrix results to data 
-						svmat res
-						
-						** Generate ID variable
-						gen id = `max_yr' - _n + 1 if !missing(res1)
-						
-						** Update labeling for exclusion of 
-						if `exl' == 1 {
-							replace id = id - 1 if id <= 2020 
-							expand 2 if id == 2019, gen(tag)
-							replace id = 2020 if tag == 1 
-							replace res1 = . if tag == 1 
-							replace res3 = . if tag == 1 
-							replace res4 = . if tag == 1 
-						}
-						label var id "Year (destination)"
-						
-						** Sort 
-						sort id
-						
-						** Plot
-						twoway 	(rcap res3 res4 id, lc(gs10) fc(gs11%50))	///
-								(scatter res1 id, mc(black)),				///		
-							legend(off) ytitle("`label'") 					///
-							yline(0, lc(red) lp(-)) 						///
-							xline(2020.5, lc(black) lp(solid))				///
-							ylabel(-10(2.5)10, format(%9.1f))
-
-						if `exl' == 0 local path "${results}fig_`out_txt'_`out'_`c'_`samp'_eventstudy.jpg"
-						if `exl' == 1 local path "${results}fig_`out_txt'_`out'_`c'_`samp'_excl2020_eventstudy.jpg"
-	
+							** Run SDID
+							eststo sdid_`out'_`c': sdid `out' fips year Treated	///
+								if sample == 1,			 	///
+								vce(placebo) 				///
+								`covar'						///
+								reps(`reps')				///
+								graph graph_export("`path'", .pdf) 
+								
 							
-						graph export "`path'", 	///
-							as(jpg) name("Graph") quality(100) replace 		
+							** Store weights 
+							matrix omega = e(omega)
+							preserve 
+							clear
+							svmat double omega, names(col)
+							rename c2 fips
+							rename c1 weight 
+							gen sample_data = "`out_txt'"
+							gen out = "`out'"
+							gen sample = "`samp'"
+							gen controls = `c'
+							gen exclusion = `exl'
+							drop if weight == 0
+							drop if missing(fips )
+							order sample_data sample out controls exclusion fips weight 
+							sort weight 
+							append using "${results}sdid/sdid_weights.dta"
+							compress
+							save "${results}sdid/sdid_weights.dta", replace 
+							clear 
+							restore 
+								
+							** Store treatment effects
+							preserve
+							clear
+							set obs 1
+							gen sample_data = "`out_txt'"
+							gen sample = "`samp'"
+							gen outcome = "`out'"
+							gen controls = `c'
+							gen exclusion = `exl'
+							gen tau = e(tau)
+							gen se = e(se)
+							gen pval = 2 * (1 - normal(abs(tau/se)))
+							gen ci_lower = tau - 1.96 * se
+							gen ci_upper = tau + 1.96 * se
+							gen n_counties = e(N_clust) - 1
+							qui summ `out' if multnomah == 1 & Treated == 0
+							gen pre_mean = r(mean)
+							order sample_data sample outcome controls exclusion tau se pval ci_lower ci_upper n_counties pre_mean
+							append using "${results}sdid/sdid_results.dta"
+							compress
+							save "${results}sdid/sdid_results.dta", replace
+							clear
+							restore
 
-						** Clean up 
-						drop res1 res2 res3 res4 res5 id 
-						if `exl' == 1 {
-							drop if tag == 1
-							drop tag 
-						}
-						** Update Count
-						local ct = `ct' + 1 
-										
-					} // END COVAR LOOP 
+							** Estadd counties  
+							qui summ `out' if year == 2021 & sample == 1
+							estadd scalar count = r(N)	
+								
+							** Estadd mean 
+							qui summ `out' if multnomah == 1 & Treated == 0 
+							estadd scalar mean = r(mean)
+
+							** Run event-study 
+							sdid_event `out' fips year Treated			///
+								if sample == 1,			 			///
+								`covar'								///
+								vce(placebo) 						///
+								brep(`reps') 						///
+								placebo(all)
+							
+							** Create Figure 
+							
+							** Store max year 
+							qui summ year if multnomah == 1 & sample == 1
+							local max_yr = r(max)
+							dis "`max_yr'"
+							
+							** Move results from matrix to data 
+							qui count if multnomah == 1 & sample == 1
+							local ct = r(N)
+							local ct = `ct' + 1
+							matrix list e(H)
+							mat res = e(H)[2..`ct',1..5]
 				
-				} // END OUTCOME LOOP 
-				
-				** Determine name 
-				if `exl' == 0 local path "${results}tab_sdid_`out_txt'_`samp'.tex"
-				if `exl' == 1 local path "${results}tab_sdid_`out_txt'_`samp'_excl2020.tex"
+							** Move Matrix results to data 
+							svmat res
+							
+							** Generate ID variable
+							gen id = `max_yr' - _n + 1 if !missing(res1)
+							
+							** Update labeling for exclusion of 
+							if `exl' == 1 {
+								replace id = id - 1 if id <= 2020 
+								expand 2 if id == 2019, gen(tag)
+								replace id = 2020 if tag == 1 
+								replace res1 = . if tag == 1 
+								replace res3 = . if tag == 1 
+								replace res4 = . if tag == 1 
+							}
+							label var id "Year (destination)"
+							
+							** Sort 
+							sort id
+							
+							** Plot
+							twoway 	(rcap res3 res4 id, lc(gs10) fc(gs11%50))	///
+									(scatter res1 id, mc(black)),				///		
+								legend(off) ytitle("`label'") 					///
+								yline(0, lc(red) lp(-)) 						///
+								xline(2020.5, lc(black) lp(solid))				///
+								ylabel(-10(2.5)10, format(%9.1f))
 
-				** Table of results 
-				esttab 	sdid_n1_rate_`type'_0 sdid_n1_rate_`type'_1			///
-						sdid_n2_rate_`type'_0 sdid_n2_rate_`type'_1			///
-						sdid_agi_rate_`type'_0 sdid_agi_rate_`type'_1 using	///
-				"`path'",										///
-				starlevel("*" 0.10 "**" 0.05 "***" 0.01)		///
-				b(%-9.3f) se(%-9.3f) replace 					///
-				mgroups("Returns" "Exemptions" "AGI", 			///
-					pattern(1 0 1 0 1 0) )						///
-				mtitle(	"No Covariates" "Covariates"			///
-						"No Covariates" "Covariates"			///
-						"No Covariates" "Covariates")			///
-				stats(count mean, 								///
-					fmt(%9.0fc %9.3fc) 							///
-					labels("Number of Counties" "Pre-treatment mean"))
+							if `exl' == 0 local path "${results}sdid/fig_`out_txt'_`out'_`c'_`samp'_eventstudy.jpg"
+							if `exl' == 1 local path "${results}sdid/fig_`out_txt'_`out'_`c'_`samp'_excl2020_eventstudy.jpg"
+		
+								
+							graph export "`path'", 	///
+								as(jpg) name("Graph") quality(100) replace 		
+
+							** Clean up 
+							drop res1 res2 res3 res4 res5 id 
+							if `exl' == 1 {
+								drop if tag == 1
+								drop tag 
+							}
+							** Update Count
+							local ct = `ct' + 1 
+											
+						} // END COVAR LOOP 
+					
+					} // END OUTCOME LOOP 
+					
+					** Determine name 
+					if `exl' == 0 local path "${results}sdid/tab_sdid_`out_txt'_`migr'_`samp'.tex"
+					if `exl' == 1 local path "${results}sdid/tab_sdid_`out_txt'_`migr'_`samp'_excl2020.tex"
+					
+
+					** Table of results 
+					if "`data'" == "irs_sample1" |  "`data'" == "irs_sample2" |  {
+					
+					esttab 	sdid_n1_`migr'_rate_`type'_0 sdid_n1_`migr'_rate_`type'_1	///
+							sdid_n2_`migr'_rate_`type'_0 sdid_n2_`migr'_rate_`type'_1	///
+							sdid_agi_`migr'_rate_`type'_0 sdid_agi_`migr'_rate_`type'_1 ///
+						using "`path'",								///
+					starlevel("*" 0.10 "**" 0.05 "***" 0.01)		///
+					b(%-9.3f) se(%-9.3f) replace 					///
+					mgroups("Returns" "Exemptions" "AGI", 			///
+						pattern(1 0 1 0 1 0) )						///
+					mtitle(	"No Covariates" "Covariates"			///
+							"No Covariates" "Covariates"			///
+							"No Covariates" "Covariates")			///
+					stats(count mean, 								///
+						fmt(%9.0fc %9.3fc) 							///
+						labels("Number of Counties" "Pre-treatment mean"))
+					}
+					else {
+					esttab 	sdid_n1_`migr'_rate_`type'_0 sdid_n1_`migr'_rate_`type'_1	///
+							sdid_n2_`migr'_rate_`type'_0 sdid_n2_`migr'_rate_`type'_1	///
+							sdid_agi_`migr'_rate_`type'_0 sdid_agi_`migr'_rate_`type'_1 ///
+						using "`path'",								///
+					starlevel("*" 0.10 "**" 0.05 "***" 0.01)		///
+					b(%-9.3f) se(%-9.3f) replace 					///
+					mgroups("Households" "Adults" "Household Income",	///
+						pattern(1 0 1 0 1 0) )						///
+					mtitle(	"No Covariates" "Covariates"			///
+							"No Covariates" "Covariates"			///
+							"No Covariates" "Covariates")			///
+					stats(count mean, 								///
+						fmt(%9.0fc %9.3fc) 							///
+						labels("Number of Counties" "Pre-treatment mean"))
+						
+					}
+
+				
+				} // END MIGRATION TYPE LOOP 
 				
 				** Drop sample var 
 				drop sample 
@@ -423,6 +578,146 @@ foreach data of varlist acs_period_1 acs_period_2 irs_sample {
 	} // END OUT TYPE 
 	
 } // END DATA LOOP 
+
+
+** After all loops complete, export weights
+use "${results}sdid/sdid_weights.dta", clear
+export excel using "${results}sdid/sdid_weights.xlsx", firstrow(variables) replace
+
+** Export treatment effects
+use "${results}sdid/sdid_results.dta", clear
+export excel using "${results}sdid/sdid_results.xlsx", firstrow(variables) replace
+
+/*******************************************************************************
+SPECIFICATION CURVE ANALYSIS
+Creates specification curve plots showing treatment effects across all
+specifications for each outcome type and migration direction.
+*******************************************************************************/
+
+** Load treatment effects
+use "${results}sdid/sdid_results.dta", clear
+
+** Parse outcome variable names to extract components
+gen outcome_type = ""
+replace outcome_type = "n1" if strpos(outcome, "n1_") > 0
+replace outcome_type = "n2" if strpos(outcome, "n2_") > 0
+replace outcome_type = "agi" if strpos(outcome, "agi_") > 0
+
+gen migration = ""
+replace migration = "net" if strpos(outcome, "_net_") > 0
+replace migration = "in" if strpos(outcome, "_in_") > 0
+replace migration = "out" if strpos(outcome, "_out_") > 0
+
+gen data_type = ""
+replace data_type = "IRS" if strpos(outcome, "_irs") > 0
+replace data_type = "ACS All" if strpos(outcome, "_acs1") > 0
+replace data_type = "ACS College" if strpos(outcome, "_acs2") > 0
+
+** Create specification indicators for bottom panel
+gen spec_all = sample == "sample_all"
+gen spec_urban95 = sample == "sample_urban95"
+gen spec_covid = sample == "sample_urban95_covid"
+gen spec_covars = controls == 1
+gen spec_excl2020 = exclusion == 1
+gen spec_irs = data_type == "IRS"
+gen spec_acs_all = data_type == "ACS All"
+gen spec_acs_col = data_type == "ACS College"
+
+** Loop over outcome types and migration directions
+foreach otype in "n1" "n2" "agi" {
+	foreach migr in "net" "in" "out" {
+
+		** Preserve full data
+		preserve
+
+		** Keep only relevant specifications
+		keep if outcome_type == "`otype'" & migration == "`migr'"
+
+		** Check if we have data
+		qui count
+		if r(N) == 0 {
+			restore
+			continue
+		}
+
+		** Sort by effect size and create rank
+		sort tau
+		gen spec_rank = _n
+		local n_specs = _N
+
+		** Labels for outcome type
+		if "`otype'" == "n1" local otype_label "Returns/Households"
+		else if "`otype'" == "n2" local otype_label "Exemptions/Persons"
+		else if "`otype'" == "agi" local otype_label "AGI/Income"
+
+		** Labels for migration
+		if "`migr'" == "net" local migr_label "Net Migration"
+		else if "`migr'" == "in" local migr_label "In-Migration"
+		else if "`migr'" == "out" local migr_label "Out-Migration"
+
+		** Create upper panel: Coefficient plot with CIs
+		twoway 	(rcap ci_lower ci_upper spec_rank, lc(gs10) lw(thin))	///
+				(scatter tau spec_rank, mc(navy) ms(O) msize(small)),	///
+			legend(off)													///
+			ytitle("Treatment Effect (pp)")								///
+			xtitle("Specification (ranked by effect size)")				///
+			title("`otype_label': `migr_label'", size(medium))			///
+			yline(0, lc(red) lp(dash))									///
+			xlabel(1(5)`n_specs')										///
+			name(coef_`otype'_`migr', replace)
+
+		** Create lower panel: Specification indicators
+		** Reshape indicators for plotting
+		gen y_all = -1 if spec_all == 1
+		gen y_urban = -2 if spec_urban95 == 1
+		gen y_covid = -3 if spec_covid == 1
+		gen y_covars = -4 if spec_covars == 1
+		gen y_excl = -5 if spec_excl2020 == 1
+		gen y_irs = -6 if spec_irs == 1
+		gen y_acs_all = -7 if spec_acs_all == 1
+		gen y_acs_col = -8 if spec_acs_col == 1
+
+		twoway 	(scatter y_all spec_rank, mc(navy) ms(O) msize(vsmall))		///
+				(scatter y_urban spec_rank, mc(navy) ms(O) msize(vsmall))	///
+				(scatter y_covid spec_rank, mc(navy) ms(O) msize(vsmall))	///
+				(scatter y_covars spec_rank, mc(navy) ms(O) msize(vsmall))	///
+				(scatter y_excl spec_rank, mc(navy) ms(O) msize(vsmall))	///
+				(scatter y_irs spec_rank, mc(navy) ms(O) msize(vsmall))		///
+				(scatter y_acs_all spec_rank, mc(navy) ms(O) msize(vsmall))	///
+				(scatter y_acs_col spec_rank, mc(navy) ms(O) msize(vsmall)),///
+			legend(off)														///
+			ytitle("")														///
+			xtitle("Specification")											///
+			ylabel(	-1 "All Counties"										///
+					-2 "Urban 95%"											///
+					-3 "COVID Match"										///
+					-4 "Covariates"											///
+					-5 "Excl. 2020"											///
+					-6 "IRS Data"											///
+					-7 "ACS All"											///
+					-8 "ACS College",										///
+				angle(0) labsize(vsmall))									///
+			xlabel(1(5)`n_specs')											///
+			name(spec_`otype'_`migr', replace)
+
+		** Combine panels
+		graph combine coef_`otype'_`migr' spec_`otype'_`migr',				///
+			cols(1)															///
+			xcommon															///
+			imargin(zero)													///
+			title("Specification Curve: `otype_label' - `migr_label'", size(medium))
+
+		** Export combined figure
+		graph export "${results}sdid/fig_speccurve_`otype'_`migr'.pdf", replace
+		graph export "${results}sdid/fig_speccurve_`otype'_`migr'.jpg", as(jpg) quality(100) replace
+
+		** Clean up
+		graph drop coef_`otype'_`migr' spec_`otype'_`migr'
+
+		restore
+
+	} // END MIGRATION LOOP
+} // END OUTCOME TYPE LOOP
 
 clear
 
