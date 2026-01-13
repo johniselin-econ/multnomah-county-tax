@@ -12,11 +12,18 @@ FOLDER STRUCTURE
 ================================================================================
 
 results/
-    sdid/           Synthetic Difference-in-Differences analysis
-    did/            Difference-in-Differences analysis (ACS individual-level)
-    flows/          Flow-based analysis (IRS county-level)
-    individual/     Individual-level categorical analysis
-    old/            Archived/deprecated results
+    sdid/                       Synthetic Difference-in-Differences analysis
+        irs_full_16_22/         IRS data, full sample, 2016-2022
+        irs_389_16_22/          IRS data, ACS-matched counties, 2016-2022
+        acs_16_22_all/          ACS data, all adults 18+, 2016-2022
+        acs_16_22_col/          ACS data, college-educated, 2016-2022
+        acs_16_24_all/          ACS data, all adults 18+, 2016-2024
+        acs_16_24_col/          ACS data, college-educated, 2016-2024
+        (aggregate files)       sdid_weights.*, sdid_results.*, fig_kmeans.jpg
+    did/                        Difference-in-Differences analysis (ACS individual-level)
+    flows/                      Flow-based analysis (IRS county-level)
+    individual/                 Individual-level categorical analysis
+    old/                        Archived/deprecated results
 
 ================================================================================
 SUBFOLDER CONTENTS AND NAMING CONVENTIONS
@@ -25,6 +32,17 @@ SUBFOLDER CONTENTS AND NAMING CONVENTIONS
 ------------------------------------------------------------------------------
 sdid/ - Synthetic Difference-in-Differences (02_sdid_analysis.do)
 ------------------------------------------------------------------------------
+
+Results are organized into subfolders by data source/period:
+    irs_full_16_22/     IRS full sample (2016-2022)
+    irs_389_16_22/      IRS ACS-matched counties (2016-2022)
+    acs_16_22_all/      ACS all adults 18+ (2016-2022)
+    acs_16_22_col/      ACS college-educated (2016-2022)
+    acs_16_24_all/      ACS all adults 18+ (2016-2024)
+    acs_16_24_col/      ACS college-educated (2016-2024)
+
+Aggregate files remain in the main sdid/ folder:
+    sdid_weights.dta/xlsx, sdid_results.dta/xlsx, fig_kmeans.jpg
 
 Figures follow this naming pattern:
     fig_{data}_{outcome}_{covars}_{sample}_{suffix}.{ext}

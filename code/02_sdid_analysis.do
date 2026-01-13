@@ -355,7 +355,10 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 		else if "`data'" == "acs_period_2" & "`type'" == "acs3" local out_txt "acs_16_24_noc"
 		else if "`data'" == "acs_period_2" & "`type'" == "acs4" local out_txt "acs_16_24_3D"
 
-		** Loop over samples 
+		** Check if subfolder exists, create if not
+		capture mkdir "${results}sdid/`out_txt'"
+
+		** Loop over samples
 		foreach samp of varlist sample_all sample_urban95 sample_urban95_covid {	
 			
 			** Loop over exclusion of 2019-2020 period 
@@ -387,8 +390,8 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 							else if `c' == 1 local covars "covariates(`covariates', projected)"
 							
 							** File Name 
-							if `exl' == 0 local path "${results}sdid/fig_`out_txt'_`out'_`c'_`samp'_"
-							if `exl' == 1 local path "${results}sdid/fig_`out_txt'_`out'_`c'_`samp'_excl2020_"
+							if `exl' == 0 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_"
+							if `exl' == 1 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_excl2020_"
 		
 							
 							** Run SDID
@@ -397,11 +400,47 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 								vce(placebo) 				///
 								`covar'						///
 								reps(`reps')				///
-								graph graph_export("`path'", .pdf) 
-								
-							
-							** Store weights 
+								graph graph_export("`path'", .pdf)
+
+							** Store model output 
+							local tmp_tau = e(ATT)
+							local tmp_se = e(se)
 							matrix omega = e(omega)
+							
+							** Store pre-treatment means and county counts 
+							qui summ `out' if multnomah == 1 & Treated == 0
+							local tmp_premean = r(mean)
+							estadd scalar mean = r(mean)
+							
+							qui summ `out' if year == 2021 & sample == 1
+							local tmp_ncounties = r(N)
+							estadd scalar count = r(N)	
+							
+							** Preserve ATE / SE 
+							preserve
+							clear
+							qui set obs 1
+							gen sample_data = "`out_txt'"
+							gen sample = "`samp'"
+							gen outcome = "`out'"
+							gen controls = `c'
+							gen exclusion = `exl'
+							gen tau = `tmp_tau'
+							gen se = `tmp_se'
+							gen pval = 2 * (1 - normal(abs(tau/se)))
+							gen ci_lower = tau - 1.96 * se
+							gen ci_upper = tau + 1.96 * se
+							gen n_counties = `tmp_ncounties'
+							gen pre_mean = `tmp_premean'
+							order sample_data sample outcome controls exclusion	///
+								tau se pval ci_lower ci_upper n_counties pre_mean
+							append using "${results}sdid/sdid_results.dta"
+							compress
+							save "${results}sdid/sdid_results.dta", replace
+							clear
+							restore
+							
+							** Store weights
 							preserve 
 							clear
 							svmat double omega, names(col)
@@ -421,39 +460,7 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 							save "${results}sdid/sdid_weights.dta", replace 
 							clear 
 							restore 
-								
-							** Store treatment effects
-							preserve
-							clear
-							set obs 1
-							gen sample_data = "`out_txt'"
-							gen sample = "`samp'"
-							gen outcome = "`out'"
-							gen controls = `c'
-							gen exclusion = `exl'
-							gen tau = e(tau)
-							gen se = e(se)
-							gen pval = 2 * (1 - normal(abs(tau/se)))
-							gen ci_lower = tau - 1.96 * se
-							gen ci_upper = tau + 1.96 * se
-							gen n_counties = e(N_clust) - 1
-							qui summ `out' if multnomah == 1 & Treated == 0
-							gen pre_mean = r(mean)
-							order sample_data sample outcome controls exclusion tau se pval ci_lower ci_upper n_counties pre_mean
-							append using "${results}sdid/sdid_results.dta"
-							compress
-							save "${results}sdid/sdid_results.dta", replace
-							clear
-							restore
-
-							** Estadd counties  
-							qui summ `out' if year == 2021 & sample == 1
-							estadd scalar count = r(N)	
-								
-							** Estadd mean 
-							qui summ `out' if multnomah == 1 & Treated == 0 
-							estadd scalar mean = r(mean)
-
+							
 							** Run event-study 
 							sdid_event `out' fips year Treated			///
 								if sample == 1,			 			///
@@ -504,8 +511,8 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 								xline(2020.5, lc(black) lp(solid))				///
 								ylabel(-10(2.5)10, format(%9.1f))
 
-							if `exl' == 0 local path "${results}sdid/fig_`out_txt'_`out'_`c'_`samp'_eventstudy.jpg"
-							if `exl' == 1 local path "${results}sdid/fig_`out_txt'_`out'_`c'_`samp'_excl2020_eventstudy.jpg"
+							if `exl' == 0 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_eventstudy.jpg"
+							if `exl' == 1 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_excl2020_eventstudy.jpg"
 		
 								
 							graph export "`path'", 	///
@@ -524,9 +531,9 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 					
 					} // END OUTCOME LOOP 
 					
-					** Determine name 
-					if `exl' == 0 local path "${results}sdid/tab_sdid_`out_txt'_`migr'_`samp'.tex"
-					if `exl' == 1 local path "${results}sdid/tab_sdid_`out_txt'_`migr'_`samp'_excl2020.tex"
+					** Determine name
+					if `exl' == 0 local path "${results}sdid/`out_txt'/tab_sdid_`out_txt'_`migr'_`samp'.tex"
+					if `exl' == 1 local path "${results}sdid/`out_txt'/tab_sdid_`out_txt'_`migr'_`samp'_excl2020.tex"
 					
 
 					** Table of results 

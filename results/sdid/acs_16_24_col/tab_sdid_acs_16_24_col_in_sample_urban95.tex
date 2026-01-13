@@ -1,0 +1,18 @@
+{
+\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}
+\begin{tabular}{l*{6}{c}}
+\hline\hline
+            &  Households   &               &      Adults   &               &Household Income   &               \\
+            &\multicolumn{1}{c}{(1)}&\multicolumn{1}{c}{(2)}&\multicolumn{1}{c}{(3)}&\multicolumn{1}{c}{(4)}&\multicolumn{1}{c}{(5)}&\multicolumn{1}{c}{(6)}\\
+            &\multicolumn{1}{c}{No Covariates}&\multicolumn{1}{c}{Covariates}&\multicolumn{1}{c}{No Covariates}&\multicolumn{1}{c}{Covariates}&\multicolumn{1}{c}{No Covariates}&\multicolumn{1}{c}{Covariates}\\
+\hline
+Treated     &      -1.339   &      -1.339   &      -1.180   &      -1.180*  &      -1.032   &      -1.032   \\
+            &     (1.116)   &     (1.264)   &     (0.801)   &     (0.699)   &     (1.117)   &     (1.011)   \\
+\hline
+Number of Counties&         107   &         107   &         107   &         107   &         107   &         107   \\
+Pre-treatment mean&       8.135   &       8.135   &       8.595   &       8.595   &       6.978   &       6.978   \\
+\hline\hline
+\multicolumn{7}{l}{\footnotesize Standard errors in parentheses}\\
+\multicolumn{7}{l}{\footnotesize * p<0.10, ** p<0.05, *** p<0.01}\\
+\end{tabular}
+}
