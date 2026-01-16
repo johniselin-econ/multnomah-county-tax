@@ -27,6 +27,8 @@ Set up API for DOL Data on childcare
 * ssc install estout 
 * ssc install sdid_event
 * ssc install geodist
+** net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
+** mata mata mlib index
 
 ** Preliminaries 
 capture log close 
@@ -66,7 +68,7 @@ set seed 56403
 set scheme plotplainblind
 
 ** Set parameters 
-local overwrite_csv = 0
+local overwrite_csv = 1
 global start_year_acs = 2015
 global end_year_acs = 2024
 
@@ -102,21 +104,25 @@ do ${code}01_clean_data.do
 ** Descriptives 
 do ${code}02_descriptives.do 
 
+** Create maps 
+rcall script "${code}R/map_code.R", vanilla
+
 ** Synthetic Difference-in-Difference Analysis
 do ${code}02_sdid_analysis.do 
 
+** Flow-based models (IRS)
+do ${code}02_flow_analysis.do
+
 ** Individual-level Model
-*do ${code}02_indiv_analysis.do 
+do ${code}02_indiv_analysis.do 
+
+** Difference-in-Difference (ACS)
+do ${code}02_did_analysis.do
 
 ** Multinomial Logit Model
-do ${code}02_multi_analysis.do 
+*do ${code}02_multi_analysis.do 
 
 ** End log file
 capture log close
 
  		
-
-		
-	
-
-

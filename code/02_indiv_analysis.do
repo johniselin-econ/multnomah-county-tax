@@ -516,7 +516,6 @@ if `__dbgdetail' {
 
 end
 
-
 ** ---------------------------------------------------------------------------
 ** Load ACS migration data
 ** ---------------------------------------------------------------------------
@@ -669,7 +668,7 @@ forvalues i = 1/2 {
             wvar(perwt) wtype(fw) ///
 			xtitle("ACS Survey Year (t=2)") ///
             ytitle("`ytitle_txt'") ///
-            saving("${results}fig_`cat'_`i'") ///
+            saving("${results}individual/fig_`cat'_`i'") ///
             replace
 			
     } // END CAT LOOP

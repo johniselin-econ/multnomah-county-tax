@@ -58,19 +58,6 @@ rename persons_* acs2_persons_*
 rename households_* acs2_households_*
 rename dollars_* acs2_dollars_*
 
-** Merge with ACS Data 
-merge 1:1 year fips using "${data}working/acs_county_gross_nocollege", gen(merge_acs_3)
-
-** Keep require variables 
-keep year fips state* county* *_net_3 *_out_1 *_out_2 *_in_3 *_out_3 merge_acs_*
-
-** Label acs samples 
-rename persons_* acs3_persons_*
-rename households_* acs3_households_*
-rename dollars_* acs3_dollars_*
-
-** TODO add High and Low Education Samples 
-
 ** Drop "other counties"
 drop if county_fips == 0
 drop if year == 2015 
@@ -106,9 +93,23 @@ drop econ_merge
 merge m:1 fips using ${data}working/covid_cleaned_wide.dta, 	///
 	gen(covid_merge) keep(master match )
 
-** Show match 
+** Show match
 tab state_name covid_merge, m
 tab year covid_merge, m
+
+** Merge with Property Tax Rates (time-varying)
+merge m:1 year fips using "${data}working/property_tax_rates_overall", ///
+	gen(proptx_merge) keep(master match) keepusing(prop_rate_mean prop_rate_se)
+
+** Show match
+tab state_name proptx_merge, m
+tab year proptx_merge, m
+
+** Rename for clarity
+rename prop_rate_mean prop_tax_rate
+rename prop_rate_se prop_tax_rate_se
+label var prop_tax_rate "Mean property tax rate (% of home value)"
+label var prop_tax_rate_se "SE of property tax rate"
 
 ** Organize data 
 order year fips state_* county_* 
@@ -210,12 +211,11 @@ clear
 ** Restore 	
 restore 
 
-** Define covariates 
-local covariates "population per_capita_income"
-
-** Standardize covariates 
-foreach v of local covariates {
-	egen tmp_v = std(`v') 
+** Define and standardize covariates
+** Note: prop_tax_rate added for non-IRS full sample specifications
+local all_covariates "population per_capita_income prop_tax_rate"
+foreach v of local all_covariates {
+	egen tmp_v = std(`v')
 	replace `v' = tmp_v
 	drop tmp_v
 } // END COVAR LOOP 
@@ -253,7 +253,7 @@ rename acs*_dollars_* acs*_agi_*
 
 ** Loop over sample 
 ** (18+ = 1, college degree == 2, no college degree == 3)
-forvalues i = 1/3{
+forvalues i = 1/2{
 	
 	if `i' == 1 local itxt ""
 	else if `i' == 2 local itxt " (College)"
@@ -332,10 +332,15 @@ save "${results}sdid/sdid_results.dta", replace
 clear
 restore 
 
-** Loop over IRS and ACS Samples  
+** Loop over IRS and ACS Samples
 foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 
-	** Different sets of outcome variables 
+	** Define covariates based on data type
+	** irs_sample_1 uses basic covariates; all others add property tax rate
+	if "`data'" == "irs_sample_1" local covariates "population per_capita_income"
+	else local covariates "population per_capita_income prop_tax_rate"
+
+	** Different sets of outcome variables
 	if "`data'" == "irs_sample_1" local out_type "irs"
 	else if "`data'" == "irs_sample_2" local out_type "irs"
 	else local out_type "acs1 acs2"
@@ -385,9 +390,13 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 						** Loop over inclusion of covariates
 						forvalues c = 0/1 {
 						
-							** Covariates 
+							** Covariates
 							if `c' == 0 local covars ""
 							else if `c' == 1 local covars "covariates(`covariates', projected)"
+
+							** Covariates for sdid_event (doesn't support 'projected' option)
+							if `c' == 0 local covars_event ""
+							else if `c' == 1 local covars_event "covariates(`covariates')"
 							
 							** File Name 
 							if `exl' == 0 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_"
@@ -398,7 +407,7 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 							eststo sdid_`out'_`c': sdid `out' fips year Treated	///
 								if sample == 1,			 	///
 								vce(placebo) 				///
-								`covar'						///
+								`covars'					///
 								reps(`reps')				///
 								graph graph_export("`path'", .pdf)
 
@@ -441,11 +450,11 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 							restore
 							
 							** Store weights
-							preserve 
+							preserve
 							clear
 							svmat double omega, names(col)
 							rename c2 fips
-							rename c1 weight 
+							rename c1 weight
 							gen sample_data = "`out_txt'"
 							gen out = "`out'"
 							gen sample = "`samp'"
@@ -453,59 +462,65 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 							gen exclusion = `exl'
 							drop if weight == 0
 							drop if missing(fips )
-							order sample_data sample out controls exclusion fips weight 
-							sort weight 
+							order sample_data sample out controls exclusion fips weight
+							sort weight
 							append using "${results}sdid/sdid_weights.dta"
 							compress
-							save "${results}sdid/sdid_weights.dta", replace 
+							save "${results}sdid/sdid_weights.dta", replace
 							clear 
 							restore 
 							
-							** Run event-study 
+							** Run event-study
 							sdid_event `out' fips year Treated			///
 								if sample == 1,			 			///
-								`covar'								///
+								`covars_event'						///
 								vce(placebo) 						///
 								brep(`reps') 						///
 								placebo(all)
+
+							** Clean up sdid_event internal variables
+							capture drop ever_treated*
 							
-							** Create Figure 
-							
-							** Store max year 
+							** Create Figure
+
+							** Store max year
 							qui summ year if multnomah == 1 & sample == 1
 							local max_yr = r(max)
 							dis "`max_yr'"
-							
-							** Move results from matrix to data 
+
+							** Move results from matrix to data
 							qui count if multnomah == 1 & sample == 1
 							local ct = r(N)
 							local ct = `ct' + 1
 							matrix list e(H)
 							mat res = e(H)[2..`ct',1..5]
-				
-							** Move Matrix results to data 
+
+							** Preserve data before plotting (expand creates duplicate obs)
+							preserve
+
+							** Move Matrix results to data
 							svmat res
-							
+
 							** Generate ID variable
 							gen id = `max_yr' - _n + 1 if !missing(res1)
-							
-							** Update labeling for exclusion of 
+
+							** Update labeling for exclusion of 2020
 							if `exl' == 1 {
-								replace id = id - 1 if id <= 2020 
+								replace id = id - 1 if id <= 2020
 								expand 2 if id == 2019, gen(tag)
-								replace id = 2020 if tag == 1 
-								replace res1 = . if tag == 1 
-								replace res3 = . if tag == 1 
-								replace res4 = . if tag == 1 
+								replace id = 2020 if tag == 1
+								replace res1 = . if tag == 1
+								replace res3 = . if tag == 1
+								replace res4 = . if tag == 1
 							}
 							label var id "Year (destination)"
-							
-							** Sort 
+
+							** Sort
 							sort id
-							
+
 							** Plot
 							twoway 	(rcap res3 res4 id, lc(gs10) fc(gs11%50))	///
-									(scatter res1 id, mc(black)),				///		
+									(scatter res1 id, mc(black)),				///
 								legend(off) ytitle("`label'") 					///
 								yline(0, lc(red) lp(-)) 						///
 								xline(2020.5, lc(black) lp(solid))				///
@@ -513,19 +528,12 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 
 							if `exl' == 0 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_eventstudy.jpg"
 							if `exl' == 1 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_excl2020_eventstudy.jpg"
-		
-								
-							graph export "`path'", 	///
-								as(jpg) name("Graph") quality(100) replace 		
 
-							** Clean up 
-							drop res1 res2 res3 res4 res5 id 
-							if `exl' == 1 {
-								drop if tag == 1
-								drop tag 
-							}
-							** Update Count
-							local ct = `ct' + 1 
+							graph export "`path'", 	///
+								as(jpg) name("Graph") quality(100) replace
+
+							** Restore data (removes expanded rows and temp variables)
+							restore 
 											
 						} // END COVAR LOOP 
 					

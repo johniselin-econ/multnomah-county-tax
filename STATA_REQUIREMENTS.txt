@@ -1,0 +1,81 @@
+================================================================================
+Stata Package Requirements for Multnomah County Tax Analysis
+================================================================================
+
+This project requires the following user-written Stata packages. Install them
+before running the analysis scripts.
+
+--------------------------------------------------------------------------------
+REQUIRED PACKAGES
+--------------------------------------------------------------------------------
+
+1. sdid - Synthetic Difference-in-Differences
+   Install: ssc install sdid, replace
+
+2. sdid_event - Event study post-estimation for SDID
+   Install: ssc install sdid_event, replace
+
+3. reghdfe - Linear regression with high-dimensional fixed effects
+   Install: ssc install reghdfe, replace
+
+4. ftools - Fast Stata commands (required by reghdfe)
+   Install: ssc install ftools, replace
+
+5. ppmlhdfe - Poisson pseudo-maximum likelihood with HDFE
+   Install: ssc install ppmlhdfe, replace
+
+6. estout - Export estimation results to LaTeX/Excel
+   Install: ssc install estout, replace
+
+7. coefplot - Plot regression coefficients
+   Install: ssc install coefplot, replace
+
+8. parallel - Parallel processing for Stata
+   Install: net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
+
+9. plotplainblind - Color-blind friendly plot scheme
+   Install: ssc install blindschemes, replace
+
+--------------------------------------------------------------------------------
+QUICK INSTALL (run in Stata)
+--------------------------------------------------------------------------------
+
+Copy and paste the following commands into Stata to install all packages:
+
+    ssc install sdid, replace
+    ssc install sdid_event, replace
+    ssc install reghdfe, replace
+    ssc install ftools, replace
+    ssc install ppmlhdfe, replace
+    ssc install estout, replace
+    ssc install coefplot, replace
+    net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
+    ssc install blindschemes, replace
+
+--------------------------------------------------------------------------------
+VERIFICATION
+--------------------------------------------------------------------------------
+
+To verify packages are installed correctly, run:
+
+    which sdid
+    which reghdfe
+    which ppmlhdfe
+    which estout
+    which coefplot
+    which parallel
+
+--------------------------------------------------------------------------------
+R PACKAGES (for data download and mapping)
+--------------------------------------------------------------------------------
+
+The R scripts also require:
+- ipumsr (IPUMS data download)
+- sf (spatial data handling)
+- tigris (US Census geography)
+- tidyverse (data manipulation and visualization)
+
+Install in R with:
+    install.packages(c("ipumsr", "sf", "tigris", "tidyverse"))
+
+================================================================================

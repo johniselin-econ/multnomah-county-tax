@@ -121,14 +121,15 @@ program define acs_make_gross_migration
     syntax using/ [if] [in], SAVING(string) [REPLACE] ///
         [ IDSFILE(string) ///
           YEARVAR(name) ORIGFIPS(name) DESTFIPS(name) ///
-          PERSONWT(name) HHWT(name) HEADVAR(name) INCOME(name) SAMPLE(string)]
+          PERSONWT(name) HHWT(name) HHPERWT(name) HEADVAR(name) INCOME(name) SAMPLE(string)]
 
     // Defaults consistent with your 01_clean_data.do
     if "`idsfile'"  == "" local idsfile  "${data}working/ids"
     if "`yearvar'"  == "" local yearvar  year
     if "`origfips'" == "" local origfips fips_o
     if "`destfips'" == "" local destfips fips_d
-    if "`personwt'" == "" local personwt perwt
+	if "`personwt'" == "" local personwt perwt
+    if "`hhperwt'"  == "" local hhperwt  hh_perwt
     if "`hhwt'"     == "" local hhwt     hhwt
     if "`headvar'"  == "" local headvar  hh_head
     if "`income'"   == "" local income   inctot
@@ -154,7 +155,7 @@ program define acs_make_gross_migration
     replace `income' = 0 if missing(`income')
 
     // Build weighted components at the person level
-    gen double persons_wt = `personwt'
+    gen double persons_wt = `hhperwt' if `headvar' == 1
     gen double dollars_wt = `income' * `personwt'
     gen double households_wt = `hhwt' if `headvar' == 1
     replace households_wt = 0 if missing(households_wt)
@@ -818,6 +819,14 @@ bysort year serial: gen hh_size = _N
 bysort year serial: egen hh_adult_ct = total(adult)
 bysort year serial: egen hh_child_ct = total(child)
 
+** Define HH-wide indicators for creation of gross migration files 
+gen college = educd >= 0 
+gen hh_any_child = hh_child_ct > 0
+bysort year serial: egen hh_any_college = max(college)
+
+** Define weighted # of people 
+bysort year serial: egen hh_perwt = total(perwt)
+
 ** Sample 18+
 drop if child == 1 
 drop child adult 
@@ -962,17 +971,14 @@ clear
 ** All (18+)
 acs_make_gross_migration using "${data}working/acs_migration_file", ///
     saving("${data}working/acs_county_gross_18plus") replace 
-
-** ADD No-Kids-in-HH 
-** REPLACE BELOW WITH MAX EDUCATION IN HH 	
 	
 ** College-degrees 
 acs_make_gross_migration  using "${data}working/acs_migration_file", ///
-    saving("${data}working/acs_county_gross_college") replace sample("educd >= 101")
+    saving("${data}working/acs_county_gross_college") replace sample("hh_any_college == 1")
 	
-** No college  
+** No Kids
 acs_make_gross_migration using "${data}working/acs_migration_file", ///
-    saving("${data}working/acs_county_gross_nocollege") replace sample("educd < 101")
+    saving("${data}working/acs_county_gross_nokids") replace sample("hh_any_child == 0")
 	
 ********************************************************************************
 ** STEP 5: Import and Clean IRS Migration Data 
@@ -1545,8 +1551,190 @@ foreach v of varlist mc_* mf_* {
     } // END FIPS LOOP 
 } // END VAR LOOP 
 
-** Save file 
-save "${data}working/dol_childcare", replace 
+** Save file
+save "${data}working/dol_childcare", replace
+
+
+********************************************************************************
+** STEP 8: Calculate County-Level Property Tax Rates from ACS Data
+********************************************************************************
+
+** Load ACS migration file (contains proptx99, valueh, qproptx99, qvalueh)
+use "${data}working/acs_migration_file", clear
+
+** Keep household heads only (relate == 1 for household reference person)
+keep if relate == 1
+
+** Generate FIPS code for destination county
+gen fips = fips_d
+
+** Drop if missing FIPS
+drop if missing(fips)
+
+** Drop observations where PROPTX99 == 0 (N/A - not applicable)
+drop if proptx99 == 0
+
+** Convert PROPTX99 codes to dollar midpoint values
+** Based on IPUMS coding scheme: https://usa.ipums.org/usa-action/variables/PROPTX99#codes_section
+gen proptx_dollars = .
+
+** Code 1: None (0)
+replace proptx_dollars = 0 if proptx99 == 1
+
+** Code 2: $1-49 -> midpoint $25
+replace proptx_dollars = 25 if proptx99 == 2
+
+** Codes 3-12: $50-99, $100-149, ... $500-549 (increments of 50, midpoints)
+forvalues i = 3/12 {
+    local lower = (`i' - 3) * 50 + 50
+    local upper = `lower' + 49
+    local midpoint = (`lower' + `upper') / 2
+    replace proptx_dollars = `midpoint' if proptx99 == `i'
+}
+
+** Codes 13-22: $550-599, $600-699, ... $1000-1099 (transitioning to $100 increments)
+replace proptx_dollars = 575 if proptx99 == 13
+replace proptx_dollars = 650 if proptx99 == 14
+replace proptx_dollars = 750 if proptx99 == 15
+replace proptx_dollars = 850 if proptx99 == 16
+replace proptx_dollars = 950 if proptx99 == 17
+replace proptx_dollars = 1050 if proptx99 == 18
+replace proptx_dollars = 1150 if proptx99 == 19
+replace proptx_dollars = 1250 if proptx99 == 20
+replace proptx_dollars = 1350 if proptx99 == 21
+replace proptx_dollars = 1450 if proptx99 == 22
+
+** Codes 23+: Higher ranges with $100 increments then $500/$1000 at top
+** $1500-1599, $1600-1699, ... up to high values
+forvalues i = 23/62 {
+    local lower = (`i' - 23) * 100 + 1500
+    local upper = `lower' + 99
+    local midpoint = (`lower' + `upper') / 2
+    replace proptx_dollars = `midpoint' if proptx99 == `i'
+}
+
+** Codes 63+: Higher brackets ($5500+)
+replace proptx_dollars = 5750 if proptx99 == 63
+replace proptx_dollars = 6250 if proptx99 == 64
+replace proptx_dollars = 6750 if proptx99 == 65
+replace proptx_dollars = 7250 if proptx99 == 66
+replace proptx_dollars = 7750 if proptx99 == 67
+replace proptx_dollars = 8500 if proptx99 == 68
+replace proptx_dollars = 9500 if proptx99 == 69
+
+** For codes 70+: Use approximate midpoints for higher brackets
+** These are $10000+ ranges
+forvalues i = 70/100 {
+    if proptx_dollars == . & proptx99 == `i' {
+        local midpoint = 10000 + (`i' - 70) * 1000
+        replace proptx_dollars = `midpoint' if proptx99 == `i'
+    }
+}
+
+** Top codes (very high property taxes)
+replace proptx_dollars = 75000 if proptx99 >= 140 & proptx99 < 159
+replace proptx_dollars = 100000 if proptx99 == 159
+
+** Label variable
+label var proptx_dollars "Property tax ($ midpoint from PROPTX99 codes)"
+
+** Drop if property tax could not be assigned or home value is missing/zero
+drop if missing(proptx_dollars)
+drop if missing(valueh) | valueh == 0 | valueh == 9999999
+
+** Calculate property tax rate (as percentage of home value)
+gen prop_rate = 100 * proptx_dollars / valueh
+label var prop_rate "Property tax rate (% of home value)"
+
+** ============================================================================
+** VERSION 1: Overall (all observations)
+** ============================================================================
+preserve
+
+** Collapse to county X year, weighted by household weight
+collapse (mean) prop_rate_mean = prop_rate ///
+         (semean) prop_rate_se = prop_rate ///
+         (count) prop_rate_n = prop_rate ///
+         [fw = hhwt], by(year fips)
+
+** Label variables
+label var prop_rate_mean "Mean property tax rate (% of home value)"
+label var prop_rate_se "SE of property tax rate"
+label var prop_rate_n "Number of observations"
+
+** Generate state and county FIPS
+gen state_fips = floor(fips / 1000)
+gen county_fips = mod(fips, 1000)
+
+** Merge with county names
+merge m:1 state_fips county_fips using "${data}working/ids", keep(master match) nogen
+
+** Handle suppressed counties (county_fips == 0): merge state names and set county to "Other"
+merge m:1 state_fips using "${data}working/state_ids", keep(master match) update nogen
+replace county_name = "Other" if county_fips == 0
+
+** Order variables
+order year fips state_fips county_fips state_name county_name prop_rate_mean prop_rate_se prop_rate_n
+
+** Sort
+sort fips year
+
+** Save overall version
+save "${data}working/property_tax_rates_overall", replace
+
+** Export to CSV
+export delimited using "${data}working/property_tax_rates_overall.csv", replace
+
+restore
+
+** ============================================================================
+** VERSION 2: Excluding allocated values (qproptx99 != 4, qvalueh != 4)
+** ============================================================================
+
+** Drop observations where values are allocated (quality flag == 4)
+drop if qprotx99 == 4
+drop if qvalueh == 4
+
+** Collapse to county X year, weighted by household weight
+collapse (mean) prop_rate_mean = prop_rate ///
+         (semean) prop_rate_se = prop_rate ///
+         (count) prop_rate_n = prop_rate ///
+         [fw = hhwt], by(year fips)
+
+** Label variables
+label var prop_rate_mean "Mean property tax rate (% of home value, excl. allocated)"
+label var prop_rate_se "SE of property tax rate (excl. allocated)"
+label var prop_rate_n "Number of observations (excl. allocated)"
+
+** Generate state and county FIPS
+gen state_fips = floor(fips / 1000)
+gen county_fips = mod(fips, 1000)
+
+** Merge with county names
+merge m:1 state_fips county_fips using "${data}working/ids", keep(master match) nogen
+
+** Handle suppressed counties (county_fips == 0): merge state names and set county to "Other"
+merge m:1 state_fips using "${data}working/state_ids", keep(master match) update nogen
+replace county_name = "Other" if county_fips == 0
+
+** Order variables
+order year fips state_fips county_fips state_name county_name prop_rate_mean prop_rate_se prop_rate_n
+
+** Sort
+sort fips year
+
+** Save version excluding allocated
+save "${data}working/property_tax_rates_excl_allocated", replace
+
+** Export to CSV
+export delimited using "${data}working/property_tax_rates_excl_allocated.csv", replace
+
+** Display summary
+dis "Property tax rate calculation complete."
+dis "Overall version saved to: ${data}working/property_tax_rates_overall.dta"
+dis "Excluding allocated saved to: ${data}working/property_tax_rates_excl_allocated.dta"
+
+clear
 
 
 ** Close log

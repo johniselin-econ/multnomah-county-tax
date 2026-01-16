@@ -103,6 +103,11 @@ download_ipums_acs <- function(project_root,
       pwstate2   <- var_spec("PWSTATE2",   data_quality_flags = FALSE)
       pwcounty   <- var_spec("PWCOUNTY",   data_quality_flags = FALSE)
       
+      rent       <- var_spec("RENT", data_quality_flags = TRUE)
+      valueh     <- var_spec("VALUEH", data_quality_flags = TRUE)
+      proptx99   <- var_spec("PROPTX99", data_quality_flags = TRUE)
+      
+      
       acs_data <- define_extract_micro(
         collection  = "usa",
         description = extract_name,
@@ -115,7 +120,8 @@ download_ipums_acs <- function(project_root,
           "AGE", "SEX", "RACE", "HISPAN", "MARST", "CITIZEN", "SCHOOL", "EDUCD",
           inctot, ftotinc, incwage, incearn, incbus00, incinvst, incwelfr, incsupp, incother,
           gq, workedyr, empstat, empstatd,
-          migrate1, migrate1d, migplac1, migcounty1, pwcounty, pwstate2 
+          migrate1, migrate1d, migplac1, migcounty1, pwcounty, pwstate2, 
+          rent, valueh, proptx99
         )
       ) |>
         submit_extract() |>

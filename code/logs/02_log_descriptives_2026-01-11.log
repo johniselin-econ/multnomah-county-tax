@@ -1,0 +1,92 @@
+--------------------------------------------------------------------
+      name:  log_02
+       log:  C:/Users/ji252/Documents/GitHub/multnomah-county-tax/co
+> de/logs/02_log_descriptives_2026-01-11.log
+  log type:  text
+ opened on:  11 Jan 2026, 18:06:29
+
+. 
+. ** Determine set of common in- and out-migration counties for Mult
+> nomah
+. use ${data}working/irs_county_flow.dta, clear 
+
+. 
+. ** Tag Multnomah
+. gen multnomah_o = (state_fips_o == 41 & county_fips_o == 51)
+
+. gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
+
+. 
+. ** Loop over samples 
+. foreach x in "o" "d" {
+  2.         
+.         ** Preserve 
+.         preserve 
+  3.         
+.         ** Keep Multnomah
+.         keep if multnomah_`x' == 1 
+  4.         
+.         ** Export data 
+.         export excel using "${data}multnomah.xlsx",     ///
+>                 sheet(irs_`x', replace ) firstrow(variables) 
+  5.                 
+.         ** Clear and restore 
+.         clear 
+  6.         restore
+  7.                 
+. } // END ORIGIN-DESTINATION LOOP 
+(361,546 observations deleted)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/multn
+> omah.xlsx saved
+(361,434 observations deleted)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/multn
+> omah.xlsx saved
+
+. 
+. ** Determine set of common in- and out-migration counties for Mult
+> nomah
+. use ${data}working/acs_county_flow.dta, clear 
+
+. 
+. ** Tag Multnomah
+. gen multnomah_o = (state_fips_o == 41 & county_fips_o == 51)
+
+. gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
+
+. 
+. ** Loop over samples 
+. foreach x in "o" "d" {
+  2.         
+.         ** Preserve 
+.         preserve 
+  3.         
+.         ** Keep Multnomah
+.         keep if multnomah_`x' == 1 
+  4.         
+.         ** Export data 
+.         export excel using "${data}multnomah.xlsx",     ///
+>                 sheet(acs_`x', replace ) firstrow(variables) 
+  5.                 
+.         ** Clear and restore 
+.         clear 
+  6.         restore
+  7.                 
+. } // END ORIGIN-DESTINATION LOOP 
+(230,904 observations deleted)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/multn
+> omah.xlsx saved
+(230,847 observations deleted)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/multn
+> omah.xlsx saved
+
+. 
+. ** Close log
+. clear 
+
+. log close log_02
+      name:  log_02
+       log:  C:/Users/ji252/Documents/GitHub/multnomah-county-tax/co
+> de/logs/02_log_descriptives_2026-01-11.log
+  log type:  text
+ closed on:  11 Jan 2026, 18:06:31
+--------------------------------------------------------------------
