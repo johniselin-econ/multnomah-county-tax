@@ -1,0 +1,223 @@
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+      name:  log_02
+       log:  C:/Users/ji252/Documents/GitHub/multnomah-county-tax/code/logs/02_log_flow_2026-01-16.log
+  log type:  text
+ opened on:  19 Jan 2026, 20:48:44
+
+. 
+. ** Parameters
+. local reps = 100
+
+. 
+. ** Load ACS data to get the set of counties 
+. use "${data}working/acs_county_gross_18plus", clear
+
+. 
+. ** Keep required variables 
+. keep year fips 
+
+. 
+. ** Keep only always-observed fips 
+. bysort fips: gen ct = _N
+
+. tab ct 
+
+         ct |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          3 |        168        3.48        3.48
+          7 |        287        5.95        9.43
+         10 |      4,370       90.57      100.00
+------------+-----------------------------------
+      Total |      4,825      100.00
+
+. keep if ct == 10 
+(455 observations deleted)
+
+. 
+. ** Keep fips 
+. keep fips 
+
+. 
+. ** Drop duplicates 
+. duplicates drop 
+
+Duplicates in terms of all variables
+
+(3,933 observations deleted)
+
+. 
+. ** Preserve data 
+. tempfile acs_fips 
+
+. save `acs_fips'
+file C:\Users\ji252\AppData\Local\Temp\ST_4564_000001.tmp saved as .dta format
+
+. clear 
+
+. 
+. ** Load IRS Data
+. use "${data}working/irs_county_flow.dta", clear
+
+. 
+. ** Sample restrictions
+. drop if inlist(state_fips_o, 2, 15)     // Alaska and Hawaii
+(3,109 observations deleted)
+
+. drop if inlist(state_fips_d, 2, 15)     // Alaska and Hawaii
+(2,293 observations deleted)
+
+. 
+. ** Clean up variables
+. drop fips
+
+. 
+. ** Mover indicators
+. gen mover = fips_o != fips_d
+
+. 
+. ** Generate flow id
+. egen flow_id = group(fips_d fips_o)
+
+. 
+. ** Declare panel and fill in missing values 
+. xtset flow_id year 
+
+Panel variable: flow_id (unbalanced)
+ Time variable: year, 2016 to 2022, but with gaps
+         Delta: 1 unit
+
+. tsfill, full
+
+. 
+. ** Keep required variables 
+. keep fips_d fips_o flow_id year mover n1 n2 agi 
+
+. 
+. ** Replace with 0s
+. replace n1 = 0 if missing(n1)
+(140,172 real changes made)
+
+. replace n2 = 0 if missing(n2)
+(140,172 real changes made)
+
+. replace agi = 0 if missing(agi)
+(140,172 real changes made)
+
+. replace agi = 0 if agi < 0 
+(89 real changes made)
+
+. 
+. ** Merge with time-varying controls
+. 
+. ** Keep if in donor pool in both origin and destination
+. foreach x in "o" "d" {
+  2. 
+.         ** Fill in missing fips
+.         bysort flow_id: egen tmp = mean(fips_`x')
+  3.         replace fips_`x' = tmp if missing(fips_`x')
+  4.         drop tmp 
+  5. 
+.         ** Merge with relevent variables
+.         gen fips = fips_`x'
+  6.         merge m:1 fips using "${data}working/ids",                                              ///
+>                 keep(match) gen(merge_ids_`x')
+  7.         merge m:1 year fips using "${data}working/bls_unemployment",    ///
+>                 keep(match) gen(merge_bls_`x')
+  8.         merge m:1 year fips using "${data}working/bea_economics",               ///
+>                 keep(match) gen(merge_bea_`x')
+  9.         merge m:1 fips using `acs_fips', keep(master match) gen(merge_acs_`x')
+ 10.         
+.         ** Rename
+.         rename state_name state_name_`x'
+ 11.         rename state_fips state_fips_`x'
+ 12.         rename county_name county_name_`x'
+ 13.         rename county_fips county_fips_`x'      
+ 14.         rename unemp unemp_`x'
+ 15.         rename population pop_`x'
+ 16.         rename per_capita_income per_capita_income_`x'
+ 17.         drop fips
+ 18. 
+. } // END ORIGIN-DESTINATION LOOP
+(140,172 real changes made)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                           497,448  (merge_ids_o==3)
+    -----------------------------------------
+(variable fips was float, now double to accommodate using data's values)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                           491,939  (merge_bls_o==3)
+    -----------------------------------------
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                           484,407  (merge_bea_o==3)
+    -----------------------------------------
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                       202,846
+        from master                   202,846  (merge_acs_o==1)
+        from using                          0  (merge_acs_o==2)
+
+    Matched                           281,561  (merge_acs_o==3)
+    -----------------------------------------
+(136,291 real changes made)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                           484,407  (merge_ids_d==3)
+    -----------------------------------------
+(variable fips was float, now double to accommodate using data's values)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                           480,970  (merge_bls_d==3)
+    -----------------------------------------
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                           475,524  (merge_bea_d==3)
+    -----------------------------------------
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                       207,879
+        from master                   207,879  (merge_acs_d==1)
+        from using                          0  (merge_acs_d==2)
+
+    Matched                           267,645  (merge_acs_d==3)
+    -----------------------------------------
+
+. 
+end of do-file
+
+. gen acs_flow = merge_acs_d == 3 & merge_acs_o == 3
+
+. tab acs_flow
+
+   acs_flow |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |    297,472       62.56       62.56
+          1 |    178,052       37.44      100.00
+------------+-----------------------------------
+      Total |    475,524      100.00
+
+. do "C:\Users\ji252\AppData\Local\Temp\STD4564_000011.tmp"
+
+. use "${data}working/irs_county_gross.dta", clear
+
+. 
+end of do-file
+
+. clear
+
+. exit

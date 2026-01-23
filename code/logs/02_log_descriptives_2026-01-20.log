@@ -1,0 +1,1152 @@
+---------------------------------------------------------------
+      name:  log_02
+       log:  C:/Users/ji252/Documents/GitHub/multnomah-county-t
+> ax/code/logs/02_log_descriptives_2026-01-20.log
+  log type:  text
+ opened on:  20 Jan 2026, 10:13:43
+
+. 
+. ** Determine set of common in- and out-migration counties for
+>  Multnomah
+. use ${data}working/irs_county_flow.dta, clear 
+
+. 
+. ** Tag Multnomah
+. gen multnomah_o = (state_fips_o == 41 & county_fips_o == 51)
+
+. gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
+
+. 
+. ** Loop over samples 
+. foreach x in "o" "d" {
+  2.         
+.         ** Preserve 
+.         preserve 
+  3.         
+.         ** Keep Multnomah
+.         keep if multnomah_`x' == 1 
+  4.         
+.         ** Export data 
+.         export excel using "${data}multnomah.xlsx",     ///
+>                 sheet(irs_`x', replace ) firstrow(variables) 
+  5.                 
+.         ** Clear and restore 
+.         clear 
+  6.         restore
+  7.                 
+. } // END ORIGIN-DESTINATION LOOP 
+(361,546 observations deleted)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/
+> multnomah.xlsx saved
+(361,434 observations deleted)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/
+> multnomah.xlsx saved
+
+. 
+. ** Determine set of common in- and out-migration counties for
+>  Multnomah
+. use ${data}working/acs_county_flow.dta, clear 
+
+. 
+. ** Tag Multnomah
+. gen multnomah_o = (state_fips_o == 41 & county_fips_o == 51)
+
+. gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
+
+. 
+. ** Loop over samples 
+. foreach x in "o" "d" {
+  2.         
+.         ** Preserve 
+.         preserve 
+  3.         
+.         ** Keep Multnomah
+.         keep if multnomah_`x' == 1 
+  4.         
+.         ** Export data 
+.         export excel using "${data}multnomah.xlsx",     ///
+>                 sheet(acs_`x', replace ) firstrow(variables) 
+  5.                 
+.         ** Clear and restore 
+.         clear 
+  6.         restore
+  7.                 
+. } // END ORIGIN-DESTINATION LOOP 
+(230,904 observations deleted)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/
+> multnomah.xlsx saved
+(230,847 observations deleted)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/
+> multnomah.xlsx saved
+
+. 
+. /************************************************************
+> *******************
+> SECTION 2: PRE-POST FLOW COMPARISON (2018-2019 vs 2021-2022)
+> Purpose: Compare IRS migration flows to/from Multnomah County
+>  before and after
+>          the 2020 tax change. Creates datasets and exports CS
+> Vs for mapping.
+>          Includes both raw flows and rates (flow / Multnomah 
+> population).
+> *************************************************************
+> ******************/
+. 
+. ** ----------------------------------------------------------
+> ------
+. ** GET MULTNOMAH BASELINE POPULATION FOR RATE CALCULATIONS
+. ** ----------------------------------------------------------
+> ------
+. 
+. ** Load gross data to get Multnomah's total population by per
+> iod
+. use "${data}working/irs_county_gross", clear
+
+. 
+. ** Keep only Multnomah County
+. keep if state_fips == 41 & county_fips == 51
+(21,973 observations deleted)
+
+. 
+. ** Keep only pre and post periods
+. gen period = ""
+(7 missing values generated)
+
+. replace period = "pre" if inlist(year, 2018, 2019)
+variable period was str1 now str3
+(2 real changes made)
+
+. replace period = "post" if inlist(year, 2021, 2022)
+variable period was str3 now str4
+(2 real changes made)
+
+. keep if period != ""
+(3 observations deleted)
+
+. 
+. ** Calculate base population (non-movers + all movers = total
+>  filers)
+. gen n1_base = n1_out_1 + n1_out_2
+
+. gen n2_base = n2_out_1 + n2_out_2
+
+. gen agi_base = agi_out_1 + agi_out_2
+
+. 
+. ** Collapse to get average by period
+. collapse (mean) n1_base n2_base agi_base, by(period)
+
+. 
+. ** Store population values in locals for later use
+. summ n1_base if period == "pre", meanonly
+
+. local n1_pop_pre = r(mean)
+
+. summ n1_base if period == "post", meanonly
+
+. local n1_pop_post = r(mean)
+
+. 
+. summ n2_base if period == "pre", meanonly
+
+. local n2_pop_pre = r(mean)
+
+. summ n2_base if period == "post", meanonly
+
+. local n2_pop_post = r(mean)
+
+. 
+. summ agi_base if period == "pre", meanonly
+
+. local agi_pop_pre = r(mean)
+
+. summ agi_base if period == "post", meanonly
+
+. local agi_pop_post = r(mean)
+
+. 
+. ** Display population values for log
+. dis "Multnomah County baseline populations:"
+Multnomah County baseline populations:
+
+. dis "  n1 (returns): pre = `n1_pop_pre', post = `n1_pop_post'
+> "
+  n1 (returns): pre = 339804, post = 352539.5
+
+. dis "  n2 (exemptions): pre = `n2_pop_pre', post = `n2_pop_po
+> st'"
+  n2 (exemptions): pre = 619925.5, post = 611226
+
+. dis "  agi: pre = `agi_pop_pre', post = `agi_pop_post'"
+  agi: pre = 28851868, post = 33774184
+
+. 
+. clear
+
+. 
+. ** ----------------------------------------------------------
+> ------
+. ** LOAD FLOW DATA AND CREATE COMPARISON DATASETS
+. ** ----------------------------------------------------------
+> ------
+. 
+. ** Load IRS flow data
+. use ${data}working/irs_county_flow.dta, clear
+
+. 
+. ** Define Multnomah County FIPS
+. local multnomah_fips = 41051
+
+. 
+. ** Define pre and post periods
+. local pre_years "2018 2019"
+
+. local post_years "2021 2022"
+
+. 
+. ** Create period indicator
+. gen period = ""
+(362,678 missing values generated)
+
+. replace period = "pre" if inlist(year, 2018, 2019)
+variable period was str1 now str3
+(97,023 real changes made)
+
+. replace period = "post" if inlist(year, 2021, 2022)
+variable period was str3 now str4
+(107,196 real changes made)
+
+. 
+. ** Keep only pre and post periods
+. keep if period != ""
+(158,459 observations deleted)
+
+. 
+. ** Loop over each measure to create separate datasets
+. foreach measure in "n1" "n2" "agi" {
+  2. 
+.         ** Display status
+.         dis "Creating flow comparison dataset for `measure'..
+> ."
+  3. 
+.         ** Preserve original data
+.         preserve
+  4. 
+.         ** --------------------------------------------------
+> --------------
+.         ** OUT-MIGRATION: Flows FROM Multnomah TO other count
+> ies
+.         ** --------------------------------------------------
+> --------------
+. 
+.         ** Keep flows where Multnomah is the origin
+.         keep if fips_o == `multnomah_fips'
+  5. 
+.         ** Collapse to sum flows by destination county and pe
+> riod
+.         collapse (sum) `measure', by(fips_d period)
+  6. 
+.         ** Reshape to wide format (pre and post as columns)
+.         reshape wide `measure', i(fips_d) j(period) string
+  7. 
+.         ** Rename for clarity
+.         rename fips_d fips
+  8.         rename `measure'pre out_pre
+  9.         rename `measure'post out_post
+ 10. 
+.         ** Save temp file for out-migration
+.         tempfile out_flows
+ 11.         save `out_flows'
+ 12. 
+.         ** --------------------------------------------------
+> --------------
+.         ** IN-MIGRATION: Flows TO Multnomah FROM other counti
+> es
+.         ** --------------------------------------------------
+> --------------
+. 
+.         ** Restore and start fresh
+.         restore
+ 13.         preserve
+ 14. 
+.         ** Keep flows where Multnomah is the destination
+.         keep if fips_d == `multnomah_fips'
+ 15. 
+.         ** Collapse to sum flows by origin county and period
+.         collapse (sum) `measure', by(fips_o period)
+ 16. 
+.         ** Reshape to wide format
+.         reshape wide `measure', i(fips_o) j(period) string
+ 17. 
+.         ** Rename for clarity
+.         rename fips_o fips
+ 18.         rename `measure'pre in_pre
+ 19.         rename `measure'post in_post
+ 20. 
+.         ** --------------------------------------------------
+> --------------
+.         ** MERGE: Combine in and out flows
+.         ** --------------------------------------------------
+> --------------
+. 
+.         ** Merge with out-migration flows
+.         merge 1:1 fips using `out_flows', nogen
+ 21. 
+.         ** Replace missing with 0 (counties with flows in onl
+> y one direction)
+.         foreach var of varlist out_pre out_post in_pre in_pos
+> t {
+ 22.                 replace `var' = 0 if missing(`var')
+ 23.         }
+ 24. 
+.         ** --------------------------------------------------
+> --------------
+.         ** ADD MULTNOMAH BASELINE POPULATION
+.         ** --------------------------------------------------
+> --------------
+. 
+.         ** Add Multnomah population for pre and post periods
+.         gen pop_pre = ``measure'_pop_pre'
+ 25.         gen pop_post = ``measure'_pop_post'
+ 26. 
+.         ** --------------------------------------------------
+> --------------
+.         ** CALCULATE RATES (flow / population * 100)
+.         ** --------------------------------------------------
+> --------------
+. 
+.         ** Out-migration rates (% of Multnomah population mov
+> ing to each county)
+.         gen out_rate_pre = 100 * out_pre / pop_pre
+ 27.         gen out_rate_post = 100 * out_post / pop_post
+ 28. 
+.         ** In-migration rates (% of Multnomah population repr
+> esented by in-migrants)
+.         gen in_rate_pre = 100 * in_pre / pop_pre
+ 29.         gen in_rate_post = 100 * in_post / pop_post
+ 30. 
+.         ** Calculate rate changes
+.         gen out_rate_change = out_rate_post - out_rate_pre
+ 31.         gen in_rate_change = in_rate_post - in_rate_pre
+ 32.         gen net_rate_change = in_rate_change - out_rate_ch
+> ange
+ 33. 
+.         ** Order columns
+.         order fips pop_pre pop_post ///
+>                 out_pre out_post out_rate_pre out_rate_post o
+> ut_rate_change ///
+>                 in_pre in_post in_rate_pre in_rate_post in_ra
+> te_change net_rate_change
+ 34. 
+.         ** Sort by fips
+.         sort fips
+ 35. 
+.         ** Label variables
+.         label var fips "County FIPS code"
+ 36.         label var pop_pre "Multnomah baseline population (
+> 2018-2019 avg)"
+ 37.         label var pop_post "Multnomah baseline population 
+> (2021-2022 avg)"
+ 38.         label var out_pre "Out-migration from Multnomah (2
+> 018-2019)"
+ 39.         label var out_post "Out-migration from Multnomah (
+> 2021-2022)"
+ 40.         label var out_rate_pre "Out-migration rate (%, 201
+> 8-2019)"
+ 41.         label var out_rate_post "Out-migration rate (%, 20
+> 21-2022)"
+ 42.         label var out_rate_change "Change in out-migration
+>  rate (pp)"
+ 43.         label var in_pre "In-migration to Multnomah (2018-
+> 2019)"
+ 44.         label var in_post "In-migration to Multnomah (2021
+> -2022)"
+ 45.         label var in_rate_pre "In-migration rate (%, 2018-
+> 2019)"
+ 46.         label var in_rate_post "In-migration rate (%, 2021
+> -2022)"
+ 47.         label var in_rate_change "Change in in-migration r
+> ate (pp)"
+ 48.         label var net_rate_change "Change in net migration
+>  rate (pp)"
+ 49. 
+.         ** Save Stata dataset to working directory (for R map
+> ping)
+.         save "${data}working/multnomah_flow_comparison_`measu
+> re'.dta", replace
+ 50. 
+.         ** Export to CSV for R mapping
+.         export delimited using "${data}working/multnomah_flow
+> _comparison_`measure'.csv", replace
+ 51. 
+.         ** Display summary statistics
+.         dis "Summary for `measure' - Raw flows:"
+ 52.         summ out_pre out_post in_pre in_post
+ 53. 
+.         dis "Summary for `measure' - Rates (%):"
+ 54.         summ out_rate_pre out_rate_post in_rate_pre in_rat
+> e_post
+ 55. 
+.         dis "Summary for `measure' - Rate changes (pp):"
+ 56.         summ out_rate_change in_rate_change net_rate_chang
+> e
+ 57. 
+.         ** Restore original data for next measure
+.         restore
+ 58. 
+. } // END MEASURE LOOP
+Creating flow comparison dataset for n1...
+(203,572 observations deleted)
+(j = post pre)
+
+Data                               Long   ->   Wide
+---------------------------------------------------------------
+> --------------
+Number of observations              355   ->   202         
+Number of variables                   3   ->   3           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                     n1   ->   n1post n1pre
+---------------------------------------------------------------
+> --------------
+file C:\Users\ji252\AppData\Local\Temp\ST_a500_000006.tmp
+    saved as .dta format
+(203,528 observations deleted)
+(j = post pre)
+
+Data                               Long   ->   Wide
+---------------------------------------------------------------
+> --------------
+Number of observations              379   ->   202         
+Number of variables                   3   ->   3           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                     n1   ->   n1post n1pre
+---------------------------------------------------------------
+> --------------
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                            58
+        from master                        29  
+        from using                         29  
+
+    Matched                               173  
+    -----------------------------------------
+(75 real changes made)
+(32 real changes made)
+(36 real changes made)
+(47 real changes made)
+file
+    C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data
+    > /working/multnomah_flow_comparison_n1.dta saved
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/
+> working/multnomah_flow_comparison_n1.csv saved
+Summary for n1 - Raw flows:
+
+    Variable |        Obs        Mean    Std. dev.       Min   
+>      Max
+-------------+-------------------------------------------------
+> --------
+     out_pre |        231     217.658     999.888          0   
+>    10579
+    out_post |        231    258.5541    1107.284          0   
+>    11770
+      in_pre |        231    223.6537    835.9653          0   
+>     8773
+     in_post |        231    225.6753    816.5126          0   
+>     8572
+Summary for n1 - Rates (%):
+
+    Variable |        Obs        Mean    Std. dev.       Min   
+>      Max
+-------------+-------------------------------------------------
+> --------
+out_rate_pre |        231     .064054    .2942543          0   
+> 3.113265
+out_rate_p~t |        231    .0733405    .3140879          0   
+> 3.338633
+ in_rate_pre |        231    .0658184     .246014          0   
+> 2.581782
+in_rate_post |        231    .0640142    .2316088          0   
+> 2.431501
+Summary for n1 - Rate changes (pp):
+
+    Variable |        Obs        Mean    Std. dev.       Min   
+>      Max
+-------------+-------------------------------------------------
+> --------
+out_rate_c~e |        231    .0092865    .0249054  -.0161129   
+> .2473493
+in_rate_ch~e |        231   -.0018042    .0197721  -.1981459   
+> .0960742
+net_rate_c~e |        231   -.0110907    .0391617  -.4235137   
+> .0636027
+Creating flow comparison dataset for n2...
+(203,572 observations deleted)
+(j = post pre)
+
+Data                               Long   ->   Wide
+---------------------------------------------------------------
+> --------------
+Number of observations              355   ->   202         
+Number of variables                   3   ->   3           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                     n2   ->   n2post n2pre
+---------------------------------------------------------------
+> --------------
+file C:\Users\ji252\AppData\Local\Temp\ST_a500_000009.tmp
+    saved as .dta format
+(203,528 observations deleted)
+(j = post pre)
+
+Data                               Long   ->   Wide
+---------------------------------------------------------------
+> --------------
+Number of observations              379   ->   202         
+Number of variables                   3   ->   3           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                     n2   ->   n2post n2pre
+---------------------------------------------------------------
+> --------------
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                            58
+        from master                        29  
+        from using                         29  
+
+    Matched                               173  
+    -----------------------------------------
+(75 real changes made)
+(32 real changes made)
+(36 real changes made)
+(47 real changes made)
+file
+    C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data
+    > /working/multnomah_flow_comparison_n2.dta saved
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/
+> working/multnomah_flow_comparison_n2.csv saved
+Summary for n2 - Raw flows:
+
+    Variable |        Obs        Mean    Std. dev.       Min   
+>      Max
+-------------+-------------------------------------------------
+> --------
+     out_pre |        231    345.1342    1677.485          0   
+>    18690
+    out_post |        231    398.8095    1806.828          0   
+>    20381
+      in_pre |        231    322.4978    1252.515          0   
+>    12631
+     in_post |        231    310.0649    1160.729          0   
+>    11789
+Summary for n2 - Rates (%):
+
+    Variable |        Obs        Mean    Std. dev.       Min   
+>      Max
+-------------+-------------------------------------------------
+> --------
+out_rate_pre |        231    .0556735    .2705946          0   
+> 3.014879
+out_rate_p~t |        231    .0652475    .2956072          0   
+> 3.334446
+ in_rate_pre |        231     .052022    .2020428          0   
+> 2.037503
+in_rate_post |        231    .0507284    .1899018          0   
+> 1.928746
+Summary for n2 - Rate changes (pp):
+
+    Variable |        Obs        Mean    Std. dev.       Min   
+>      Max
+-------------+-------------------------------------------------
+> --------
+out_rate_c~e |        231     .009574    .0280899  -.0120743   
+> .3195674
+in_rate_ch~e |        231   -.0012937    .0163673  -.1644121   
+> .0814157
+net_rate_c~e |        231   -.0108676    .0414007  -.4839796   
+> .0637089
+Creating flow comparison dataset for agi...
+(203,572 observations deleted)
+(j = post pre)
+
+Data                               Long   ->   Wide
+---------------------------------------------------------------
+> --------------
+Number of observations              355   ->   202         
+Number of variables                   3   ->   3           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                    agi   ->   agipost agipre
+---------------------------------------------------------------
+> --------------
+file C:\Users\ji252\AppData\Local\Temp\ST_a500_00000c.tmp
+    saved as .dta format
+(203,528 observations deleted)
+(j = post pre)
+
+Data                               Long   ->   Wide
+---------------------------------------------------------------
+> --------------
+Number of observations              379   ->   202         
+Number of variables                   3   ->   3           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                    agi   ->   agipost agipre
+---------------------------------------------------------------
+> --------------
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                            58
+        from master                        29  
+        from using                         29  
+
+    Matched                               173  
+    -----------------------------------------
+(75 real changes made)
+(32 real changes made)
+(36 real changes made)
+(47 real changes made)
+file
+    C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data
+    > /working/multnomah_flow_comparison_agi.dta saved
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/
+> working/multnomah_flow_comparison_agi.csv saved
+Summary for agi - Raw flows:
+
+    Variable |        Obs        Mean    Std. dev.       Min   
+>      Max
+-------------+-------------------------------------------------
+> --------
+     out_pre |        231     15245.4    71845.05          0   
+>   727846
+    out_post |        231    24860.27    109864.8          0   
+>  1170383
+      in_pre |        231    14641.75     53537.6          0   
+>   592707
+     in_post |        231    16286.22    58385.22          0   
+>   662028
+Summary for agi - Rates (%):
+
+    Variable |        Obs        Mean    Std. dev.       Min   
+>      Max
+-------------+-------------------------------------------------
+> --------
+out_rate_pre |        231    .0528403    .2490135          0   
+>   2.5227
+out_rate_p~t |        231    .0736073    .3252922          0   
+> 3.465318
+ in_rate_pre |        231     .050748    .1855602          0   
+> 2.054311
+in_rate_post |        231    .0482209    .1728694          0   
+>  1.96016
+Summary for agi - Rate changes (pp):
+
+    Variable |        Obs        Mean    Std. dev.       Min   
+>      Max
+-------------+-------------------------------------------------
+> --------
+out_rate_c~e |        231     .020767    .0989045  -.0461846   
+> .9903069
+in_rate_ch~e |        231   -.0025271    .0244645  -.2139035   
+> .0881895
+net_rate_c~e |        231   -.0232941      .11679  -1.170827   
+> .1055987
+
+. 
+. dis "Flow comparison datasets created and exported to ${resul
+> ts}flows/"
+Flow comparison datasets created and exported to C:/Users/ji252
+> /Documents/GitHub/multnomah-county-tax/results/flows/
+
+. 
+. /************************************************************
+> *******************
+> SECTION 3: TABLE 2 - MIGRATION RATES BY COUNTY (IRS AND ACS)
+> Purpose: Create Table 2 showing in/out-migration rates betwee
+> n Multnomah and
+>          specific neighboring counties, plus aggregated "othe
+> r" categories.
+>          Rates calculated as: flow / county population 
+>                  
+> Columns: 
+> - (1) In-migration (pre-period)
+> - (2) In-migration (post_period 1 (21-22))
+> - (3) In-migration (post_period 2 (21-24))
+> - (4) Out-migration (pre-period)
+> - (5) Out-migration (post_period 1 (21-22))
+> - (6) Out-migration (post_period 2 (21-24))      
+> - (7) Change in net-in-migration through 2022 = (2 - 5) - (1 
+> - 4)
+> - (8) Change in net-in-migration through 2024 = (3 - 6) - (1 
+> - 4)                
+> 
+> ** Rows: 
+> - Multnomah 
+> (header) Neighboring OR counties
+> Washington
+> Clackamas
+> Marion 
+> Yamhill
+> Columbia
+> (header) Neighboring WA counties
+> Clark
+> Scamania
+> All other OR counties combined
+> All other WA counties combined
+> 
+> 
+> Outputs:
+> - ${results}tables/table2.xlsx with two sheets: IRS and ACS
+> *************************************************************
+> ******************/
+. 
+. ** Create tables directory if it doesn't exist
+. capture mkdir "${results}tables"
+
+. 
+. ** ==========================================================
+> ==================
+. ** DEFINE TARGET COUNTIES
+. ** ==========================================================
+> ==================
+. 
+. ** Multnomah County FIPS
+. local multnomah_fips = 41051
+
+. 
+. ** Neighboring Oregon counties (FIPS codes)
+. ** 41067 = Washington, 41005 = Clackamas, 41047 = Marion, 410
+> 71 = Yamhill, 41009 = Columbia
+. local neighbor_or_fips "41067 41005 41047 41071 41009"
+
+. 
+. ** Neighboring Washington counties (FIPS codes)
+. ** 53011 = Clark, 53059 = Skamania
+. local neighbor_wa_fips "53011 53059"
+
+. 
+. ** ==========================================================
+> ==================
+. ** PART A: IRS TABLE
+. ** ==========================================================
+> ==================
+. 
+. dis _n "=============================================="
+
+==============================================
+
+. dis "Creating IRS Table 2..."
+Creating IRS Table 2...
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** ----------------------------------------------------------
+> ------
+. ** A1. GET COUNTY POPULATIONS BY PERIOD (IRS)
+. ** ----------------------------------------------------------
+> ------
+. 
+. use "${data}working/irs_county_gross.dta", clear
+
+. 
+. ** Create period variable
+. gen period = ""
+(21,980 missing values generated)
+
+. replace period = "pre" if inrange(year, 2016, 2019)
+variable period was str1 now str3
+(12,560 real changes made)
+
+. replace period = "post22" if inrange(year, 2021, 2022)
+variable period was str3 now str6
+(6,278 real changes made)
+
+. keep if period != ""
+(3,142 observations deleted)
+
+. 
+. ** Calculate total filers (non-movers + movers) as population
+>  proxy
+. gen n1_pop = n1_out_1 + n1_out_2
+(1 missing value generated)
+
+. 
+. ** Collapse to get average population by county and period
+. collapse (mean) n1_pop, by(fips state_fips county_fips county
+> _name period)
+
+. 
+. ** Reshape wide
+. reshape wide n1_pop, i(fips state_fips county_fips county_nam
+> e) j(period) string
+(j = post22 pre)
+
+Data                               Long   ->   Wide
+---------------------------------------------------------------
+> --------------
+Number of observations            6,283   ->   3,143       
+Number of variables                   6   ->   6           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                 n1_pop   ->   n1_poppost22 n1_
+> poppre
+---------------------------------------------------------------
+> --------------
+
+. 
+. ** Rename for clarity
+. rename n1_poppre pop_pre
+
+. rename n1_poppost22 pop_post22
+
+. 
+. ** Save county populations
+. tempfile irs_county_pop
+
+. save `irs_county_pop'
+file C:\Users\ji252\AppData\Local\Temp\ST_a500_00000e.tmp
+    saved as .dta format
+
+. 
+. ** ----------------------------------------------------------
+> ------
+. ** A2. GET BILATERAL FLOWS TO/FROM MULTNOMAH (IRS)
+. ** ----------------------------------------------------------
+> ------
+. 
+. use "${data}working/irs_county_flow.dta", clear
+
+. 
+. ** Create period variable
+. gen period = ""
+(362,678 missing values generated)
+
+. replace period = "pre" if inrange(year, 2016, 2019)
+variable period was str1 now str3
+(204,037 real changes made)
+
+. replace period = "post22" if inrange(year, 2021, 2022)
+variable period was str3 now str6
+(107,196 real changes made)
+
+. keep if period != ""
+(51,445 observations deleted)
+
+. 
+. ** --- OUT-MIGRATION: Multnomah -> Other counties ---
+. preserve
+
+. keep if fips_o == `multnomah_fips'
+(310,273 observations deleted)
+
+. 
+. ** Collapse flows by destination and period (average annual f
+> low)
+. collapse (mean) n1, by(fips_d period)
+
+. reshape wide n1, i(fips_d) j(period) string
+(j = post22 pre)
+
+Data                               Long   ->   Wide
+---------------------------------------------------------------
+> --------------
+Number of observations              389   ->   217         
+Number of variables                   3   ->   3           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                     n1   ->   n1post22 n1pre
+---------------------------------------------------------------
+> --------------
+
+. 
+. rename fips_d fips
+
+. rename n1pre out_pre
+
+. rename n1post22 out_post22
+
+. 
+. tempfile irs_out
+
+. save `irs_out'
+file C:\Users\ji252\AppData\Local\Temp\ST_a500_00000g.tmp
+    saved as .dta format
+
+. restore
+
+. 
+. ** --- IN-MIGRATION: Other counties -> Multnomah ---
+. preserve
+
+. keep if fips_d == `multnomah_fips'
+(310,156 observations deleted)
+
+. 
+. ** Collapse flows by origin and period (average annual flow)
+. collapse (mean) n1, by(fips_o period)
+
+. reshape wide n1, i(fips_o) j(period) string
+(j = post22 pre)
+
+Data                               Long   ->   Wide
+---------------------------------------------------------------
+> --------------
+Number of observations              410   ->   231         
+Number of variables                   3   ->   3           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                     n1   ->   n1post22 n1pre
+---------------------------------------------------------------
+> --------------
+
+. 
+. rename fips_o fips
+
+. rename n1pre in_pre
+
+. rename n1post22 in_post22
+
+. 
+. ** Merge with out-migration
+. merge 1:1 fips using `irs_out', nogen
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                            70
+        from master                        42  
+        from using                         28  
+
+    Matched                               189  
+    -----------------------------------------
+
+. 
+. ** Replace missing with 0
+. foreach v in out_pre out_post22 in_pre in_post22 {
+  2.         replace `v' = 0 if missing(`v')
+  3. }
+(69 real changes made)
+(60 real changes made)
+(33 real changes made)
+(75 real changes made)
+
+. 
+. ** Merge with county populations
+. merge 1:1 fips using `irs_county_pop', keep(match) nogen
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                               259  
+    -----------------------------------------
+
+. 
+. tempfile irs_flows
+
+. save `irs_flows'
+file C:\Users\ji252\AppData\Local\Temp\ST_a500_00000i.tmp
+    saved as .dta format
+
+. restore
+
+. 
+. ** ----------------------------------------------------------
+> ------
+. ** A3. BUILD IRS TABLE 2
+. ** ----------------------------------------------------------
+> ------
+. 
+. use `irs_flows', clear
+
+. 
+. ** Calculate rates (flow / partner county population × 100)
+. ** These are rates from the perspective of the partner county
+. gen in_rate_pre = 100 * in_pre / pop_pre
+
+. gen in_rate_post22 = 100 * in_post22 / pop_post22
+
+. gen out_rate_pre = 100 * out_pre / pop_pre
+
+. gen out_rate_post22 = 100 * out_post22 / pop_post22
+
+. 
+. ** Calculate change in net in-migration rate: (in_post - out_
+> post) - (in_pre - out_pre)
+. gen change_net_thru22 = (in_rate_post22 - out_rate_post22) - 
+> (in_rate_pre - out_rate_pre)
+
+. 
+. ** Create county grouping variable
+. gen county_group = ""
+(259 missing values generated)
+
+. replace county_group = "neighbor_or" if inlist(fips, 41067, 4
+> 1005, 41047, 41071, 41009)
+variable county_group was str1 now str11
+(5 real changes made)
+
+. replace county_group = "neighbor_wa" if inlist(fips, 53011, 5
+> 3059)
+(2 real changes made)
+
+. replace county_group = "other_or" if state_fips == 41 & count
+> y_group == "" & fips != `multnomah_fips'
+(23 real changes made)
+
+. replace county_group = "other_wa" if state_fips == 53 & count
+> y_group == ""
+(24 real changes made)
+
+. 
+. ** Save individual county data for specific rows
+. preserve
+
+. keep if county_group == "neighbor_or" | county_group == "neig
+> hbor_wa"
+(252 observations deleted)
+
+. keep fips county_name in_rate_pre in_rate_post22 out_rate_pre
+>  out_rate_post22 change_net_thru22
+
+. tempfile irs_individual
+
+. save `irs_individual'
+file C:\Users\ji252\AppData\Local\Temp\ST_a500_00000k.tmp
+    saved as .dta format
+
+. restore
+
+. 
+. ** Calculate aggregates for "All other OR" and "All other WA"
+. preserve
+
+. collapse (sum) in_pre in_post22 out_pre out_post22 pop_pre po
+> p_post22, by(county_group)
+
+. keep if county_group == "other_or" | county_group == "other_w
+> a"
+(3 observations deleted)
+
+. 
+. ** Recalculate rates for aggregates (using combined populatio
+> n)
+. gen in_rate_pre = 100 * in_pre / pop_pre
+
+. gen in_rate_post22 = 100 * in_post22 / pop_post22
+
+. gen out_rate_pre = 100 * out_pre / pop_pre
+
+. gen out_rate_post22 = 100 * out_post22 / pop_post22
+
+. gen change_net_thru22 = (in_rate_post22 - out_rate_post22) - 
+> (in_rate_pre - out_rate_pre)
+
+. 
+. ** Create county name and fips
+. gen county_name = "All other OR counties" if county_group == 
+> "other_or"
+(1 missing value generated)
+
+. replace county_name = "All other WA counties" if county_group
+>  == "other_wa"
+(1 real change made)
+
+. gen fips = 41999 if county_group == "other_or"
+(1 missing value generated)
+
+. replace fips = 53999 if county_group == "other_wa"
+(1 real change made)
+
+. 
+. keep fips county_name in_rate_pre in_rate_post22 out_rate_pre
+>  out_rate_post22 change_net_thru22
+
+. tempfile irs_aggregates
+
+. save `irs_aggregates'
+file C:\Users\ji252\AppData\Local\Temp\ST_a500_00000m.tmp
+    saved as .dta format
+
+. restore
+
+. 
+. ** Calculate Multnomah total row (using Multnomah's own popul
+> ation as denominator)
+. preserve
+
+. 
+. ** Get Multnomah population
+. use "${data}working/irs_county_gross.dta", clear
+
+. keep if fips == `multnomah_fips'
+(21,973 observations deleted)
+
+. gen period = ""
+(7 missing values generated)
+
+. replace period = "pre" if inrange(year, 2016, 2019)
+variable period was str1 now str3
+(4 real changes made)
+
+. replace period = "post22" if inrange(year, 2021, 2022)
+variable period was str3 now str6
+(2 real changes made)
+
+. keep if period != ""
+(1 observation deleted)
+
+. gen n1_pop = n1_out_1 + n1_out_2
+
+. collapse (mean) n1_pop, by(period)
+
+. reshape wide n1_pop, i() j(period) string
+option i() required
+
+         long                                wide
+        +---------------+                   +------------------
+> +
+        | i   j   a   b |                   | i   a1 a2  b1 b2 
+> |
+        |---------------| <--- reshape ---> |------------------
+> |
+        | 1   1   1   2 |                   | 1   1   3   2  4 
+> |
+        | 1   2   3   4 |                   | 2   5   7   6  8 
+> |
+        | 2   1   5   6 |                   +------------------
+> +
+        | 2   2   7   8 |
+        +---------------+
+
+        long to wide: reshape wide a b, i(i) j(j)    (j existin
+> g variable)
+        wide to long: reshape long a b, i(i) j(j)    (j new var
+> iable)
+r(198);
+
+end of do-file
+r(198);
+
+end of do-file
+
+r(198);
+
+. 
+. use "${data}working/irs_county_gross.dta", clear
+
+. clear
+
+. use "${data}working/irs_county_gross.dta", clear
+
+. export excel using "C:\Users\ji252\Documents\GitHub\multnomah-county-tax\data\working\irs_county_gross.xlsx", sheet("raw") firstrow(variables) replace
+file C:\Users\ji252\Documents\GitHub\multnomah-county-tax\data\working\irs_county_gross.xlsx saved
+
+. clear
+
+. exit

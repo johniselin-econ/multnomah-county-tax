@@ -11,7 +11,13 @@ Authors: John Iselin
 For more information, contact joiselin@gmail.com
 
 ** TO-DO LIST 
-Set up API for DOL Data on childcare 
+** 3) Run DiD:
+** 		a) Out-migration as is 
+** 		b) In-migration with all 48 states 
+** 		c) In-migration with only CA, OR, WA 
+** 4) Simulating revenue: 
+** 		a) Create tax units for 2022. 
+** 		b) Come up with proposal 
 
 
 *******************************************************************************/
@@ -68,7 +74,7 @@ set seed 56403
 set scheme plotplainblind
 
 ** Set parameters 
-local overwrite_csv = 1
+local overwrite_csv = 0
 global start_year_acs = 2015
 global end_year_acs = 2024
 
@@ -108,7 +114,7 @@ do ${code}02_descriptives.do
 rcall script "${code}R/map_code.R", vanilla
 
 ** Synthetic Difference-in-Difference Analysis
-do ${code}02_sdid_analysis.do 
+do ${code}02_sdid_analysis_parallel.do 
 
 ** Flow-based models (IRS)
 do ${code}02_flow_analysis.do

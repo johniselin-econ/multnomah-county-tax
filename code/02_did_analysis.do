@@ -45,9 +45,11 @@ gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
 gen sample_1 = (multnomah_o == 1)       // Multnomah in origin (out-migration)
 gen sample_2 = (multnomah_o != 1) & 	/// Not Multnomah in origin
 			   inlist(state_fips_o, 6, 41, 53)  // CA, OR, WA (in-migration)
+gen sample_3 = (multnomah_o != 1) 		// Not Multnomah in origin
 
 label var sample_1 "Out-migration Sample"
-label var sample_2 "In-migration Sample"
+label var sample_2 "In-migration Sample (West Coast)"
+label var sample_3 "In-migration Sample (Lower 48 + DC)"
 
 ** Outcome variables (scaled to percentages)
 gen out_1 = (same_county == 0) * 100
@@ -137,16 +139,23 @@ estimates store did_out
 ** In-migration regression (Sample 2: CA/OR/WA residents)
 reghdfe out_2 treated if sample_2 == 1 [fw = perwt], 	///
 	vce(cluster fips_o) absorb(year fips_o cat_*)
-estimates store did_in
+estimates store did_in_west
+
+** In-migration regression (Sample 3: Lower 48 + DC residents)
+reghdfe out_2 treated if sample_3 == 1 [fw = perwt], 	///
+	vce(cluster fips_o) absorb(year fips_o cat_*)
+estimates store did_in_48
 
 ********************************************************************************
 ** COEFFICIENT PLOT: DiD RESULTS
 ********************************************************************************
 
-coefplot 	(did_out, label("Out-migration from Multnomah") 	///
-				mc(navy) ciopts(lc(navy))) 						///
-			(did_in, label("In-migration to Multnomah") 		///
-				mc(maroon) ciopts(lc(maroon))), 				///
+coefplot 	(did_out, label("Out-migration from Multnomah") 					///
+				mc(sea) ciopts(lc(sea))) 										///
+			(did_in_west, label("In-migration to Multnomah, West Coast Sample")	///
+				mc(vermillion) ciopts(lc(vermillion))) 									///
+			(did_in_48, label("In-migration to Multnomah, Lower 48 + DC Sample")	///
+				mc(turquoise) ciopts(lc(turquoise))), 				///	
 	keep(treated) 												///
 	ciopts(recast(rcap)) 										///
 	yline(0, lc(gs10) lp(dash)) 								///
@@ -181,7 +190,12 @@ estimates store es_out
 ** In-migration event study
 reghdfe out_2 x_high_ed_* if sample_2 == 1 [fw = perwt], 	///
 	vce(cluster fips_o) absorb(year fips_o cat_*)
-estimates store es_in
+estimates store es_in_west
+
+** In-migration event study
+reghdfe out_2 x_high_ed_* if sample_3 == 1 [fw = perwt], 	///
+	vce(cluster fips_o) absorb(year fips_o cat_*)
+estimates store es_in_48
 
 ********************************************************************************
 ** EVENT STUDY PLOTS
@@ -199,9 +213,14 @@ preserve
 	gen out_ci_hi = .
 
 	** In-migration coefficients
-	gen in_coef = .
-	gen in_ci_lo = .
-	gen in_ci_hi = .
+	gen in_west_coef = .
+	gen in_west_ci_lo = .
+	gen in_west_ci_hi = .
+	
+	** In-migration coefficients
+	gen in_48_coef = .
+	gen in_48_ci_lo = .
+	gen in_48_ci_hi = .
 
 	** Fill in coefficients (2020 = base year = 0)
 	foreach y in 2016 2017 2018 2019 2021 2022 2023 2024 {
@@ -215,22 +234,32 @@ preserve
 		}
 
 		** In-migration
-		estimates restore es_in
+		estimates restore es_in_west
 		capture {
-			replace in_coef = _b[x_high_ed_`y'] if year == `y'
-			replace in_ci_lo = _b[x_high_ed_`y'] - 1.96 * _se[x_high_ed_`y'] if year == `y'
-			replace in_ci_hi = _b[x_high_ed_`y'] + 1.96 * _se[x_high_ed_`y'] if year == `y'
+			replace in_west_coef = _b[x_high_ed_`y'] if year == `y'
+			replace in_west_ci_lo = _b[x_high_ed_`y'] - 1.96 * _se[x_high_ed_`y'] if year == `y'
+			replace in_west_ci_hi = _b[x_high_ed_`y'] + 1.96 * _se[x_high_ed_`y'] if year == `y'
 		}
+		
+		** In-migration
+		estimates restore es_in_48
+		capture {
+			replace in_48_coef = _b[x_high_ed_`y'] if year == `y'
+			replace in_48_ci_lo = _b[x_high_ed_`y'] - 1.96 * _se[x_high_ed_`y'] if year == `y'
+			replace in_48_ci_hi = _b[x_high_ed_`y'] + 1.96 * _se[x_high_ed_`y'] if year == `y'
+		}
+		
 	}
 
 	** Base year (2020) = 0
-	foreach v in out_coef out_ci_lo out_ci_hi in_coef in_ci_lo in_ci_hi {
+	foreach v in out_coef out_ci_lo out_ci_hi in_west_coef in_west_ci_lo in_west_ci_hi in_48_coef in_48_ci_lo in_48_ci_hi {
 		replace `v' = 0 if year == 2020
 	}
 
 	** Offset years slightly for visibility
-	gen year_out = year - 0.1
-	gen year_in = year + 0.1
+	gen year_out = year - 0.15
+	gen year_in_west = year
+	gen year_in_48 = year + 0.15
 
 	** Plot 1: Out-migration event study
 	twoway 	(rcap out_ci_lo out_ci_hi year, lc(navy)) 				///
@@ -248,34 +277,52 @@ preserve
 
 	graph export "${results}did/fig_es_out_migration.png", replace
 
-	** Plot 2: In-migration event study
-	twoway 	(rcap in_ci_lo in_ci_hi year, lc(maroon)) 				///
-			(connected in_coef year, mc(maroon) lc(maroon) ms(O)),	///
+	** Plot 2: In-migration event study (West Coast)
+	twoway 	(rcap in_west_ci_lo in_west_ci_hi year, lc(maroon)) 	///
+			(connected in_west_coef year, mc(maroon) lc(maroon) ms(O)),	///
 		yline(0, lc(gs10) lp(dash)) 								///
 		xline(2020.5, lc(black) lp(solid))							///
 		xlabel(2016(1)2024) 										///
 		ytitle("Effect on In-Migration (pp)") 						///
 		xtitle("Year")												///
 		legend(off) 												///
-		title("In-Migration to Multnomah County")					///
+		title("In-Migration to Multnomah County (West Coast)")		///
 		subtitle("College Degree vs. No College Degree")			///
 		note("Base year: 2020. Vertical line indicates tax implementation.")	///
 		graphregion(color(white))
 
-	graph export "${results}did/fig_es_in_migration.png", replace
+	graph export "${results}did/fig_es_in_migration_west.png", replace
 
-	** Plot 3: Combined event study
+	** Plot 3: In-migration event study (Lower 48 + DC)
+	twoway 	(rcap in_48_ci_lo in_48_ci_hi year, lc(forest_green)) 	///
+			(connected in_48_coef year, mc(forest_green) lc(forest_green) ms(O)),	///
+		yline(0, lc(gs10) lp(dash)) 								///
+		xline(2020.5, lc(black) lp(solid))							///
+		xlabel(2016(1)2024) 										///
+		ytitle("Effect on In-Migration (pp)") 						///
+		xtitle("Year")												///
+		legend(off) 												///
+		title("In-Migration to Multnomah County (Lower 48 + DC)")	///
+		subtitle("College Degree vs. No College Degree")			///
+		note("Base year: 2020. Vertical line indicates tax implementation.")	///
+		graphregion(color(white))
+
+	graph export "${results}did/fig_es_in_migration_48.png", replace
+
+	** Plot 4: Combined event study
 	twoway 	(rcap out_ci_lo out_ci_hi year_out, lc(navy)) 					///
 			(connected out_coef year_out, mc(navy) lc(navy) ms(O)) 			///
-			(rcap in_ci_lo in_ci_hi year_in, lc(maroon)) 					///
-			(connected in_coef year_in, mc(maroon) lc(maroon) ms(T)),		///
+			(rcap in_west_ci_lo in_west_ci_hi year_in_west, lc(maroon)) 	///
+			(connected in_west_coef year_in_west, mc(maroon) lc(maroon) ms(T))	///
+			(rcap in_48_ci_lo in_48_ci_hi year_in_48, lc(forest_green)) 	///
+			(connected in_48_coef year_in_48, mc(forest_green) lc(forest_green) ms(S)),	///
 		yline(0, lc(gs10) lp(dash)) 										///
 		xline(2020.5, lc(black) lp(solid))									///
 		xlabel(2016(1)2024) 												///
 		ytitle("Effect on Migration Rate (pp)") 							///
 		xtitle("Year")														///
-		legend(order(2 "Out-migration" 4 "In-migration") 					///
-			pos(6) rows(1)) 												///
+		legend(order(2 "Out-migration" 4 "In-migration (West Coast)" 		///
+			6 "In-migration (Lower 48 + DC)") pos(6) rows(1)) 				///
 		title("Migration Effects: Multnomah County Tax")					///
 		subtitle("College Degree vs. No College Degree")					///
 		note("Base year: 2020. Vertical line indicates tax implementation.")	///

@@ -235,6 +235,15 @@ ggsave(filepath2, map2, width = 10, height = 8, dpi = 300)
 # Use the square_box directly as the zoom rectangle (already an sfc object)
 zoom_rect <- square_box
 
+# Create nudged points for Bend and Spokane (move up ~1mm in print)
+bend_spokane_pts <- city_points |> filter(NAME %in% c("Bend", "Spokane"))
+bend_spokane_nudged <- bend_spokane_pts |>
+  mutate(geometry = geometry + c(0, 8000)) |>  # Nudge up ~1mm
+
+  st_set_crs(st_crs(city_points))
+other_city_pts <- city_points |> filter(!NAME %in% c("Bend", "Spokane", "Vancouver"))
+vancouver_pt <- city_points |> filter(NAME == "Vancouver")
+
 # Modified Map 1 with zoom rectangle indicator
 map1_with_box <- ggplot() +
   geom_sf(data = or_counties, fill = "gray92", color = "white", size = 0.3) +
@@ -250,11 +259,11 @@ map1_with_box <- ggplot() +
     aes(label = NAME),
     nudge_y = -12000,
     nudge_x =  40000,
-    size = 2.0,
+    size = 2.4,
     fontface = "bold"
   ) +
-  geom_sf_text(data = or_counties |> filter(NAME != "Multnomah"), aes(label = NAME), size = 2.0) +
-  geom_sf_text(data = wa_counties, aes(label = NAME), size = 2.0) +
+  geom_sf_text(data = or_counties |> filter(NAME != "Multnomah"), aes(label = NAME), size = 2.4) +
+  geom_sf_text(data = wa_counties, aes(label = NAME), size = 2.4) +
 
   # State labels
   geom_sf_text(
@@ -267,21 +276,29 @@ map1_with_box <- ggplot() +
     size = 6, fontface = "bold"
   ) +
 
-  # City points
-  geom_sf(data = city_points, color = "red", size = 2) +
+  # City points (Bend & Spokane nudged up, others at original position)
+  geom_sf(data = other_city_pts, color = "red", size = 2) +
+  geom_sf(data = vancouver_pt, color = "red", size = 2) +
+  geom_sf(data = bend_spokane_nudged, color = "red", size = 2) +
 
-  # City labels
+  # City labels: Vancouver, Bend, Spokane above; others below
   geom_sf_text(
-    data = city_points |> filter(NAME == "Vancouver"),
+    data = vancouver_pt,
     aes(label = NAME),
     nudge_y = 15000,
-    size = 2.4, fontface = "bold"
+    size = 2.8, fontface = "bold"
   ) +
   geom_sf_text(
-    data = city_points |> filter(NAME != "Vancouver"),
+    data = bend_spokane_nudged,
+    aes(label = NAME),
+    nudge_y = 15000,
+    size = 2.8, fontface = "bold"
+  ) +
+  geom_sf_text(
+    data = other_city_pts,
     aes(label = NAME),
     nudge_y = -15000,
-    size = 2.4, fontface = "bold"
+    size = 2.8, fontface = "bold"
   ) +
   theme_void() +
   coord_sf(expand = FALSE)
@@ -301,28 +318,28 @@ map2_inset <- ggplot() +
           linetype = "dashed", linewidth = 0.7) +
 
   # County labels
-  geom_sf_text(data = county_centroids, aes(label = NAME), size = 2.5) +
+  geom_sf_text(data = county_centroids, aes(label = NAME), size = 3.5) +
   geom_sf_text(
     data = multnomah_centroid, aes(label = NAME),
     nudge_x = 10000, nudge_y = -5000,
-    size = 3, fontface = "bold"
+    size = 4.5, fontface = "bold"
   ) +
   # Portland label
   geom_sf_text(
     data = portland_centroid, aes(label = NAME),
     nudge_x = 2000, nudge_y = -1000,
-    size = 2.5, fontface = "bold"
+    size = 3.5, fontface = "bold"
   ) +
   # Vancouver label
   geom_sf_text(
     data = st_centroid(van_reg), aes(label = "Vancouver"),
-    size = 2.5, fontface = "bold"
+    size = 3.5, fontface = "bold"
   ) +
   # Metro label
   geom_sf_text(
     data = st_centroid(metro_outline), aes(label = "METRO"),
     color = "#9E0168",
-    size = 2.5, fontface = "bold"
+    size = 3.5, fontface = "bold"
   ) +
   theme_void() +
   theme(
@@ -331,36 +348,37 @@ map2_inset <- ggplot() +
   ) +
   coord_sf(expand = FALSE)
 
-# Combine using cowplot - main map with inset
-# Inset position parameters
-inset_x <- 0.55
-inset_y <- 0.05
-inset_w <- 0.43
-inset_h <- 0.55
+# Combine using cowplot - main map with inset positioned to the side (no overlap)
+# Main map takes left portion, inset on right
+main_map_w <- 0.62   # Main map width (left 62%)
+inset_x <- 0.63      # Inset starts at 63% from left
+inset_y <- 0.15      # Centered vertically
+inset_w <- 0.36      # Inset width (36% of canvas)
+inset_h <- 0.70      # Inset height
 
 # Zoom box approximate position on main map (in 0-1 coordinates)
-# These values position the lines at the right edge of the zoom rectangle
-zoom_box_right <- 0.45
+# Adjusted for the narrower main map display
+zoom_box_right <- 0.27
 zoom_box_top <- 0.595
-zoom_box_bottom <- 0.38
+zoom_box_bottom <- 0.4
 
 map_combined <- ggdraw() +
-  draw_plot(map1_with_box) +
+  draw_plot(map1_with_box, x = 0, y = 0, width = main_map_w, height = 1) +
   draw_plot(map2_inset, x = inset_x, y = inset_y, width = inset_w, height = inset_h) +
   # Connector lines: from zoom box corners to inset corners (dashed)
   # Top-right corner of zoom box to top-left corner of inset
   draw_line(
-    x = c(zoom_box_right, inset_x + .01),
-    y = c(zoom_box_top, inset_y + inset_h),
+    x = c(zoom_box_right, inset_x),
+    y = c(zoom_box_top, inset_y + inset_h - 0.07),
     color = "red", size = 0.6, linetype = "dashed"
   ) +
   # Bottom-right corner of zoom box to bottom-left corner of inset
   draw_line(
-    x = c(zoom_box_right, inset_x + .01),
-    y = c(zoom_box_bottom, inset_y),
+    x = c(zoom_box_right, inset_x),
+    y = c(zoom_box_bottom, inset_y + 0.07),
     color = "red", size = 0.6, linetype = "dashed"
   )
-ggsave(filepath_combined, map_combined, width = 14, height = 10, dpi = 300, bg = "white")
+ggsave(filepath_combined, map_combined, width = 16, height = 10, dpi = 300, bg = "white")
 message("Saved: ", filepath_combined)
 
 # ============================================================

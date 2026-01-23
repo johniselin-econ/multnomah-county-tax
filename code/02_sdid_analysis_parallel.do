@@ -355,7 +355,7 @@ gen migr_type = ""
 save "${data}working/table_grid.dta", replace
 
 ** Build table grid
-foreach data in "irs_sample_1" "irs_sample_2" "acs_period_1" "acs_period_2" {
+foreach data in "irs_sample_1" /*"irs_sample_2" "acs_period_1" "acs_period_2" */{
 
 	** Different sets of outcome variable types
 	if "`data'" == "irs_sample_1" | "`data'" == "irs_sample_2" {
@@ -758,8 +758,8 @@ foreach f of local files {
 ** Save combined results
 order sample_data sample outcome controls exclusion tau se pval ci_lower ci_upper n_counties pre_mean
 compress
-save "${results}sdid/sdid_results.dta", replace
-export excel using "${results}sdid/sdid_results.xlsx", firstrow(variables) replace
+save "${results}sdid/sdid_results_v1.dta", replace
+export excel using "${results}sdid/sdid_results_v1.xlsx", firstrow(variables) replace
 
 ** Combine all weights
 clear
@@ -780,8 +780,8 @@ foreach f of local files {
 order sample_data sample out controls exclusion fips weight
 sort sample_data sample out controls exclusion weight
 compress
-save "${results}sdid/sdid_weights.dta", replace
-export excel using "${results}sdid/sdid_weights.xlsx", firstrow(variables) replace
+save "${results}sdid/sdid_weights_v1.dta", replace
+export excel using "${results}sdid/sdid_weights_v1.xlsx", firstrow(variables) replace
 
 ** Clean up temp directories
 shell rmdir "${results}sdid/temp_results" /s /q
@@ -792,11 +792,11 @@ dis "Results combined and saved."
 /*******************************************************************************
 SECTION 7: SPECIFICATION CURVE ANALYSIS
 *******************************************************************************/
-/*
+
 dis "Creating specification curve plots..."
 
 ** Load treatment effects
-use "${results}sdid/sdid_results.dta", clear
+use "${results}sdid/sdid_results_combined.dta", clear
 
 ** Parse outcome variable names to extract components
 gen outcome_type = ""
@@ -810,7 +810,8 @@ replace migration = "in" if strpos(outcome, "_in_") > 0
 replace migration = "out" if strpos(outcome, "_out_") > 0
 
 gen data_type = ""
-replace data_type = "IRS" if strpos(outcome, "_irs") > 0
+replace data_type = "IRS (all counties)" if strpos(outcome, "_irs") > 0
+replace data_type = "IRS (ACS counties)" if strpos(outcome, "_irs") > 0 & sample_data == "irs_389_16_22"
 replace data_type = "ACS All" if strpos(outcome, "_acs1") > 0
 replace data_type = "ACS College" if strpos(outcome, "_acs2") > 0
 
@@ -820,7 +821,8 @@ gen spec_urban95 = sample == "sample_urban95"
 gen spec_covid = sample == "sample_urban95_covid"
 gen spec_covars = controls == 1
 gen spec_excl2020 = exclusion == 1
-gen spec_irs = data_type == "IRS"
+gen spec_irs_all = data_type == "IRS (all counties)"
+gen spec_irs_389 = data_type == "IRS (ACS counties)"
 gen spec_acs_all = data_type == "ACS All"
 gen spec_acs_col = data_type == "ACS College"
 
@@ -873,18 +875,20 @@ foreach otype in "n1" "n2" "agi" {
 		gen y_covid = -3 if spec_covid == 1
 		gen y_covars = -4 if spec_covars == 1
 		gen y_excl = -5 if spec_excl2020 == 1
-		gen y_irs = -6 if spec_irs == 1
-		gen y_acs_all = -7 if spec_acs_all == 1
-		gen y_acs_col = -8 if spec_acs_col == 1
+		gen y_irs_all = -6 if spec_irs_all == 1
+		gen y_irs_389 = -7 if spec_irs_389 == 1
+		gen y_acs_all = -8 if spec_acs_all == 1
+		gen y_acs_col = -9 if spec_acs_col == 1
 
 		twoway 	(scatter y_all spec_rank, mc(navy) ms(O) msize(vsmall))		///
 				(scatter y_urban spec_rank, mc(navy) ms(O) msize(vsmall))	///
 				(scatter y_covid spec_rank, mc(navy) ms(O) msize(vsmall))	///
 				(scatter y_covars spec_rank, mc(navy) ms(O) msize(vsmall))	///
 				(scatter y_excl spec_rank, mc(navy) ms(O) msize(vsmall))	///
-				(scatter y_irs spec_rank, mc(navy) ms(O) msize(vsmall))		///
+				(scatter y_irs_all spec_rank, mc(navy) ms(O) msize(vsmall))	///
+				(scatter y_irs_389 spec_rank, mc(navy) ms(O) msize(vsmall))	///
 				(scatter y_acs_all spec_rank, mc(navy) ms(O) msize(vsmall))	///
-				(scatter y_acs_col spec_rank, mc(navy) ms(O) msize(vsmall)),///
+				(scatter y_acs_col spec_rank, mc(navy) ms(O) msize(vsmall)), ///
 			legend(off)														///
 			ytitle("")														///
 			xtitle("Specification")											///
@@ -893,9 +897,10 @@ foreach otype in "n1" "n2" "agi" {
 					-3 "COVID Match"										///
 					-4 "Covariates"											///
 					-5 "Excl. 2020"											///
-					-6 "IRS Data"											///
-					-7 "ACS All"											///
-					-8 "ACS College",										///
+					-6 "IRS Data, All"										///
+					-7 "IRS Data, 389"										///
+					-8 "ACS All"											///
+					-9 "ACS College",										///
 				angle(0) labsize(vsmall))									///
 			xlabel(1(5)`n_specs')											///
 			name(spec_`otype'_`migr', replace)
@@ -918,7 +923,7 @@ foreach otype in "n1" "n2" "agi" {
 
 	} // END MIGRATION LOOP
 } // END OUTCOME TYPE LOOP
-*/
+
 /*******************************************************************************
 SECTION 8: CLEANUP AND FINISH
 *******************************************************************************/
