@@ -328,6 +328,7 @@ gen ci_lower = .
 gen ci_upper = .
 gen n_counties = .
 gen pre_mean = .
+gen significant = .
 save "${results}sdid/sdid_results.dta", replace
 clear
 restore 
@@ -348,9 +349,9 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 	** Loop over Outcome var type 
 	foreach type of local out_type {
 		
-		** Labels 
+		** Labels
 		if "`data'" == "irs_sample_1" local out_txt "irs_full_16_22"
-		if "`data'" == "irs_sample_2" local out_txt "irs_389_16_22"
+		else if "`data'" == "irs_sample_2" local out_txt "irs_389_16_22"
 		else if "`data'" == "acs_period_1" & "`type'" == "acs1" local out_txt "acs_16_22_all"
 		else if "`data'" == "acs_period_1" & "`type'" == "acs2" local out_txt "acs_16_22_col"
 		else if "`data'" == "acs_period_1" & "`type'" == "acs3" local out_txt "acs_16_22_noc"
@@ -425,7 +426,7 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 							local tmp_ncounties = r(N)
 							estadd scalar count = r(N)	
 							
-							** Preserve ATE / SE 
+							** Preserve ATE / SE
 							preserve
 							clear
 							qui set obs 1
@@ -441,8 +442,9 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 							gen ci_upper = tau + 1.96 * se
 							gen n_counties = `tmp_ncounties'
 							gen pre_mean = `tmp_premean'
+							gen significant = abs(tau/se) > 1.96
 							order sample_data sample outcome controls exclusion	///
-								tau se pval ci_lower ci_upper n_counties pre_mean
+								tau se pval ci_lower ci_upper n_counties pre_mean significant
 							append using "${results}sdid/sdid_results.dta"
 							compress
 							save "${results}sdid/sdid_results.dta", replace
@@ -544,8 +546,8 @@ foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
 					if `exl' == 1 local path "${results}sdid/`out_txt'/tab_sdid_`out_txt'_`migr'_`samp'_excl2020.tex"
 					
 
-					** Table of results 
-					if "`data'" == "irs_sample1" |  "`data'" == "irs_sample2" |  {
+					** Table of results
+					if "`data'" == "irs_sample_1" | "`data'" == "irs_sample_2" {
 					
 					esttab 	sdid_n1_`migr'_rate_`type'_0 sdid_n1_`migr'_rate_`type'_1	///
 							sdid_n2_`migr'_rate_`type'_0 sdid_n2_`migr'_rate_`type'_1	///
@@ -607,6 +609,14 @@ export excel using "${results}sdid/sdid_results.xlsx", firstrow(variables) repla
 SPECIFICATION CURVE ANALYSIS
 Creates specification curve plots showing treatment effects across all
 specifications for each outcome type and migration direction.
+
+Coefficient colors:
+- Navy: Statistically significant (p<0.05), not preferred
+- Light blue: Statistically insignificant, not preferred
+- Red: Statistically significant (p<0.05), preferred specification
+- Orange: Statistically insignificant, preferred specification
+
+Preferred specifications are defined by the local macro `preferred_specs` below.
 *******************************************************************************/
 
 ** Load treatment effects
@@ -637,6 +647,47 @@ gen spec_excl2020 = exclusion == 1
 gen spec_irs = data_type == "IRS"
 gen spec_acs_all = data_type == "ACS All"
 gen spec_acs_col = data_type == "ACS College"
+
+** Calculate statistical significance (p < 0.05)
+gen significant = pval < 0.05
+
+** =============================================================================
+** DEFINE PREFERRED SPECIFICATIONS
+** Modify these conditions to change which specifications are highlighted
+** as "preferred" in the specification curve plots.
+** =============================================================================
+
+gen preferred = 0
+
+** Example preferred specification criteria:
+** - ACS data (full period 2016-2024)
+** - Urban counties (top 5%)
+** - With covariates
+** - Not excluding 2020
+** Modify these conditions as needed for your analysis.
+
+
+** IRS FULL SAMPLE 
+replace preferred = 1 if 									///
+	data_type == "IRS" & 									///
+	inlist(sample, "sample_all", "sample_urban95_covid") &	///
+	controls == 1 &											/// 
+	exclusion == 1 											//
+
+** ACS COLLEGE SAMPLE 
+replace preferred = 1 if 									///
+	data_type == "ACS College" & 							///
+	inlist(sample, "sample_all", "sample_urban95_covid") &	///
+	controls == 1 &											/// 
+	exclusion == 1 											//
+
+** Display count of preferred specifications
+dis "Number of preferred specifications: "
+count if preferred == 1
+
+** =============================================================================
+** CREATE SPECIFICATION CURVE PLOTS
+** =============================================================================
 
 ** Loop over outcome types and migration directions
 foreach otype in "n1" "n2" "agi" {
@@ -670,19 +721,78 @@ foreach otype in "n1" "n2" "agi" {
 		else if "`migr'" == "in" local migr_label "In-Migration"
 		else if "`migr'" == "out" local migr_label "Out-Migration"
 
-		** Create upper panel: Coefficient plot with CIs
-		twoway 	(rcap ci_lower ci_upper spec_rank, lc(gs10) lw(thin))	///
-				(scatter tau spec_rank, mc(navy) ms(O) msize(small)),	///
-			legend(off)													///
-			ytitle("Treatment Effect (pp)")								///
-			xtitle("Specification (ranked by effect size)")				///
-			title("`otype_label': `migr_label'", size(medium))			///
-			yline(0, lc(red) lp(dash))									///
-			xlabel(1(5)`n_specs')										///
+		** ---------------------------------------------------------------------
+		** Create variables for significance and preferred-based coloring
+		** Four categories:
+		**   1. Significant + Not Preferred (navy)
+		**   2. Insignificant + Not Preferred (ltblue)
+		**   3. Significant + Preferred (red)
+		**   4. Insignificant + Preferred (orange)
+		** ---------------------------------------------------------------------
+
+		** Significant, not preferred
+		gen tau_sig_notpref = tau if significant == 1 & preferred == 0
+		gen ci_lo_sig_notpref = ci_lower if significant == 1 & preferred == 0
+		gen ci_hi_sig_notpref = ci_upper if significant == 1 & preferred == 0
+
+		** Insignificant, not preferred
+		gen tau_insig_notpref = tau if significant == 0 & preferred == 0
+		gen ci_lo_insig_notpref = ci_lower if significant == 0 & preferred == 0
+		gen ci_hi_insig_notpref = ci_upper if significant == 0 & preferred == 0
+
+		** Significant, preferred
+		gen tau_sig_pref = tau if significant == 1 & preferred == 1
+		gen ci_lo_sig_pref = ci_lower if significant == 1 & preferred == 1
+		gen ci_hi_sig_pref = ci_upper if significant == 1 & preferred == 1
+
+		** Insignificant, preferred
+		gen tau_insig_pref = tau if significant == 0 & preferred == 1
+		gen ci_lo_insig_pref = ci_lower if significant == 0 & preferred == 1
+		gen ci_hi_insig_pref = ci_upper if significant == 0 & preferred == 1
+
+		** Count specifications in each category for legend
+		qui count if significant == 1 & preferred == 0
+		local n_sig_notpref = r(N)
+		qui count if significant == 0 & preferred == 0
+		local n_insig_notpref = r(N)
+		qui count if significant == 1 & preferred == 1
+		local n_sig_pref = r(N)
+		qui count if significant == 0 & preferred == 1
+		local n_insig_pref = r(N)
+
+		** ---------------------------------------------------------------------
+		** Create upper panel: Coefficient plot with CIs colored by significance
+		** and preferred status
+		** ---------------------------------------------------------------------
+		twoway 	(rcap ci_lo_sig_notpref ci_hi_sig_notpref spec_rank, 		///
+					lc(navy) lw(vthin)) 									///
+				(rcap ci_lo_insig_notpref ci_hi_insig_notpref spec_rank, 	///
+					lc(ltblue) lw(vthin)) 									///
+				(rcap ci_lo_sig_pref ci_hi_sig_pref spec_rank, 				///
+					lc(cranberry) lw(thin)) 								///
+				(rcap ci_lo_insig_pref ci_hi_insig_pref spec_rank, 			///
+					lc(orange) lw(thin)) 									///
+				(scatter tau_sig_notpref spec_rank, 						///
+					mc(navy) ms(O) msize(vsmall)) 							///
+				(scatter tau_insig_notpref spec_rank, 						///
+					mc(ltblue) ms(O) msize(vsmall)) 						///
+				(scatter tau_sig_pref spec_rank, 							///
+					mc(cranberry) ms(D) msize(small)) 						///
+				(scatter tau_insig_pref spec_rank, 							///
+					mc(orange) ms(D) msize(small)), 						///
+			legend(order(5 "Sig. (p<0.05)" 6 "Insig." 						///
+						 7 "Sig., Preferred" 8 "Insig., Preferred") 		///
+				   rows(1) pos(6) size(vsmall)) 							///
+			ytitle("Treatment Effect (pp)") 								///
+			xtitle("") 														///
+			title("`otype_label': `migr_label'", size(medium)) 				///
+			yline(0, lc(red) lp(dash)) 										///
+			xlabel(none) 													///
 			name(coef_`otype'_`migr', replace)
 
+		** ---------------------------------------------------------------------
 		** Create lower panel: Specification indicators
-		** Reshape indicators for plotting
+		** ---------------------------------------------------------------------
 		gen y_all = -1 if spec_all == 1
 		gen y_urban = -2 if spec_urban95 == 1
 		gen y_covid = -3 if spec_covid == 1
@@ -702,7 +812,7 @@ foreach otype in "n1" "n2" "agi" {
 				(scatter y_acs_col spec_rank, mc(navy) ms(O) msize(vsmall)),///
 			legend(off)														///
 			ytitle("")														///
-			xtitle("Specification")											///
+			xtitle("Specification (ranked by effect size)")					///
 			ylabel(	-1 "All Counties"										///
 					-2 "Urban 95%"											///
 					-3 "COVID Match"										///
@@ -712,15 +822,14 @@ foreach otype in "n1" "n2" "agi" {
 					-7 "ACS All"											///
 					-8 "ACS College",										///
 				angle(0) labsize(vsmall))									///
-			xlabel(1(5)`n_specs')											///
+			xlabel(none)													///
 			name(spec_`otype'_`migr', replace)
 
 		** Combine panels
 		graph combine coef_`otype'_`migr' spec_`otype'_`migr',				///
 			cols(1)															///
 			xcommon															///
-			imargin(zero)													///
-			title("Specification Curve: `otype_label' - `migr_label'", size(medium))
+			imargin(zero)
 
 		** Export combined figure
 		graph export "${results}sdid/fig_speccurve_`otype'_`migr'.pdf", replace

@@ -114,7 +114,8 @@ do ${code}02_descriptives.do
 rcall script "${code}R/map_code.R", vanilla
 
 ** Synthetic Difference-in-Difference Analysis
-do ${code}02_sdid_analysis_parallel.do 
+*do ${code}02_sdid_analysis_parallel.do 
+do ${code}02_sdid_analysis.do 
 
 ** Flow-based models (IRS)
 do ${code}02_flow_analysis.do

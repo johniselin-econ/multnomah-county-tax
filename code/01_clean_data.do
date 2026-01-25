@@ -774,7 +774,7 @@ bysort fips (date): gen deaths_cum = sum(deaths)
 
 ** Generate per capita figures
 replace cases_cum = 1000 * cases_cum / population
-replace cases_cum = 1000 * cases_cum / population
+replace deaths_cum = 1000 * deaths_cum / population
 drop population cases deaths
 
 ** Reshape wide 
@@ -1431,11 +1431,11 @@ forvalues y = 15(1)22 {
 	replace a_total_inc = 1000 * a_total_inc
 	replace a_wage = 1000 * a_wage 
 	
-	** Label 
+	** Label
 	label var n1 "Number of returns"
 	label var mars1 "Number of single returns"
-	label var mars1 "Number of MFJ returns"
-	label var mars1 "Number of HoH returns"
+	label var mars2 "Number of MFJ returns"
+	label var mars4 "Number of HoH returns"
 	label var n2 "Number of individuals"
 	label var elderly "Number of returns with one individual over 60"
 	label var agi "Adjusted Gross Income (AGI)"
@@ -1692,7 +1692,7 @@ restore
 ** ============================================================================
 
 ** Drop observations where values are allocated (quality flag == 4)
-drop if qprotx99 == 4
+drop if qproptx99 == 4
 drop if qvalueh == 4
 
 ** Collapse to county X year, weighted by household weight
