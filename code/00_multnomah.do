@@ -11,10 +11,7 @@ Authors: John Iselin
 For more information, contact joiselin@gmail.com
 
 ** TO-DO LIST 
-** 3) Run DiD:
-** 		a) Out-migration as is 
-** 		b) In-migration with all 48 states 
-** 		c) In-migration with only CA, OR, WA 
+
 ** 4) Simulating revenue: 
 ** 		a) Create tax units for 2022. 
 ** 		b) Come up with proposal 
@@ -72,6 +69,10 @@ set seed 56403
 
 ** Set scheme
 set scheme plotplainblind
+
+** PARALLEL PROCESSING FLAG
+** Set to 1 to use parallel processing, 0 for sequential processing
+global use_parallel = 1
 
 ** Set parameters 
 local overwrite_csv = 0

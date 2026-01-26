@@ -1453,3 +1453,851 @@ file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_resu
 (2,916 real changes made)
 Placebo replications (100). This may take some time.
 ----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5
+..................................................     50
+..................................................     100
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------------------
+n1_net_rat~s |     ATT     Std. Err.     t      P>|t|    [95% Conf. Interval]
+-------------+---------------------------------------------------------------
+     Treated |  -1.92529    1.24382    -1.55    0.122    -4.36313     0.51256
+-----------------------------------------------------------------------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_full_16_22_n1_net_rate_irs_0_sample_all_excl2020_trends2021.pdf saved as PDF format
+
+added scalar:
+               e(mean) =  .1434552
+
+added scalar:
+              e(count) =  2916
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable n_counties was float now int
+  variable significant was float now byte
+  (11 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_results.dta saved
+number of observations will be reset to 2916
+Press any key to continue, or Break to abort
+Number of observations (_N) was 0, now 2,916.
+(1,160 observations deleted)
+(1 observation deleted)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable fips was double now long
+  (17,550 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_weights.dta saved
+Synthetic Difference-in-differences
+
+Boostrap replications (100), placebo mode.
+|0% ----------------------------------------- 100%|
+|.................................................|
+
+
+             |  Estimate         SE      LB CI      UB CI  Switchers 
+-------------+------------------------------------------------------
+         ATT | -1.925286   .9799859  -3.846059  -.0045139          1 
+    Effect_1 | -2.430048   1.609459  -5.584588   .7244928          1 
+    Effect_2 | -1.420525   1.092514  -3.561852   .7208026          1 
+   Placebo_1 |  .0018158   .3910818  -.7647045   .7683362          1 
+   Placebo_2 | -.0017198   .3671603  -.7213541   .7179145          1 
+   Placebo_3 | -.0060693   .1190669  -.2394405   .2273018          1 
+   Placebo_4 |  .0088023   .1596918  -.3041936   .3217981          1 
+2022
+
+e(H)[7,5]
+             Estimate          SE       LB CI       UB CI   Switchers
+      ATT  -1.9252863   .97998589  -3.8460586  -.00451393           1
+ Effect_1  -2.4300477   1.6094594  -5.5845883   .72449278           1
+ Effect_2  -1.4205248    1.092514  -3.5618522   .72080263           1
+Placebo_1   .00181583   .39108179  -.76470448   .76833615           1
+Placebo_2  -.00171981   .36716034  -.72135408   .71791446           1
+Placebo_3  -.00606931   .11906692  -.23944047   .22730184           1
+Placebo_4   .00880226   .15969177  -.30419361   .32179814           1
+(21,172 missing values generated)
+(4 real changes made)
+(1 observation created)
+(1 real change made)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_full_16_22_n1_net_rate_irs_0_sample_all_excl2020_eventstudy.jpg written in JPEG format
+Placebo replications (100). This may take some time.
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5
+..................................................     50
+..................................................     100
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------------------
+n1_net_rat~s |     ATT     Std. Err.     t      P>|t|    [95% Conf. Interval]
+-------------+---------------------------------------------------------------
+     Treated |  -1.89125    1.00961    -1.87    0.061    -3.87004     0.08754
+-----------------------------------------------------------------------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_full_16_22_n1_net_rate_irs_1_sample_all_excl2020_trends2021.pdf saved as PDF format
+
+added scalar:
+               e(mean) =  .1434552
+
+added scalar:
+              e(count) =  2916
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable n_counties was float now int
+  variable significant was float now byte
+  (22 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_results.dta saved
+number of observations will be reset to 2916
+Press any key to continue, or Break to abort
+Number of observations (_N) was 0, now 2,916.
+(1,122 observations deleted)
+(1 observation deleted)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable fips was double now long
+  (35,480 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_weights.dta saved
+Synthetic Difference-in-differences
+
+Boostrap replications (100), placebo mode.
+|0% ----------------------------------------- 100%|
+|.................................................|
+
+
+             |  Estimate         SE      LB CI      UB CI  Switchers 
+-------------+------------------------------------------------------
+         ATT | -1.900694   .7921457    -3.4533  -.3480885          1 
+    Effect_1 |  -2.39265   1.389654  -5.116372   .3310725          1 
+    Effect_2 | -1.408738   .9762199  -3.322129   .5046527          1 
+   Placebo_1 |  .0020645    .025768  -.0484407   .0525697          1 
+   Placebo_2 | -.0018603   .0296501  -.0599745   .0562539          1 
+   Placebo_3 | -.0061974    .060258   -.124303   .1119082          1 
+   Placebo_4 |   .008127   .0455656  -.0811815   .0974356          1 
+2022
+
+e(H)[7,5]
+             Estimate          SE       LB CI       UB CI   Switchers
+      ATT  -1.9006941   .79214571  -3.4532996  -.34808847           1
+ Effect_1  -2.3926497   1.3896542  -5.1163719   .33107246           1
+ Effect_2  -1.4087384   .97621993  -3.3221294   .50465267           1
+Placebo_1   .00206448   .02576797  -.04844074    .0525697           1
+Placebo_2  -.00186031    .0296501   -.0599745   .05625389           1
+Placebo_3  -.00619741   .06025797  -.12430303   .11190822           1
+Placebo_4   .00812705   .04556559  -.08118152   .09743562           1
+(21,172 missing values generated)
+(4 real changes made)
+(1 observation created)
+(1 real change made)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_full_16_22_n1_net_rate_irs_1_sample_all_excl2020_eventstudy.jpg written in JPEG format
+Placebo replications (100). This may take some time.
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5
+..................................................     50
+..................................................     100
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------------------
+n2_net_rat~s |     ATT     Std. Err.     t      P>|t|    [95% Conf. Interval]
+-------------+---------------------------------------------------------------
+     Treated |  -1.82184    1.06514    -1.71    0.087    -3.90947     0.26580
+-----------------------------------------------------------------------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_full_16_22_n2_net_rate_irs_0_sample_all_excl2020_trends2021.pdf saved as PDF format
+
+added scalar:
+               e(mean) =  -.73591077
+
+added scalar:
+              e(count) =  2916
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable n_counties was float now int
+  variable significant was float now byte
+  (33 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_results.dta saved
+number of observations will be reset to 2916
+Press any key to continue, or Break to abort
+Number of observations (_N) was 0, now 2,916.
+(1,204 observations deleted)
+(1 observation deleted)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable fips was double now long
+  (52,590 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_weights.dta saved
+Synthetic Difference-in-differences
+
+Boostrap replications (100), placebo mode.
+|0% ----------------------------------------- 100%|
+|.................................................|
+
+
+             |  Estimate         SE      LB CI      UB CI  Switchers 
+-------------+------------------------------------------------------
+         ATT | -1.821837   .8968252  -3.579614  -.0640594          1 
+    Effect_1 | -2.268932    1.00918  -4.246925  -.2909396          1 
+    Effect_2 | -1.374741   1.243216  -3.811445   1.061962          1 
+   Placebo_1 |  .0027779   .0272059  -.0505456   .0561014          1 
+   Placebo_2 | -.0013103   .0094834  -.0198978   .0172771          1 
+   Placebo_3 | -.0077218    .065036  -.1351925   .1197488          1 
+   Placebo_4 |  .0067843   .0639209  -.1185007   .1320693          1 
+2022
+
+e(H)[7,5]
+             Estimate          SE       LB CI       UB CI   Switchers
+      ATT  -1.8218368   .89682521  -3.5796142  -.06405936           1
+ Effect_1  -2.2689324     1.00918  -4.2469252  -.29093963           1
+ Effect_2  -1.3747411   1.2432161  -3.8114447   1.0619624           1
+Placebo_1    .0027779   .02720586  -.05054559   .05610139           1
+Placebo_2  -.00131033   .00948338  -.01989775   .01727709           1
+Placebo_3  -.00772184   .06503604  -.13519248   .11974879           1
+Placebo_4   .00678431    .0639209  -.11850065   .13206927           1
+(21,172 missing values generated)
+(4 real changes made)
+(1 observation created)
+(1 real change made)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_full_16_22_n2_net_rate_irs_0_sample_all_excl2020_eventstudy.jpg written in JPEG format
+Placebo replications (100). This may take some time.
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5
+..................................................     50
+..................................................     100
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------------------
+n2_net_rat~s |     ATT     Std. Err.     t      P>|t|    [95% Conf. Interval]
+-------------+---------------------------------------------------------------
+     Treated |  -1.77898    1.03259    -1.72    0.085    -3.80281     0.24485
+-----------------------------------------------------------------------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+file
+    C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_f
+    > ull_16_22_n2_net_rate_irs_1_sample_all_excl2020_trends2021.pdf saved as PDF format
+
+added scalar:
+               e(mean) =  -.73591077
+
+added scalar:
+              e(count) =  2916
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable n_counties was float now int
+  variable significant was float now byte
+  (44 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_results.dta saved
+number of observations will be reset to 2916
+Press any key to continue, or Break to abort
+Number of observations (_N) was 0, now 2,916.
+(1,199 observations deleted)
+(1 observation deleted)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable fips was double now long
+  (69,750 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_weights.dta saved
+Synthetic Difference-in-differences
+
+Boostrap replications (100), placebo mode.
+|0% ----------------------------------------- 100%|
+|.................................................|
+
+
+             |  Estimate         SE      LB CI      UB CI  Switchers 
+-------------+------------------------------------------------------
+         ATT | -1.787821   1.137685  -4.017684   .4420411          1 
+    Effect_1 | -2.221646   1.510007   -5.18126   .7379687          1 
+    Effect_2 | -1.353997   1.015823  -3.345009   .6370161          1 
+   Placebo_1 |  .0029415   .0182405  -.0328099   .0386929          1 
+   Placebo_2 | -.0012815   .0123385  -.0254651    .022902          1 
+   Placebo_3 |  -.007775   .0646746  -.1345372   .1189873          1 
+   Placebo_4 |  .0062534   .0369862  -.0662396   .0787463          1 
+2022
+
+e(H)[7,5]
+             Estimate          SE       LB CI       UB CI   Switchers
+      ATT  -1.7878213   1.1376849  -4.0176836   .44204106           1
+ Effect_1  -2.2216459   1.5100074  -5.1812605   .73796866           1
+ Effect_2  -1.3539966   1.0158228  -3.3450093   .63701612           1
+Placebo_1   .00294151   .01824052   -.0328099   .03869292           1
+Placebo_2  -.00128151   .01233854  -.02546505   .02290203           1
+Placebo_3  -.00777497   .06467462  -.13453722   .11898727           1
+Placebo_4   .00625338    .0369862  -.06623958   .07874634           1
+(21,172 missing values generated)
+(4 real changes made)
+(1 observation created)
+(1 real change made)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_fu
+> ll_16_22_n2_net_rate_irs_1_sample_all_excl2020_eventstudy.jpg written in JPEG format
+Placebo replications (100). This may take some time.
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5
+..................................................     50
+..................................................     100
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------------------
+agi_net_ra~s |     ATT     Std. Err.     t      P>|t|    [95% Conf. Interval]
+-------------+---------------------------------------------------------------
+     Treated |  -3.74944    1.19747    -3.13    0.002    -6.09643    -1.40245
+-----------------------------------------------------------------------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+file
+    C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_f
+    > ull_16_22_agi_net_rate_irs_0_sample_all_excl2020_trends2021.pdf saved as PDF format
+
+added scalar:
+               e(mean) =  -.29483641
+
+added scalar:
+              e(count) =  2916
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable n_counties was float now int
+  variable significant was float now byte
+  (55 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_results.dta saved
+number of observations will be reset to 2916
+Press any key to continue, or Break to abort
+Number of observations (_N) was 0, now 2,916.
+(83 observations deleted)
+(1 observation deleted)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable fips was double now long
+  (98,070 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_weights.dta saved
+Synthetic Difference-in-differences
+
+Boostrap replications (100), placebo mode.
+|0% ----------------------------------------- 100%|
+|.................................................|
+
+
+             |  Estimate         SE      LB CI      UB CI  Switchers 
+-------------+------------------------------------------------------
+         ATT | -3.749438   1.214258  -6.129382  -1.369493          1 
+    Effect_1 | -3.942519   1.758187  -7.388565  -.4964728          1 
+    Effect_2 | -3.556357    1.41409  -6.327973    -.78474          1 
+   Placebo_1 |  .0037643   .0348689  -.0645787   .0721072          1 
+   Placebo_2 | -.0011156   .1528226  -.3006478   .2984167          1 
+   Placebo_3 | -.0030111   .0423996  -.0861144   .0800923          1 
+   Placebo_4 |  .0023952   .1088388  -.2109289   .2157193          1 
+2022
+
+e(H)[7,5]
+             Estimate          SE       LB CI       UB CI   Switchers
+      ATT  -3.7494376   1.2142576  -6.1293825  -1.3694928           1
+ Effect_1  -3.9425187   1.7581867  -7.3885647  -.49647281           1
+ Effect_2  -3.5563565   1.4140901  -6.3279731  -.78474001           1
+Placebo_1   .00376427   .03486886  -.06457869   .07210723           1
+Placebo_2  -.00111556   .15282259  -.30064783   .29841672           1
+Placebo_3  -.00301105   .04239964  -.08611435   .08009225           1
+Placebo_4   .00239518   .10883882  -.21092891   .21571926           1
+(21,172 missing values generated)
+(4 real changes made)
+(1 observation created)
+(1 real change made)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_fu
+> ll_16_22_agi_net_rate_irs_0_sample_all_excl2020_eventstudy.jpg written in JPEG format
+Placebo replications (100). This may take some time.
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5
+..................................................     50
+..................................................     100
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------------------
+agi_net_ra~s |     ATT     Std. Err.     t      P>|t|    [95% Conf. Interval]
+-------------+---------------------------------------------------------------
+     Treated |  -3.68397    1.15673    -3.18    0.001    -5.95111    -1.41682
+-----------------------------------------------------------------------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+file
+    C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_f
+    > ull_16_22_agi_net_rate_irs_1_sample_all_excl2020_trends2021.pdf saved as PDF format
+
+added scalar:
+               e(mean) =  -.29483641
+
+added scalar:
+              e(count) =  2916
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable n_counties was float now int
+  variable significant was float now byte
+  (66 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_results.dta saved
+number of observations will be reset to 2916
+Press any key to continue, or Break to abort
+Number of observations (_N) was 0, now 2,916.
+(114 observations deleted)
+(1 observation deleted)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable fips was double now long
+  (126,080 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_weights.dta saved
+Synthetic Difference-in-differences
+
+Boostrap replications (100), placebo mode.
+|0% ----------------------------------------- 100%|
+|.................................................|
+
+
+             |  Estimate         SE      LB CI      UB CI  Switchers 
+-------------+------------------------------------------------------
+         ATT | -3.705848   1.337571  -6.327487  -1.084209          1 
+    Effect_1 | -3.909532    1.93664  -7.705345  -.1137183          1 
+    Effect_2 | -3.502164   1.417917  -6.281282  -.7230471          1 
+   Placebo_1 |  .0038344   .0429268  -.0803022   .0879709          1 
+   Placebo_2 | -.0010778   .0296464  -.0591848   .0570292          1 
+   Placebo_3 | -.0031168    .023071   -.048336   .0421023          1 
+   Placebo_4 |   .002375   .0121885  -.0215144   .0262644          1 
+2022
+
+e(H)[7,5]
+             Estimate          SE       LB CI       UB CI   Switchers
+      ATT  -3.7058482   1.3375708   -6.327487  -1.0842094           1
+ Effect_1  -3.9095319   1.9366396  -7.7053455  -.11371831           1
+ Effect_2  -3.5021644    1.417917  -6.2812817  -.72304711           1
+Placebo_1   .00383436    .0429268  -.08030217    .0879709           1
+Placebo_2  -.00107779   .02964643   -.0591848   .05702922           1
+Placebo_3  -.00311683   .02307098  -.04833595   .04210229           1
+Placebo_4   .00237502   .01218847  -.02151438   .02626441           1
+(21,172 missing values generated)
+(4 real changes made)
+(1 observation created)
+(1 real change made)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_fu
+> ll_16_22_agi_net_rate_irs_1_sample_all_excl2020_eventstudy.jpg written in JPEG format
+(output written to C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16
+> _22/tab_sdid_irs_full_16_22_net_sample_all_excl2020.tex)
+Placebo replications (100). This may take some time.
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5
+..................................................     50
+..................................................     100
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------------------
+n1_in_rate~s |     ATT     Std. Err.     t      P>|t|    [95% Conf. Interval]
+-------------+---------------------------------------------------------------
+     Treated |  -1.06777    0.72494    -1.47    0.141    -2.48864     0.35309
+-----------------------------------------------------------------------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+file
+    C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_f
+    > ull_16_22_n1_in_rate_irs_0_sample_all_excl2020_trends2021.pdf saved as PDF format
+
+added scalar:
+               e(mean) =  9.3987488
+
+added scalar:
+              e(count) =  2916
+(variable outcome was str14, now str16 to accommodate using data's values)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable n_counties was float now int
+  variable significant was float now byte
+  (77 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_results.dta saved
+number of observations will be reset to 2916
+Press any key to continue, or Break to abort
+Number of observations (_N) was 0, now 2,916.
+(257 observations deleted)
+(1 observation deleted)
+(variable out was str14, now str16 to accommodate using data's values)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable fips was double now long
+  (152,660 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_weights.dta saved
+Synthetic Difference-in-differences
+
+Boostrap replications (100), placebo mode.
+|0% ----------------------------------------- 100%|
+|.................................................|
+
+
+             |  Estimate         SE      LB CI      UB CI  Switchers 
+-------------+------------------------------------------------------
+         ATT | -1.067771   .8967535  -2.825408   .6898658          1 
+    Effect_1 | -1.347473   1.024368  -3.355234   .6602886          1 
+    Effect_2 | -.7880693   1.088165  -2.920872   1.344734          1 
+   Placebo_1 |  .0018392   .0163459  -.0301987   .0338771          1 
+   Placebo_2 | -.0073815   .0324227  -.0709299   .0561669          1 
+   Placebo_3 |  .0040142   .0286277  -.0520961   .0601246          1 
+   Placebo_4 |  .0090792   .0284815  -.0467444   .0649029          1 
+2022
+
+e(H)[7,5]
+             Estimate          SE       LB CI       UB CI   Switchers
+      ATT  -1.0677711   .89675352   -2.825408   .68986581           1
+ Effect_1  -1.3474729   1.0243681  -3.3552344   .66028857           1
+ Effect_2  -.78806927   1.0881648  -2.9208722   1.3447337           1
+Placebo_1   .00183921   .01634585  -.03019866   .03387708           1
+Placebo_2   -.0073815   .03242266  -.07092991   .05616692           1
+Placebo_3   .00401423   .02862774  -.05209614    .0601246           1
+Placebo_4   .00907924   .02848145   -.0467444   .06490289           1
+(21,172 missing values generated)
+(4 real changes made)
+(1 observation created)
+(1 real change made)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_fu
+> ll_16_22_n1_in_rate_irs_0_sample_all_excl2020_eventstudy.jpg written in JPEG format
+Placebo replications (100). This may take some time.
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5
+..................................................     50
+..................................................     100
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------------------
+n1_in_rate~s |     ATT     Std. Err.     t      P>|t|    [95% Conf. Interval]
+-------------+---------------------------------------------------------------
+     Treated |  -1.04730    1.40595    -0.74    0.456    -3.80290     1.70831
+-----------------------------------------------------------------------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+file
+    C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_f
+    > ull_16_22_n1_in_rate_irs_1_sample_all_excl2020_trends2021.pdf saved as PDF format
+
+added scalar:
+               e(mean) =  9.3987488
+
+added scalar:
+              e(count) =  2916
+(variable outcome was str14, now str16 to accommodate using data's values)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable n_counties was float now int
+  variable significant was float now byte
+  (88 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_results.dta saved
+number of observations will be reset to 2916
+Press any key to continue, or Break to abort
+Number of observations (_N) was 0, now 2,916.
+(207 observations deleted)
+(1 observation deleted)
+(variable out was str14, now str16 to accommodate using data's values)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable fips was double now long
+  (179,740 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_weights.dta saved
+Synthetic Difference-in-differences
+
+Boostrap replications (100), placebo mode.
+|0% ----------------------------------------- 100%|
+|.................................................|
+
+
+             |  Estimate         SE      LB CI      UB CI  Switchers 
+-------------+------------------------------------------------------
+         ATT | -1.057047   .7776706  -2.581282    .467187          1 
+    Effect_1 | -1.321523   .9101519  -3.105421   .4623744          1 
+    Effect_2 | -.7925715   .7995369  -2.359664   .7745208          1 
+   Placebo_1 |  .0019195   .0275391  -.0520571    .055896          1 
+   Placebo_2 | -.0076271   .0220138  -.0507742   .0355199          1 
+   Placebo_3 |  .0034781    .074465  -.1424734   .1494295          1 
+   Placebo_4 |  .0077216   .1413028  -.2692318    .284675          1 
+2022
+
+e(H)[7,5]
+             Estimate          SE       LB CI       UB CI   Switchers
+      ATT  -1.0570474   .77767063  -2.5812819   .46718702           1
+ Effect_1  -1.3215233   .91015188   -3.105421   .46237439           1
+ Effect_2  -.79257154   .79953691  -2.3596639    .7745208           1
+Placebo_1   .00191945   .02753908  -.05205714   .05589605           1
+Placebo_2  -.00762712   .02201379  -.05077415    .0355199           1
+Placebo_3   .00347809   .07446502  -.14247335   .14942953           1
+Placebo_4   .00772161   .14130277  -.26923181   .28467504           1
+(21,172 missing values generated)
+(4 real changes made)
+(1 observation created)
+(1 real change made)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_fu
+> ll_16_22_n1_in_rate_irs_1_sample_all_excl2020_eventstudy.jpg written in JPEG format
+Placebo replications (100). This may take some time.
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5
+..................................................     50
+..................................................     100
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------------------
+n2_in_rate~s |     ATT     Std. Err.     t      P>|t|    [95% Conf. Interval]
+-------------+---------------------------------------------------------------
+     Treated |  -0.76968    0.84770    -0.91    0.364    -2.43115     0.89178
+-----------------------------------------------------------------------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+file
+    C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_f
+    > ull_16_22_n2_in_rate_irs_0_sample_all_excl2020_trends2021.pdf saved as PDF format
+
+added scalar:
+               e(mean) =  7.41004
+
+added scalar:
+              e(count) =  2916
+(variable outcome was str14, now str16 to accommodate using data's values)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable n_counties was float now int
+  variable significant was float now byte
+  (99 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_results.dta saved
+number of observations will be reset to 2916
+Press any key to continue, or Break to abort
+Number of observations (_N) was 0, now 2,916.
+(134 observations deleted)
+(1 observation deleted)
+(variable out was str14, now str16 to accommodate using data's values)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable fips was double now long
+  (207,550 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_weights.dta saved
+Synthetic Difference-in-differences
+
+Boostrap replications (100), placebo mode.
+|0% ----------------------------------------- 100%|
+|.................................................|
+
+
+             |  Estimate         SE      LB CI      UB CI  Switchers 
+-------------+------------------------------------------------------
+         ATT | -.7696847   .8495477  -2.434798   .8954288          1 
+    Effect_1 | -.9699199   .9280177  -2.788835   .8489948          1 
+    Effect_2 | -.5694495   1.064081  -2.655049    1.51615          1 
+   Placebo_1 |  .0022388   .0169824  -.0310466   .0355243          1 
+   Placebo_2 | -.0047829   .0352042  -.0737832   .0642174          1 
+   Placebo_3 |  .0006464   .0205987  -.0397269   .0410198          1 
+   Placebo_4 |  .0073495   .0220932  -.0359533   .0506522          1 
+2022
+
+e(H)[7,5]
+             Estimate          SE       LB CI       UB CI   Switchers
+      ATT   -.7696847   .84954771  -2.4347982   .89542882           1
+ Effect_1  -.96991987    .9280177  -2.7888346   .84899481           1
+ Effect_2  -.56944952   1.0640812  -2.6550487   1.5161497           1
+Placebo_1   .00223885   .01698239  -.03104663   .03552432           1
+Placebo_2  -.00478288   .03520423  -.07378317   .06421741           1
+Placebo_3   .00064643   .02059866  -.03972693    .0410198           1
+Placebo_4   .00734948   .02209323  -.03595326   .05065221           1
+(21,172 missing values generated)
+(4 real changes made)
+(1 observation created)
+(1 real change made)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_fu
+> ll_16_22_n2_in_rate_irs_0_sample_all_excl2020_eventstudy.jpg written in JPEG format
+Placebo replications (100). This may take some time.
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5
+..................................................     50
+..................................................     100
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------------------
+n2_in_rate~s |     ATT     Std. Err.     t      P>|t|    [95% Conf. Interval]
+-------------+---------------------------------------------------------------
+     Treated |  -0.74321    0.83265    -0.89    0.372    -2.37517     0.88876
+-----------------------------------------------------------------------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_full_16_22_n2_in_rate_irs_1_sample_all_excl2020_trends2021.pdf saved as PDF format
+
+added scalar:
+               e(mean) =  7.41004
+
+added scalar:
+              e(count) =  2916
+(variable outcome was str14, now str16 to accommodate using data's values)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable n_counties was float now int
+  variable significant was float now byte
+  (110 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_results.dta saved
+number of observations will be reset to 2916
+Press any key to continue, or Break to abort
+Number of observations (_N) was 0, now 2,916.
+(115 observations deleted)
+(1 observation deleted)
+(variable out was str14, now str16 to accommodate using data's values)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable fips was double now long
+  (235,550 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_weights.dta saved
+Synthetic Difference-in-differences
+
+Boostrap replications (100), placebo mode.
+|0% ----------------------------------------- 100%|
+|.................................................|
+
+
+             |  Estimate         SE      LB CI      UB CI  Switchers 
+-------------+------------------------------------------------------
+         ATT | -.7541527   .9651137  -2.645776    1.13747          1 
+    Effect_1 | -.9452549   1.031682  -2.967352   1.076842          1 
+    Effect_2 | -.5630505   1.051705  -2.624392   1.498291          1 
+   Placebo_1 |   .002326     .06094  -.1171164   .1217684          1 
+   Placebo_2 | -.0048713   .0920861    -.18536   .1756175          1 
+   Placebo_3 |  .0002361   .0423423  -.0827547   .0832269          1 
+   Placebo_4 |  .0064419   .1404813  -.2689015   .2817853          1 
+2022
+
+e(H)[7,5]
+             Estimate          SE       LB CI       UB CI   Switchers
+      ATT  -.75415272   .96511369  -2.6457755   1.1374701           1
+ Effect_1   -.9452549    1.031682  -2.9673516   1.0768418           1
+ Effect_2  -.56305054   1.0517049  -2.6243922   1.4982911           1
+Placebo_1   .00232604      .06094  -.11711635   .12176844           1
+Placebo_2  -.00487128   .09208609  -.18536002   .17561747           1
+Placebo_3   .00023613   .04234225  -.08275469   .08322695           1
+Placebo_4   .00644189   .14048132   -.2689015   .28178529           1
+(21,172 missing values generated)
+(4 real changes made)
+(1 observation created)
+(1 real change made)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_full_16_22_n2_in_rate_irs_1_sample_all_excl2020_eventstudy.jpg written in JPEG format
+Placebo replications (100). This may take some time.
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5
+..................................................     50
+..................................................     100
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------------------
+agi_in_rat~s |     ATT     Std. Err.     t      P>|t|    [95% Conf. Interval]
+-------------+---------------------------------------------------------------
+     Treated |  -1.34779    1.35816    -0.99    0.321    -4.00974     1.31415
+-----------------------------------------------------------------------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_full_16_22_agi_in_rate_irs_0_sample_all_excl2020_trends2021.pdf saved as PDF format
+
+added scalar:
+               e(mean) =  7.2220915
+
+added scalar:
+              e(count) =  2916
+(variable outcome was str15, now str16 to accommodate using data's values)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable n_counties was float now int
+  variable significant was float now byte
+  (121 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_results.dta saved
+number of observations will be reset to 2916
+Press any key to continue, or Break to abort
+Number of observations (_N) was 0, now 2,916.
+(123 observations deleted)
+(1 observation deleted)
+(variable out was str15, now str16 to accommodate using data's values)
+  variable controls was float now byte
+  variable exclusion was float now byte
+  variable fips was double now long
+  (263,470 bytes saved)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/sdid_weights.dta saved
+Synthetic Difference-in-differences
+
+Boostrap replications (100), placebo mode.
+|0% ----------------------------------------- 100%|
+|.................................................|
+
+
+             |  Estimate         SE      LB CI      UB CI  Switchers 
+-------------+------------------------------------------------------
+         ATT | -1.347794    1.45736  -4.204218   1.508631          1 
+    Effect_1 | -1.477491   1.306273  -4.037787   1.082804          1 
+    Effect_2 | -1.218096   1.884211   -4.91115   2.474958          1 
+   Placebo_1 |  .0043358   .1007207  -.1930768   .2017484          1 
+   Placebo_2 | -.0129469   .0918833  -.1930382   .1671444          1 
+   Placebo_3 |  .0040151   .1068192  -.2053506   .2133808          1 
+   Placebo_4 |  .0019725   .0585355   -.112757   .1167021          1 
+2022
+
+e(H)[7,5]
+             Estimate          SE       LB CI       UB CI   Switchers
+      ATT  -1.3477937   1.4573595  -4.2042184   1.5086309           1
+ Effect_1  -1.4774914   1.3062733  -4.0377871   1.0828043           1
+ Effect_2   -1.218096   1.8842111  -4.9111498   2.4749578           1
+Placebo_1   .00433578   .10072071   -.1930768   .20174837           1
+Placebo_2   -.0129469   .09188332   -.1930382    .1671444           1
+Placebo_3   .00401514   .10681923  -.20535055   .21338084           1
+Placebo_4   .00197254   .05853549  -.11275702    .1167021           1
+(21,172 missing values generated)
+(4 real changes made)
+(1 observation created)
+(1 real change made)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+(1 real change made, 1 to missing)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/sdid/irs_full_16_22/fig_irs_full_16_22_agi_in_rate_irs_0_sample_all_excl2020_eventstudy.jpg written in JPEG format
+Placebo replications (100). This may take some time.
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5
+.......................................--Break--
+r(1);
+
+end of do-file
+--Break--
+r(1);
+
+end of do-file
+
+--Break--
+r(1);
+
+. clear
+
+. exit
