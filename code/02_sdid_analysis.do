@@ -54,14 +54,14 @@ if ${use_parallel} == 1 {
 use "${data}working/irs_county_gross", replace
 
 ** Keep required variables
-keep year fips state* county* *_net_3 *_out_1 *_out_2 *_in_3 *_out_3
+keep year fips state* county* *_net_3 *_out_1 *_out_2 *_in_3 *_out_3 *_net_5 *_in_5 *_out_5
 order year fips state* county*
 
 ** Merge with ACS Data
-merge 1:1 year fips using "${data}working/acs_county_gross_18plus", gen(merge_acs_1)
+merge 1:1 year fips using "${data}working/acs_county_gross_25plus", gen(merge_acs_1)
 
 ** Keep require variables
-keep year fips state* county* *_net_3 *_out_1 *_out_2 *_in_3 *_out_3 merge_acs_*
+keep year fips state* county* *_net_3 *_out_1 *_out_2 *_in_3 *_out_3 *_net_5 *_in_5 *_out_5 merge_acs_*
 
 ** Label acs samples
 rename persons_* acs1_persons_*
@@ -72,7 +72,7 @@ rename dollars_* acs1_dollars_*
 merge 1:1 year fips using "${data}working/acs_county_gross_college", gen(merge_acs_2)
 
 ** Keep require variables
-keep year fips state* county* *_net_3 *_out_1 *_out_2 *_in_3 *_out_3  merge_acs_*
+keep year fips state* county* *_net_3 *_out_1 *_out_2 *_in_3 *_out_3 *_net_5 *_in_5 *_out_5 merge_acs_*
 
 ** Label acs samples
 rename persons_* acs2_persons_*
@@ -265,6 +265,30 @@ foreach x in "n1" "n2" "agi" {
 
 } // END OUTCOME TYPE LOOP
 
+** Define outcome variables (IRS, interstate movers - type 5)
+foreach x in "n1" "n2" "agi" {
+
+	if "`x'" == "n1" local xtxt "returns"
+	else if "`x'" == "n2" local xtxt "exemptions"
+	else if "`x'" == "agi" local xtxt "AGI"
+
+	** Loop over migration type
+	foreach y in "net" "in" "out" {
+
+			if "`y'" == "net" local ytxt "Net interstate migration"
+			else if "`y'" == "in" local ytxt "Interstate in-migration"
+			else if "`y'" == "out" local ytxt "Interstate out-migration"
+
+			** Generate
+			gen `x'_`y'_rate_irs5 = 100 * (`x'_`y'_5 / (`x'_out_1 + `x'_out_2))
+
+			** Label var
+			label var `x'_`y'_rate_irs5	"`ytxt' rate, `xtxt' (%)"
+
+	} // END MIGRATION TYPE LOOP
+
+} // END OUTCOME TYPE LOOP (IRS5)
+
 ** Define outcome variables (ACS)
 
 ** Rename for loop
@@ -273,7 +297,7 @@ rename acs*_persons_* acs*_n2_*
 rename acs*_dollars_* acs*_agi_*
 
 ** Loop over sample
-** (18+ = 1, college degree == 2, no college degree == 3)
+** (25+ = 1, college degree == 2, no college degree == 3)
 forvalues i = 1/2{
 
 	if `i' == 1 local itxt ""
@@ -357,7 +381,7 @@ if ${use_parallel} == 1 {
 
 		** Different sets of outcome variable types
 		if "`data'" == "irs_sample_1" | "`data'" == "irs_sample_2" {
-			local out_types "irs"
+			local out_types "irs irs5"
 		}
 		else {
 			local out_types "acs1 acs2"
@@ -366,8 +390,10 @@ if ${use_parallel} == 1 {
 		foreach type of local out_types {
 
 			** Labels
-			if "`data'" == "irs_sample_1" local out_txt "irs_full_16_22"
-			else if "`data'" == "irs_sample_2" local out_txt "irs_389_16_22"
+			if "`data'" == "irs_sample_1" & "`type'" == "irs" local out_txt "irs_full_16_22"
+			else if "`data'" == "irs_sample_1" & "`type'" == "irs5" local out_txt "irs5_full_16_22"
+			else if "`data'" == "irs_sample_2" & "`type'" == "irs" local out_txt "irs_389_16_22"
+			else if "`data'" == "irs_sample_2" & "`type'" == "irs5" local out_txt "irs5_389_16_22"
 			else if "`data'" == "acs_period_1" & "`type'" == "acs1" local out_txt "acs_16_22_all"
 			else if "`data'" == "acs_period_1" & "`type'" == "acs2" local out_txt "acs_16_22_col"
 			else if "`data'" == "acs_period_2" & "`type'" == "acs1" local out_txt "acs_16_24_all"
@@ -693,7 +719,7 @@ if ${use_parallel} == 1 {
 	capture mkdir "${results}sdid/temp_weights"
 
 	** Create subfolders for each output type
-	foreach out_txt in "irs_full_16_22" "irs_389_16_22" "acs_16_22_all" "acs_16_22_col" "acs_16_24_all" "acs_16_24_col" {
+	foreach out_txt in "irs_full_16_22" "irs5_full_16_22" "irs_389_16_22" "irs5_389_16_22" "acs_16_22_all" "acs_16_22_col" "acs_16_24_all" "acs_16_24_col" {
 		capture mkdir "${results}sdid/`out_txt'"
 	}
 
@@ -832,16 +858,18 @@ else {
 		else local covariates "population per_capita_income prop_tax_rate"
 
 		** Different sets of outcome variables
-		if "`data'" == "irs_sample_1" local out_type "irs"
-		else if "`data'" == "irs_sample_2" local out_type "irs"
+		if "`data'" == "irs_sample_1" local out_type "irs irs5"
+		else if "`data'" == "irs_sample_2" local out_type "irs irs5"
 		else local out_type "acs1 acs2"
 
 		** Loop over Outcome var type
 		foreach type of local out_type {
 
 			** Labels
-			if "`data'" == "irs_sample_1" local out_txt "irs_full_16_22"
-			else if "`data'" == "irs_sample_2" local out_txt "irs_389_16_22"
+			if "`data'" == "irs_sample_1" & "`type'" == "irs" local out_txt "irs_full_16_22"
+			else if "`data'" == "irs_sample_1" & "`type'" == "irs5" local out_txt "irs5_full_16_22"
+			else if "`data'" == "irs_sample_2" & "`type'" == "irs" local out_txt "irs_389_16_22"
+			else if "`data'" == "irs_sample_2" & "`type'" == "irs5" local out_txt "irs5_389_16_22"
 			else if "`data'" == "acs_period_1" & "`type'" == "acs1" local out_txt "acs_16_22_all"
 			else if "`data'" == "acs_period_1" & "`type'" == "acs2" local out_txt "acs_16_22_col"
 			else if "`data'" == "acs_period_1" & "`type'" == "acs3" local out_txt "acs_16_22_noc"
@@ -1129,7 +1157,10 @@ replace migration = "in" if strpos(outcome, "_in_") > 0
 replace migration = "out" if strpos(outcome, "_out_") > 0
 
 gen data_type = ""
-replace data_type = "IRS" if strpos(outcome, "_irs") > 0
+replace data_type = "IRS" if strpos(outcome, "_irs") > 0 & strpos(outcome, "_irs5") == 0
+replace data_type = "IRS (Interstate)" if strpos(outcome, "_irs5") > 0
+replace data_type = "IRS (389)" if strpos(sample_data, "irs_389") > 0 & strpos(outcome, "_irs5") == 0
+replace data_type = "IRS (389, Interstate)" if strpos(sample_data, "irs_389") > 0 & strpos(outcome, "_irs5") > 0
 replace data_type = "ACS All" if strpos(outcome, "_acs1") > 0
 replace data_type = "ACS College" if strpos(outcome, "_acs2") > 0
 
@@ -1142,11 +1173,14 @@ replace period_type = "16-24" if strpos(sample_data, "16_24") > 0
 gen spec_all = sample == "sample_all"
 gen spec_urban95 = sample == "sample_urban95"
 gen spec_covid = sample == "sample_urban95_covid"
-gen spec_16_22 = period_type == "16_22"
-gen spec_16_24 = period_type == "16_24"
+gen spec_16_22 = period_type == "16-22"
+gen spec_16_24 = period_type == "16-24"
 gen spec_covars = controls == 1
 gen spec_excl2020 = exclusion == 1
 gen spec_irs = data_type == "IRS"
+gen spec_irs5 = data_type == "IRS (Interstate)"
+gen spec_irs_389 = data_type == "IRS (389)"
+gen spec_irs5_389 = data_type == "IRS (389, Interstate)"
 gen spec_acs_all = data_type == "ACS All"
 gen spec_acs_col = data_type == "ACS College"
 
@@ -1180,7 +1214,7 @@ replace preferred = 1 if 									///
 ** ACS COLLEGE SAMPLE
 replace preferred = 1 if 									///
 	data_type == "ACS College" & 							///
-	spec_16_22 == 0	& 										///
+	spec_16_24 == 1	& 										///
 	inlist(sample, "sample_all", "sample_urban95_covid") &	///
 	controls == 1 &											///
 	exclusion == 1 											//
@@ -1193,15 +1227,24 @@ count if preferred == 1
 ** CREATE SPECIFICATION CURVE PLOTS
 ** =============================================================================
 
-** Loop over outcome types and migration directions
+** Loop over outcome types, migration directions, and plot sets
 foreach otype in "n1" "n2" "agi" {
 	foreach migr in "net" "in" "out" {
+		foreach pset in "main" "irs5" {
 
 		** Preserve full data
 		preserve
 
 		** Keep only relevant specifications
 		keep if outcome_type == "`otype'" & migration == "`migr'"
+
+		** Filter by plot set
+		if "`pset'" == "main" {
+			drop if inlist(data_type, "IRS (Interstate)", "IRS (389, Interstate)")
+		}
+		else if "`pset'" == "irs5" {
+			keep if inlist(data_type, "IRS (Interstate)", "IRS (389, Interstate)")
+		}
 
 		** Check if we have data
 		qui count
@@ -1224,6 +1267,10 @@ foreach otype in "n1" "n2" "agi" {
 		if "`migr'" == "net" local migr_label "Net Migration"
 		else if "`migr'" == "in" local migr_label "In-Migration"
 		else if "`migr'" == "out" local migr_label "Out-Migration"
+
+		** Title suffix for IRS5 plots
+		if "`pset'" == "irs5" local pset_title " (Interstate)"
+		else local pset_title ""
 
 		** ---------------------------------------------------------------------
 		** Create variables for significance and preferred-based coloring
@@ -1289,24 +1336,29 @@ foreach otype in "n1" "n2" "agi" {
 				   rows(1) pos(6) size(vsmall)) 							///
 			ytitle("Treatment Effect (pp)") 								///
 			xtitle("") 														///
-			title("`otype_label': `migr_label'", size(medium)) 				///
+			title("`otype_label': `migr_label'`pset_title'", size(medium)) 	///
 			yline(0, lc(red) lp(dash)) 										///
 			xlabel(none) 													///
 			name(coef_`otype'_`migr', replace)
 
 		** ---------------------------------------------------------------------
 		** Create lower panel: Specification indicators
+		** (different indicators depending on main vs irs5 plot set)
 		** ---------------------------------------------------------------------
+
+		if "`pset'" == "main" {
+
 		gen y_all = -1 if spec_all == 1
 		gen y_urban = -2 if spec_urban95 == 1
 		gen y_covid = -3 if spec_covid == 1
 		gen y_covars = -4 if spec_covars == 1
 		gen y_excl = -5 if spec_excl2020 == 1
 		gen y_irs = -6 if spec_irs == 1
-		gen y_acs_all = -7 if spec_acs_all == 1
-		gen y_acs_col = -8 if spec_acs_col == 1
-		gen y_16_22 = -9 if spec_16_22 == 1
-		gen y_16_24 = -10 if spec_16_22 == 1
+		gen y_irs_389 = -7 if spec_irs_389 == 1
+		gen y_acs_all = -8 if spec_acs_all == 1
+		gen y_acs_col = -9 if spec_acs_col == 1
+		gen y_16_22 = -10 if spec_16_22 == 1
+		gen y_16_24 = -11 if spec_16_24 == 1
 
 		twoway 	(scatter y_all spec_rank, mc(navy) ms(O) msize(vsmall))		///
 				(scatter y_urban spec_rank, mc(navy) ms(O) msize(vsmall))	///
@@ -1314,6 +1366,7 @@ foreach otype in "n1" "n2" "agi" {
 				(scatter y_covars spec_rank, mc(navy) ms(O) msize(vsmall))	///
 				(scatter y_excl spec_rank, mc(navy) ms(O) msize(vsmall))	///
 				(scatter y_irs spec_rank, mc(navy) ms(O) msize(vsmall))		///
+				(scatter y_irs_389 spec_rank, mc(navy) ms(O) msize(vsmall))	///
 				(scatter y_acs_all spec_rank, mc(navy) ms(O) msize(vsmall))	///
 				(scatter y_acs_col spec_rank, mc(navy) ms(O) msize(vsmall)) ///
 				(scatter y_16_22 spec_rank, mc(navy) ms(O) msize(vsmall)) 	///
@@ -1326,14 +1379,50 @@ foreach otype in "n1" "n2" "agi" {
 					-3 "COVID Match"										///
 					-4 "Covariates"											///
 					-5 "Excl. 2020"											///
-					-6 "IRS Data"											///
-					-7 "ACS All"											///
-					-8 "ACS College",										///
-					-9 "16-22",												///
-					-10 "16-24",											///
+					-6 "IRS (all counties)"									///
+					-7 "IRS (ACS counties)"									///
+					-8 "ACS All"											///
+					-9 "ACS College"										///
+					-10 "16-22"												///
+					-11 "16-24",											///
 				angle(0) labsize(vsmall))									///
 			xlabel(none)													///
 			name(spec_`otype'_`migr', replace)
+
+		} // END main lower panel
+
+		else if "`pset'" == "irs5" {
+
+		gen y_all = -1 if spec_all == 1
+		gen y_urban = -2 if spec_urban95 == 1
+		gen y_covid = -3 if spec_covid == 1
+		gen y_covars = -4 if spec_covars == 1
+		gen y_excl = -5 if spec_excl2020 == 1
+		gen y_irs5 = -6 if spec_irs5 == 1
+		gen y_irs5_389 = -7 if spec_irs5_389 == 1
+
+		twoway 	(scatter y_all spec_rank, mc(navy) ms(O) msize(vsmall))		///
+				(scatter y_urban spec_rank, mc(navy) ms(O) msize(vsmall))	///
+				(scatter y_covid spec_rank, mc(navy) ms(O) msize(vsmall))	///
+				(scatter y_covars spec_rank, mc(navy) ms(O) msize(vsmall))	///
+				(scatter y_excl spec_rank, mc(navy) ms(O) msize(vsmall))	///
+				(scatter y_irs5 spec_rank, mc(navy) ms(O) msize(vsmall))	///
+				(scatter y_irs5_389 spec_rank, mc(navy) ms(O) msize(vsmall)), ///
+			legend(off)														///
+			ytitle("")														///
+			xtitle("Specification (ranked by effect size)")					///
+			ylabel(	-1 "All Counties"										///
+					-2 "Urban 95%"											///
+					-3 "COVID Match"										///
+					-4 "Covariates"											///
+					-5 "Excl. 2020"											///
+					-6 "IRS Interstate (all counties)"						///
+					-7 "IRS Interstate (ACS counties)",						///
+				angle(0) labsize(vsmall))									///
+			xlabel(none)													///
+			name(spec_`otype'_`migr', replace)
+
+		} // END irs5 lower panel
 
 		** Combine panels
 		graph combine coef_`otype'_`migr' spec_`otype'_`migr',				///
@@ -1341,19 +1430,22 @@ foreach otype in "n1" "n2" "agi" {
 			xcommon															///
 			imargin(zero)
 
+		** File suffix for IRS5 plots
+		if "`pset'" == "irs5" local fsuffix "_irs5"
+		else local fsuffix ""
+
 		** Export combined figure
-		graph export "${results}sdid/fig_speccurve_`otype'_`migr'.pdf", replace
-		graph export "${results}sdid/fig_speccurve_`otype'_`migr'.jpg", as(jpg) quality(100) replace
+		graph export "${results}sdid/fig_speccurve_`otype'_`migr'`fsuffix'.pdf", replace
+		graph export "${results}sdid/fig_speccurve_`otype'_`migr'`fsuffix'.jpg", as(jpg) quality(100) replace
 
 		** Clean up
 		graph drop coef_`otype'_`migr' spec_`otype'_`migr'
 
 		restore
 
+		} // END PLOT SET LOOP
 	} // END MIGRATION LOOP
 } // END OUTCOME TYPE LOOP
-
-clear
 
 ** =============================================================================
 ** FINISH

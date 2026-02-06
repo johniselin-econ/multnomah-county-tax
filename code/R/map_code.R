@@ -810,3 +810,246 @@ for (measure in c("n1", "n2", "agi")) {
 }
 
 message("All rate change maps created successfully!")
+
+# ============================================================
+# MAP 5 — DIRECTIONAL FLOW MAPS (Partner-Normalized)
+# These maps show flows FROM/TO Multnomah normalized by partner
+# county population, which better captures the "flow" aspect.
+#
+# Out-flow map: Rate of migration FROM Multnomah TO each county
+#               per 100K of DESTINATION county population
+#               Red = counties receiving MORE from Multnomah
+#               Multnomah = hatched (source county)
+#
+# In-flow map:  Rate of migration TO Multnomah FROM each county
+#               per 100K of ORIGIN county population
+#               Blue = counties sending LESS to Multnomah
+#               Multnomah = hatched (destination county)
+# ============================================================
+
+message("Creating directional flow maps (partner-normalized)...")
+
+# ------------------------------------------------------------
+# FUNCTION TO CREATE HATCHED PATTERN FOR MULTNOMAH
+# ------------------------------------------------------------
+create_hatch_pattern <- function(poly, n_lines = 10, angle = 45) {
+  # Get bounding box
+  bb <- st_bbox(poly)
+
+  # Create diagonal lines
+  x_range <- bb["xmax"] - bb["xmin"]
+  y_range <- bb["ymax"] - bb["ymin"]
+  max_range <- max(x_range, y_range) * 1.5
+
+  # Generate line coordinates
+  spacing <- max_range / n_lines
+  lines_list <- list()
+
+  for (i in seq(-n_lines, n_lines * 2)) {
+    offset <- i * spacing
+    x1 <- bb["xmin"] - max_range + offset
+    y1 <- bb["ymin"] - max_range
+    x2 <- bb["xmin"] + offset
+    y2 <- bb["ymin"] + max_range
+
+    line <- st_linestring(matrix(c(x1, y1, x2, y2), ncol = 2, byrow = TRUE))
+    lines_list[[i + n_lines + 1]] <- line
+  }
+
+  # Combine lines and clip to polygon
+  all_lines <- st_sfc(lines_list, crs = st_crs(poly))
+  all_lines <- st_sf(geometry = all_lines)
+  clipped <- st_intersection(all_lines, poly)
+
+  return(clipped)
+}
+
+# ------------------------------------------------------------
+# FUNCTION TO CREATE DIRECTIONAL FLOW MAP
+# ------------------------------------------------------------
+create_directional_flow_map <- function(data, counties_sf, direction, measure,
+                                         region_name, coord_limits = NULL) {
+
+  # Filter to counties with positive flows in BOTH pre and post periods
+  # This ensures meaningful rate comparisons
+  if (direction == "out") {
+    # For out-migration: need positive out_pre AND out_post
+    data_filtered <- data |>
+      filter(out_pre > 0 & out_post > 0) |>
+      mutate(rate_change = out_rate_change)
+    title_prefix <- "Out-Migration FROM Multnomah"
+    subtitle_text <- "Rate change per 100K destination population"
+    # Positive = more people leaving Multnomah for this county (red)
+    low_color <- "#2166AC"   # Blue for negative
+    high_color <- "#B2182B"  # Red for positive
+    n_counties_with_flows <- nrow(data_filtered)
+    message(paste0("  ", direction, ": ", n_counties_with_flows,
+                   " counties with positive flows in both periods"))
+  } else if (direction == "in") {
+    # For in-migration: need positive in_pre AND in_post
+    data_filtered <- data |>
+      filter(in_pre > 0 & in_post > 0) |>
+      mutate(rate_change = in_rate_change)
+    title_prefix <- "In-Migration TO Multnomah"
+    subtitle_text <- "Rate change per 100K origin population"
+    # Negative = fewer people coming to Multnomah (blue)
+    low_color <- "#2166AC"   # Blue for negative
+    high_color <- "#B2182B"  # Red for positive
+    n_counties_with_flows <- nrow(data_filtered)
+    message(paste0("  ", direction, ": ", n_counties_with_flows,
+                   " counties with positive flows in both periods"))
+  }
+
+  # Get measure label
+  meas_label <- measure_labels[[measure]]
+
+  # Join with county geometries
+  # Counties without flows in both periods will have NA (shown in gray)
+  map_data <- counties_sf |>
+    left_join(data_filtered, by = "fips")
+
+  # Determine symmetric scale limits
+  rate_range <- range(map_data$rate_change, na.rm = TRUE)
+  max_abs <- max(abs(rate_range), na.rm = TRUE)
+  # Round up to nice number
+  limit_val <- ceiling(max_abs / 10) * 10
+  if (limit_val < 10) limit_val <- ceiling(max_abs)
+  if (limit_val < 1) limit_val <- 1
+
+  # Cap extreme values
+  map_data <- map_data |>
+    mutate(
+      rate_change_capped = case_when(
+        rate_change > limit_val ~ limit_val,
+        rate_change < -limit_val ~ -limit_val,
+        TRUE ~ rate_change
+      )
+    )
+
+  # Extract Multnomah County for hatching
+  multnomah_poly <- map_data |> filter(GEOID == "41051")
+
+  # Create hatching for Multnomah (if it exists in this region)
+  if (nrow(multnomah_poly) > 0) {
+    multnomah_hatch <- tryCatch(
+      create_hatch_pattern(multnomah_poly, n_lines = 15, angle = 45),
+      error = function(e) NULL
+    )
+  } else {
+    multnomah_hatch <- NULL
+  }
+
+  # Create the map
+  p <- ggplot(map_data) +
+    geom_sf(aes(fill = rate_change_capped), color = "gray80", linewidth = 0.05) +
+    geom_sf(data = us_states, fill = NA, color = "gray25", linewidth = 0.25)
+
+  # Add Multnomah with hatching
+  if (nrow(multnomah_poly) > 0) {
+    p <- p +
+      geom_sf(data = multnomah_poly, fill = "gray95", color = "black", linewidth = 0.6)
+
+    if (!is.null(multnomah_hatch) && nrow(multnomah_hatch) > 0) {
+      p <- p + geom_sf(data = multnomah_hatch, color = "gray40", linewidth = 0.3)
+    }
+  }
+
+  p <- p +
+    scale_fill_gradient2(
+      low = low_color,
+      mid = "white",
+      high = high_color,
+      midpoint = 0,
+      na.value = "gray90",
+      name = "Rate change\n(per 100K)",
+      limits = c(-limit_val, limit_val)
+    ) +
+    labs(
+      title = paste0(title_prefix, ": ", meas_label),
+      subtitle = paste0(subtitle_text, " (2018-19 vs 2021-22) - ", region_name),
+      caption = "Note: Multnomah shown hatched; gray counties had zero flows in one or both periods"
+    ) +
+    theme_void() +
+    theme(
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5, color = "black"),
+      plot.subtitle = element_text(size = 10, hjust = 0.5, color = "black"),
+      plot.caption = element_text(size = 8, hjust = 0.5, color = "gray40"),
+      legend.position = "bottom",
+      legend.key.width = unit(2, "cm"),
+      legend.key.height = unit(0.3, "cm"),
+      legend.text = element_text(color = "black"),
+      legend.title = element_text(color = "black"),
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "white", color = NA)
+    ) +
+    guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+  # Apply coordinate limits if specified
+  if (!is.null(coord_limits)) {
+    p <- p + coord_sf(
+      xlim = coord_limits$xlim,
+      ylim = coord_limits$ylim,
+      expand = FALSE
+    )
+  }
+
+  return(p)
+}
+
+# ------------------------------------------------------------
+# GENERATE DIRECTIONAL FLOW MAPS
+# ------------------------------------------------------------
+
+# Loop over measures
+for (measure in c("n1", "n2", "agi")) {
+
+  # Load partner-normalized flow data
+  csv_path <- file.path(flows_data_dir, paste0("multnomah_partner_flows_", measure, ".csv"))
+
+  # Check if file exists
+  if (!file.exists(csv_path)) {
+    message(paste0("Warning: Partner flow file not found - ", csv_path))
+    message("Run 02_descriptives.do first to create partner-normalized flow data")
+    next
+  }
+
+  flow_data <- read_csv(csv_path, show_col_types = FALSE)
+
+  # Loop over directions (out and in only, not net)
+  for (direction in c("out", "in")) {
+
+    # ---- Continental US Map ----
+    us_dir_map <- create_directional_flow_map(
+      data = flow_data,
+      counties_sf = us_counties_flow,
+      direction = direction,
+      measure = measure,
+      region_name = "Continental US"
+    )
+
+    # Save US map
+    us_filepath <- file.path(flows_output_dir,
+                              paste0("map_directional_", measure, "_", direction, "_us.png"))
+    ggsave(us_filepath, us_dir_map, width = 14, height = 9, dpi = 300, bg = "white")
+    message(paste0("Saved: ", us_filepath))
+
+    # ---- West Coast Map ----
+    wc_dir_map <- create_directional_flow_map(
+      data = flow_data,
+      counties_sf = west_coast_counties,
+      direction = direction,
+      measure = measure,
+      region_name = "West Coast (CA, OR, WA)",
+      coord_limits = wc_coord_limits
+    )
+
+    # Save West Coast map
+    wc_filepath <- file.path(flows_output_dir,
+                              paste0("map_directional_", measure, "_", direction, "_westcoast.png"))
+    ggsave(wc_filepath, wc_dir_map, width = 8, height = 14, dpi = 300, bg = "white")
+    message(paste0("Saved: ", wc_filepath))
+
+  }
+}
+
+message("All directional flow maps created successfully!")

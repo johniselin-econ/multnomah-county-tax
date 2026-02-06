@@ -527,6 +527,7 @@ drop if qmigplc1 == 4					// Error in migration place
 drop if inlist(state_fips_o, 2, 15)   	// Alaska and Hawaii
 drop if inlist(state_fips_d, 2, 15)   	// Alaska and Hawaii
 drop if ftotinc < 0 					// Negative Family Income 	
+drop if age < 25 						// Dropping under 25
 
 ** ---------------------------------------------------------------------------
 ** Multnomah indicators and samples
@@ -554,10 +555,9 @@ label var out_2 "Moved to Multnomah"
 
 ** Age
 recode age ///
-    (18/24   = 1 "18-24") ///
-    (25/44   = 2 "25-44") ///
-    (45/64   = 3 "45-64") ///
-    (65/max  = 4 "65+"), ///
+    (25/44   = 1 "25-44") ///
+    (45/64   = 2 "45-64") ///
+    (65/max  = 3 "65+"), ///
     gen(cat_age)
 label var cat_age "Age categories"
 tab year cat_age, m 

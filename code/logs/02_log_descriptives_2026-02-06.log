@@ -1,0 +1,909 @@
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+      name:  log_02
+       log:  C:/Users/ji252/Documents/GitHub/multnomah-county-tax/code/logs/02_log_descriptives_2026-02-06.log
+  log type:  text
+ opened on:   6 Feb 2026, 11:39:57
+
+. 
+. ** Determine set of common in- and out-migration counties for Multnomah
+. use ${data}working/irs_county_flow.dta, clear 
+
+. 
+. ** Tag Multnomah
+. gen multnomah_o = (state_fips_o == 41 & county_fips_o == 51)
+
+. gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
+
+. 
+. ** Loop over samples 
+. foreach x in "o" "d" {
+  2.         
+.         ** Preserve 
+.         preserve 
+  3.         
+.         ** Keep Multnomah
+.         keep if multnomah_`x' == 1 
+  4.         
+.         ** Export data 
+.         export excel using "${data}multnomah.xlsx",     ///
+>                 sheet(irs_`x', replace ) firstrow(variables) 
+  5.                 
+.         ** Clear and restore 
+.         clear 
+  6.         restore
+  7.                 
+. } // END ORIGIN-DESTINATION LOOP 
+(361,546 observations deleted)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/multnomah.xlsx saved
+(361,434 observations deleted)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/multnomah.xlsx saved
+
+. 
+. ** Determine set of common in- and out-migration counties for Multnomah
+. use ${data}working/acs_county_flow.dta, clear 
+
+. 
+. ** Tag Multnomah
+. gen multnomah_o = (state_fips_o == 41 & county_fips_o == 51)
+
+. gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
+
+. 
+. ** Loop over samples 
+. foreach x in "o" "d" {
+  2.         
+.         ** Preserve 
+.         preserve 
+  3.         
+.         ** Keep Multnomah
+.         keep if multnomah_`x' == 1 
+  4.         
+.         ** Export data 
+.         export excel using "${data}multnomah.xlsx",     ///
+>                 sheet(acs_`x', replace ) firstrow(variables) 
+  5.                 
+.         ** Clear and restore 
+.         clear 
+  6.         restore
+  7.                 
+. } // END ORIGIN-DESTINATION LOOP 
+(230,904 observations deleted)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/multnomah.xlsx saved
+(230,847 observations deleted)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/multnomah.xlsx saved
+
+. 
+. /*******************************************************************************
+> SECTION 2: PRE-POST FLOW COMPARISON (2018-2019 vs 2021-2022 / 21-24)
+> *******************************************************************************/
+. 
+. ** IRS DATA 
+. 
+. ** Load gross data to get Multnomah's total population by period
+. use "${data}working/irs_county_gross", clear
+
+. 
+. ** Keep only in sample 
+. keep if inlist(state_name, "Oregon", "Washington")
+(21,455 observations deleted)
+
+. keep if inlist(year, 2018, 2019, 2021, 2022)
+(225 observations deleted)
+
+. 
+. ** Keep required variables 
+. keep year fips state_* county_*         ///
+>         *_out_1 *_out_2 *_out_3                 ///
+>         *_in_1 *_in_2 *_in_3                    //
+
+.         
+. ** Keep only pre and post periods
+. gen period = ""
+(300 missing values generated)
+
+. replace period = "pre" if inlist(year, 2018, 2019)
+variable period was str1 now str3
+(150 real changes made)
+
+. replace period = "post_21_22" if inlist(year, 2021, 2022)
+variable period was str3 now str10
+(150 real changes made)
+
+. keep if period != ""
+(0 observations deleted)
+
+. 
+. ** Calculate base population (non-movers + all movers = total filers)
+. gen n1_base = n1_out_1 + n1_out_2
+
+. gen n2_base = n2_out_1 + n2_out_2
+
+. gen agi_base = agi_out_1 + agi_out_2
+
+. 
+. ** Create Other Oregon and Other Washington 
+. drop county_fips state_fips 
+
+. 
+. replace county_name = "Other" if state_name == "Oregon" & !inlist(fips, 41051, 41067, 41005, 41047, 41071, 41009)
+(120 real changes made)
+
+. replace county_name = "Other" if state_name == "Washington" & !inlist(fips, 53011, 53059)
+(148 real changes made)
+
+. 
+. ** Collapse by time 
+. collapse (sum) *_base *_out_3 *_in_3, by(state_name county_name period)
+
+. 
+. ** Calculate rates 
+. foreach x in "n1" "n2" "agi" {
+  2.         gen `x'_out_rate = `x'_out_3 / `x'_base
+  3.         gen `x'_in_rate = `x'_in_3 / `x'_base
+  4. } // END RATE LOOP 
+
+. 
+. ** Keep final variables 
+. keep state_name county_name period *_rate
+
+. 
+. ** Export 
+. export excel using "${results}Table2.xlsx",     ///
+>         sheet("raw_irs") sheetreplace firstrow(variables)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/Table2.xlsx saved
+
+. 
+. clear
+
+. 
+. ** ACS DATA
+. 
+. ** Load gross data to get Multnomah's total population by period
+. use "${data}working/acs_county_gross_25plus.dta", clear
+
+. 
+. ** Keep only in sample 
+. keep if inlist(state_name, "Oregon", "Washington")
+(4,652 observations deleted)
+
+. keep if inlist(year, 2018, 2019, 2021, 2022, 2023, 2024)
+(68 observations deleted)
+
+. 
+. ** Keep required variables 
+. keep year fips state_* county_*         ///
+>         *_out_1 *_out_2 *_out_3                 ///
+>         *_in_1 *_in_2 *_in_3                    //
+
+.         
+. ** Keep only pre and post periods
+. gen period = ""
+(105 missing values generated)
+
+. replace period = "pre" if inlist(year, 2018, 2019)
+variable period was str1 now str3
+(34 real changes made)
+
+. replace period = "post_21_22" if inlist(year, 2021, 2022)
+variable period was str3 now str10
+(35 real changes made)
+
+. replace period = "post_23_24" if inlist(year, 2023, 2024)
+(36 real changes made)
+
+. keep if period != ""
+(0 observations deleted)
+
+. 
+. ** Calculate base population (non-movers + all movers = total filers)
+. gen hh_base = households_out_1 + households_out_2
+
+. gen per_base = persons_out_1 + persons_out_2
+
+. gen dol_base = dollars_out_1 + dollars_out_2
+
+. 
+. ** Rename 
+. rename households_* hh_* 
+
+. rename persons_* per_* 
+
+. rename dollars_* dol_*
+
+. 
+. ** Create Other Oregon and Other Washington 
+. drop county_fips state_fips 
+
+. 
+. replace county_name = "Other" if state_name == "Oregon" & !inlist(fips, 41051, 41067, 41005, 41047, 41071, 41009)
+(21 real changes made)
+
+. replace county_name = "Other" if state_name == "Washington" & !inlist(fips, 53011, 53059)
+(51 real changes made)
+
+. 
+. ** Collapse by time 
+. collapse (sum) *_base *_out_3 *_in_3, by(state_name county_name period)
+
+. 
+. ** Update period
+. gen tmp = inlist(period, "post_21_22", "post_23_24")
+
+. 
+. ** Loop over variables 
+. foreach var of varlist hh_* per_* dol_* {
+  2.         
+.         bysort state_name county_name tmp: egen total = total(`var')
+  3.         replace `var' = total if period == "post_23_24"
+  4.         drop total 
+  5. 
+. }
+(8 real changes made)
+(8 real changes made)
+(8 real changes made)
+(8 real changes made)
+(8 real changes made)
+(8 real changes made)
+(8 real changes made)
+(8 real changes made)
+(8 real changes made)
+
+. 
+. drop tmp 
+
+. replace period = "post_21_24" if period == "post_23_24"
+(8 real changes made)
+
+. 
+. 
+. ** Calculate rates 
+. foreach x in "hh" "per" "dol" {
+  2.         gen `x'_out_rate = `x'_out_3 / `x'_base
+  3.         gen `x'_in_rate = `x'_in_3 / `x'_base
+  4. } // END RATE LOOP 
+
+. 
+. ** Keep final variables 
+. keep state_name county_name period *_rate
+
+. 
+. ** Export 
+. export excel using "${results}Table2.xlsx",     ///
+>         sheet("raw_acs") sheetreplace firstrow(variables)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/Table2.xlsx saved
+
+. 
+. clear
+
+. 
+. /*******************************************************************************
+> SECTION 3: PARTNER-COUNTY NORMALIZED FLOW MAPS
+> Purpose: Create flow data normalized by partner county population (per 100K)
+>          for directional flow maps showing Multnomah's migration patterns.
+> 
+> Out-flow map: Rate of migration FROM Multnomah TO each destination county
+>               normalized by DESTINATION county average population
+> In-flow map:  Rate of migration TO Multnomah FROM each origin county
+>               normalized by ORIGIN county average population
+> 
+> Outputs:
+> - multnomah_partner_flows_[n1|n2|agi].csv: Flow data with partner normalization
+> *******************************************************************************/
+. 
+. ** ------------------------------------------------------------
+. ** GET COUNTY POPULATIONS FOR RATE CALCULATIONS
+. ** ------------------------------------------------------------
+. 
+. ** Load gross data to get each county's population by period
+. use "${data}working/irs_county_gross", clear
+
+. 
+. ** Keep only pre and post periods
+. gen period = ""
+(21,980 missing values generated)
+
+. replace period = "pre" if inlist(year, 2018, 2019)
+variable period was str1 now str3
+(6,280 real changes made)
+
+. replace period = "post" if inlist(year, 2021, 2022)
+variable period was str3 now str4
+(6,278 real changes made)
+
+. keep if period != ""
+(9,422 observations deleted)
+
+. 
+. ** Calculate base population (non-movers + all movers = total filers)
+. gen n1_pop = n1_out_1 + n1_out_2
+
+. gen n2_pop = n2_out_1 + n2_out_2
+
+. gen agi_pop = agi_out_1 + agi_out_2
+
+. 
+. ** Drop non-balanced counties 
+. bysort fips: gen ct = _N
+
+. keep if ct == 4
+(30 observations deleted)
+
+. drop ct 
+
+. 
+. ** Keep relevant variables
+. keep fips period n1_pop n2_pop agi_pop 
+
+. 
+. ** Collapse to get average by period
+. collapse (sum) n1_pop n2_pop agi_pop, by(fips period)
+
+. 
+. ** Reshape to wide format
+. reshape wide n1_pop n2_pop agi_pop, i(fips) j(period) string
+(j = post pre)
+
+Data                               Long   ->   Wide
+-----------------------------------------------------------------------------
+Number of observations            6,264   ->   3,132       
+Number of variables                   5   ->   7           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                 n1_pop   ->   n1_poppost n1_poppre
+                                 n2_pop   ->   n2_poppost n2_poppre
+                                agi_pop   ->   agi_poppost agi_poppre
+-----------------------------------------------------------------------------
+
+. 
+. ** Calculate average population across periods
+. gen n1_pop_avg = (n1_poppre + n1_poppost) / 2
+
+. gen n2_pop_avg = (n2_poppre + n2_poppost) / 2
+
+. gen agi_pop_avg = (agi_poppre + agi_poppost) / 2
+
+. 
+. ** Keep needed variables
+. keep fips *_pop_avg *_poppre *_poppost
+
+. rename *_poppre *_pop_pre
+
+. rename *_poppost *_pop_post
+
+. 
+. ** Save county populations
+. tempfile county_pops
+
+. save `county_pops'
+file C:\Users\ji252\AppData\Local\Temp\ST_92f0_000005.tmp saved as .dta format
+
+. 
+. clear
+
+. 
+. ** ------------------------------------------------------------
+. ** LOAD FLOW DATA AND CREATE PARTNER-NORMALIZED DATASETS
+. ** ------------------------------------------------------------
+. 
+. ** Load IRS flow data
+. use ${data}working/irs_county_flow.dta, clear
+
+. 
+. ** Define Multnomah County FIPS
+. local multnomah_fips = 41051
+
+. 
+. ** Define pre and post periods
+. gen period = ""
+(362,678 missing values generated)
+
+. replace period = "pre" if inlist(year, 2018, 2019)
+variable period was str1 now str3
+(97,023 real changes made)
+
+. replace period = "post" if inlist(year, 2021, 2022)
+variable period was str3 now str4
+(107,196 real changes made)
+
+. 
+. ** Keep only pre and post periods
+. keep if period != ""
+(158,459 observations deleted)
+
+. 
+. ** Loop over each measure to create separate datasets
+. foreach measure in "n1" "n2" "agi" {
+  2. 
+.         ** Display status
+.         dis "Creating partner-normalized flow dataset for `measure'..."
+  3. 
+.         ** Preserve original data
+.         preserve
+  4. 
+.         ** ------------------------------------------------------------
+.         ** OUT-MIGRATION: Flows FROM Multnomah TO other counties
+.         ** ------------------------------------------------------------
+. 
+.         ** Keep flows where Multnomah is the origin
+.         keep if fips_o == `multnomah_fips'
+  5. 
+.         ** Collapse to sum flows by destination county and period
+.         collapse (sum) `measure', by(fips_d period)
+  6. 
+.         ** Reshape to wide format (pre and post as columns)
+.         reshape wide `measure', i(fips_d) j(period) string
+  7. 
+.         ** Rename for clarity
+.         rename fips_d fips
+  8.         rename `measure'pre out_pre
+  9.         rename `measure'post out_post
+ 10.         
+.         ** Replace missing values with 0s
+.         replace out_pre = 0 if missing(out_pre)
+ 11.         replace out_post = 0 if missing(out_post)
+ 12. 
+.         ** Merge with destination county populations
+.         merge 1:1 fips using `county_pops', keep(match) nogen ///
+>                 keepusing(`measure'_pop_pre `measure'_pop_post `measure'_pop_avg)
+ 13. 
+.         ** Rename population variables for out-migration (destination pop)
+.         rename `measure'_pop_pre dest_pop_pre
+ 14.         rename `measure'_pop_post dest_pop_post
+ 15.         rename `measure'_pop_avg dest_pop_avg
+ 16. 
+.         ** Calculate out-migration rate per 100K of destination population
+.         gen out_rate_pre = 100000 * out_pre / dest_pop_pre
+ 17.         gen out_rate_post = 100000 * out_post / dest_pop_post
+ 18.         gen out_rate_change = out_rate_post - out_rate_pre
+ 19. 
+.         ** Save temp file for out-migration
+.         tempfile out_flows
+ 20.         save `out_flows'
+ 21. 
+.         ** ------------------------------------------------------------
+.         ** IN-MIGRATION: Flows TO Multnomah FROM other counties
+.         ** ------------------------------------------------------------
+. 
+.         ** Restore and start fresh
+.         restore
+ 22.         preserve
+ 23. 
+.         ** Keep flows where Multnomah is the destination
+.         keep if fips_d == `multnomah_fips'
+ 24. 
+.         ** Collapse to sum flows by origin county and period
+.         collapse (sum) `measure', by(fips_o period)
+ 25. 
+.         ** Reshape to wide format
+.         reshape wide `measure', i(fips_o) j(period) string
+ 26. 
+.         ** Rename for clarity
+.         rename fips_o fips
+ 27.         rename `measure'pre in_pre
+ 28.         rename `measure'post in_post
+ 29.         
+.         ** Replace missing values with 0s
+.         replace in_pre = 0 if missing(in_pre)
+ 30.         replace in_post = 0 if missing(in_post)
+ 31. 
+.         ** Merge with origin county populations
+.         merge 1:1 fips using `county_pops', keep(match) nogen ///
+>                 keepusing(`measure'_pop_pre `measure'_pop_post `measure'_pop_avg)
+ 32. 
+.         ** Rename population variables for in-migration (origin pop)
+.         rename `measure'_pop_pre orig_pop_pre
+ 33.         rename `measure'_pop_post orig_pop_post
+ 34.         rename `measure'_pop_avg orig_pop_avg
+ 35. 
+.         ** Calculate in-migration rate per 100K of origin population
+.         gen in_rate_pre = 100000 * in_pre / orig_pop_pre
+ 36.         gen in_rate_post = 100000 * in_post / orig_pop_post
+ 37.         gen in_rate_change = in_rate_post - in_rate_pre
+ 38. 
+.         ** ------------------------------------------------------------
+.         ** MERGE: Combine in and out flows
+.         ** ------------------------------------------------------------
+. 
+.         ** Merge with out-migration flows
+.         merge 1:1 fips using `out_flows', nogen
+ 39. 
+.         ** Replace missing with 0 (counties with flows in only one direction)
+.         foreach var of varlist out_pre out_post in_pre in_post {
+ 40.                 replace `var' = 0 if missing(`var')
+ 41.         }
+ 42. 
+.         ** Calculate net rate change (negative = net outflow from Multnomah)
+.         gen net_rate_change = in_rate_change - out_rate_change
+ 43. 
+.         ** Order columns
+.         order fips ///
+>                 dest_pop_avg out_pre out_post out_rate_pre out_rate_post out_rate_change ///
+>                 orig_pop_avg in_pre in_post in_rate_pre in_rate_post in_rate_change ///
+>                 net_rate_change
+ 44. 
+.         ** Sort by fips
+.         sort fips
+ 45. 
+.         ** Label variables
+.         label var fips "Partner county FIPS code"
+ 46.         label var dest_pop_avg "Destination county avg population (for out-migration rate)"
+ 47.         label var out_pre "Out-migration from Multnomah (2018-2019)"
+ 48.         label var out_post "Out-migration from Multnomah (2021-2022)"
+ 49.         label var out_rate_pre "Out-migration rate per 100K dest pop (pre)"
+ 50.         label var out_rate_post "Out-migration rate per 100K dest pop (post)"
+ 51.         label var out_rate_change "Change in out-migration rate (per 100K)"
+ 52.         label var orig_pop_avg "Origin county avg population (for in-migration rate)"
+ 53.         label var in_pre "In-migration to Multnomah (2018-2019)"
+ 54.         label var in_post "In-migration to Multnomah (2021-2022)"
+ 55.         label var in_rate_pre "In-migration rate per 100K origin pop (pre)"
+ 56.         label var in_rate_post "In-migration rate per 100K origin pop (post)"
+ 57.         label var in_rate_change "Change in in-migration rate (per 100K)"
+ 58.         label var net_rate_change "Net rate change: in_change - out_change"
+ 59. 
+.         ** Save Stata dataset
+.         save "${data}working/multnomah_partner_flows_`measure'.dta", replace
+ 60. 
+.         ** Export to CSV for R mapping
+.         export delimited using "${data}working/multnomah_partner_flows_`measure'.csv", replace
+ 61. 
+.         ** Display summary statistics
+.         dis ""
+ 62.         dis "Summary for `measure' - Partner-normalized rates (per 100K):"
+ 63.         summ out_rate_pre out_rate_post out_rate_change
+ 64.         summ in_rate_pre in_rate_post in_rate_change
+ 65. 
+.         ** Top 10 destinations for out-migration from Multnomah
+.         dis ""
+ 66.         dis "Top 10 destinations for out-migration (by post rate):"
+ 67.         gsort -out_rate_post
+ 68.         list fips out_rate_post out_rate_change in 1/10
+ 69. 
+.         ** Top 10 origins for in-migration to Multnomah
+.         dis ""
+ 70.         dis "Top 10 origins for in-migration (by post rate):"
+ 71.         gsort -in_rate_post
+ 72.         list fips in_rate_post in_rate_change in 1/10
+ 73. 
+.         ** Restore original data for next measure
+.         restore
+ 74. 
+. } // END MEASURE LOOP
+Creating partner-normalized flow dataset for n1...
+(203,572 observations deleted)
+(j = post pre)
+
+Data                               Long   ->   Wide
+-----------------------------------------------------------------------------
+Number of observations              355   ->   202         
+Number of variables                   3   ->   3           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                     n1   ->   n1post n1pre
+-----------------------------------------------------------------------------
+(46 real changes made)
+(3 real changes made)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                               200  
+    -----------------------------------------
+file C:\Users\ji252\AppData\Local\Temp\ST_92f0_000007.tmp saved as .dta format
+(203,528 observations deleted)
+(j = post pre)
+
+Data                               Long   ->   Wide
+-----------------------------------------------------------------------------
+Number of observations              379   ->   202         
+Number of variables                   3   ->   3           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                     n1   ->   n1post n1pre
+-----------------------------------------------------------------------------
+(7 real changes made)
+(18 real changes made)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                               199  
+    -----------------------------------------
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                            57
+        from master                        28  
+        from using                         29  
+
+    Matched                               171  
+    -----------------------------------------
+(28 real changes made)
+(28 real changes made)
+(29 real changes made)
+(29 real changes made)
+(57 missing values generated)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/working/multnomah_partner_flows_n1.dta saved
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/working/multnomah_partner_flows_n1.csv saved
+
+Summary for n1 - Partner-normalized rates (per 100K):
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+out_rate_pre |        200    121.8938    356.1084          0   3176.085
+out_rate_p~t |        200    148.3483    391.7624          0   3388.815
+out_rate_c~e |        200    26.45453    79.14416  -71.74336   770.7445
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+ in_rate_pre |        199    96.97235    265.7597          0   2431.526
+in_rate_post |        199    93.18275    246.5365          0   2218.134
+in_rate_ch~e |        199   -3.789604    28.53578  -213.3923   134.5368
+
+Top 10 destinations for out-migration (by post rate):
+
+     +------------------------------+
+     |  fips   out_ra~t   out_ra~ge |
+     |------------------------------|
+  1. | 41005   3388.815    212.7302 |
+  2. | 41067   2003.892    38.55579 |
+  3. | 41009    1637.13   -55.42285 |
+  4. | 41027   1632.853    417.7493 |
+  5. | 53011   1590.774    136.3123 |
+     |------------------------------|
+  6. | 53059   1424.658    405.0963 |
+  7. | 41057   1350.739    273.7562 |
+  8. | 41007   1112.906    29.94348 |
+  9. | 41065   882.6558   -25.07538 |
+ 10. | 41041   813.1492    206.5953 |
+     +------------------------------+
+
+Top 10 origins for in-migration (by post rate):
+
+     +------------------------------+
+     |  fips   in_rat~t   in_rat~ge |
+     |------------------------------|
+  1. | 41005   2218.134   -213.3923 |
+  2. | 41067   1728.452   -127.9098 |
+  3. | 41027   860.4254   -98.60254 |
+  4. | 53011   842.1321     -94.591 |
+  5. | 41009   831.5959    -85.6261 |
+     |------------------------------|
+  6. | 41003   785.7072   -78.97198 |
+  7. | 41007   673.1287    41.40051 |
+  8. | 41057   548.4543   -50.40588 |
+  9. | 53059   547.9452   -56.67841 |
+ 10. | 41065   534.4971    13.58319 |
+     +------------------------------+
+Creating partner-normalized flow dataset for n2...
+(203,572 observations deleted)
+(j = post pre)
+
+Data                               Long   ->   Wide
+-----------------------------------------------------------------------------
+Number of observations              355   ->   202         
+Number of variables                   3   ->   3           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                     n2   ->   n2post n2pre
+-----------------------------------------------------------------------------
+(46 real changes made)
+(3 real changes made)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                               200  
+    -----------------------------------------
+file C:\Users\ji252\AppData\Local\Temp\ST_92f0_00000a.tmp saved as .dta format
+(203,528 observations deleted)
+(j = post pre)
+
+Data                               Long   ->   Wide
+-----------------------------------------------------------------------------
+Number of observations              379   ->   202         
+Number of variables                   3   ->   3           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                     n2   ->   n2post n2pre
+-----------------------------------------------------------------------------
+(7 real changes made)
+(18 real changes made)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                               199  
+    -----------------------------------------
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                            57
+        from master                        28  
+        from using                         29  
+
+    Matched                               171  
+    -----------------------------------------
+(28 real changes made)
+(28 real changes made)
+(29 real changes made)
+(29 real changes made)
+(57 missing values generated)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/working/multnomah_partner_flows_n2.dta saved
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/working/multnomah_partner_flows_n2.csv saved
+
+Summary for n2 - Partner-normalized rates (per 100K):
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+out_rate_pre |        200    95.07484    288.3589          0   2695.604
+out_rate_p~t |        200    120.8469    328.0628          0   2941.834
+out_rate_c~e |        200    25.77202    75.37264  -94.23657   640.5934
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+ in_rate_pre |        199    68.13857    191.0117          0   1819.857
+in_rate_post |        199    65.64387    177.4693          0   1650.695
+in_rate_ch~e |        199   -2.494699    19.80333  -169.1622   85.40136
+
+Top 10 destinations for out-migration (by post rate):
+
+     +------------------------------+
+     |  fips   out_ra~t   out_ra~ge |
+     |------------------------------|
+  1. | 41005   2941.834      246.23 |
+  2. | 41067   1502.273    73.46338 |
+  3. | 41027   1409.879    455.1591 |
+  4. | 41009   1353.573   -94.23657 |
+  5. | 53011   1299.091    98.06836 |
+     |------------------------------|
+  6. | 41057   1205.822    362.7706 |
+  7. | 53059   1182.073    362.1641 |
+  8. | 41007   903.9294     66.7583 |
+  9. | 41065   743.1895    112.5855 |
+ 10. | 41041   682.8362    197.6551 |
+     +------------------------------+
+
+Top 10 origins for in-migration (by post rate):
+
+     +------------------------------+
+     |  fips   in_rat~t   in_rat~ge |
+     |------------------------------|
+  1. | 41005   1650.695   -169.1622 |
+  2. | 41067   1195.349   -72.55103 |
+  3. | 41027   622.8574   -17.44733 |
+  4. | 53011   619.4438   -83.22137 |
+  5. | 41009   610.7878   -81.43085 |
+     |------------------------------|
+  6. | 41003   509.1627   -24.75842 |
+  7. | 41007   493.7835    23.38873 |
+  8. | 41057   418.5892   -50.31268 |
+  9. | 41065   405.1501    6.096008 |
+ 10. | 53059   369.7479   -11.33646 |
+     +------------------------------+
+Creating partner-normalized flow dataset for agi...
+(203,572 observations deleted)
+(j = post pre)
+
+Data                               Long   ->   Wide
+-----------------------------------------------------------------------------
+Number of observations              355   ->   202         
+Number of variables                   3   ->   3           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                    agi   ->   agipost agipre
+-----------------------------------------------------------------------------
+(46 real changes made)
+(3 real changes made)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                               200  
+    -----------------------------------------
+file C:\Users\ji252\AppData\Local\Temp\ST_92f0_00000d.tmp saved as .dta format
+(203,528 observations deleted)
+(j = post pre)
+
+Data                               Long   ->   Wide
+-----------------------------------------------------------------------------
+Number of observations              379   ->   202         
+Number of variables                   3   ->   3           
+j variable (2 values)            period   ->   (dropped)
+xij variables:
+                                    agi   ->   agipost agipre
+-----------------------------------------------------------------------------
+(7 real changes made)
+(18 real changes made)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                               199  
+    -----------------------------------------
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                            57
+        from master                        28  
+        from using                         29  
+
+    Matched                               171  
+    -----------------------------------------
+(28 real changes made)
+(28 real changes made)
+(29 real changes made)
+(29 real changes made)
+(57 missing values generated)
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/working/multnomah_partner_flows_agi.dta saved
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/working/multnomah_partner_flows_agi.csv saved
+
+Summary for agi - Partner-normalized rates (per 100K):
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+out_rate_pre |        200    112.4336    320.6304          0   2172.595
+out_rate_p~t |        200    188.9238    581.4595          0   4420.437
+out_rate_c~e |        200    76.49017    333.4416  -231.8961   3249.586
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+ in_rate_pre |        199    66.16498    176.7936          0   1370.445
+in_rate_post |        199    60.69565      159.33          0   1234.148
+in_rate_ch~e |        199   -5.469326    36.30775  -341.2853    81.7718
+
+Top 10 destinations for out-migration (by post rate):
+
+     +------------------------------+
+     |  fips   out_ra~t   out_ra~ge |
+     |------------------------------|
+  1. | 41057   4420.437    3249.586 |
+  2. | 41027   3592.764    2260.638 |
+  3. | 41007   3272.164    1686.282 |
+  4. | 41005   3016.007    843.4116 |
+  5. | 53011   1814.292    744.7755 |
+     |------------------------------|
+  6. | 41017    1667.65    959.0034 |
+  7. | 53059   1619.798    436.4052 |
+  8. | 41067   1615.359     55.9165 |
+  9. | 41009   1404.539   -120.7758 |
+ 10. | 53039   1254.896    25.63843 |
+     +------------------------------+
+
+Top 10 origins for in-migration (by post rate):
+
+     +------------------------------+
+     |  fips   in_rat~t   in_rat~ge |
+     |------------------------------|
+  1. | 41067   1234.148   -53.61023 |
+  2. | 41005   1198.792    -171.653 |
+  3. | 41007   727.4794    70.41144 |
+  4. | 41027   613.8173   -20.34229 |
+  5. | 41057   573.3669    32.42407 |
+     |------------------------------|
+  6. | 41009    519.243   -341.2853 |
+  7. | 53011   463.6598    -180.342 |
+  8. | 41065   411.1717    64.10931 |
+  9. | 41003   355.4082   -50.44141 |
+ 10. | 41041   354.0095    25.80093 |
+     +------------------------------+
+
+. 
+. dis ""
+
+
+. dis "Partner-normalized flow datasets created successfully!"
+Partner-normalized flow datasets created successfully!
+
+. dis "Files saved to: ${data}working/multnomah_partner_flows_*.csv"
+Files saved to: C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/working/multnomah_partner_flows_*.csv
+
+. 
+. ** Close log
+. clear
+
+. log close log_02
+      name:  log_02
+       log:  C:/Users/ji252/Documents/GitHub/multnomah-county-tax/code/logs/02_log_descriptives_2026-02-06.log
+  log type:  text
+ closed on:   6 Feb 2026, 11:40:01
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

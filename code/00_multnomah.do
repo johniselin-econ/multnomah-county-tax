@@ -112,20 +112,20 @@ do ${code}01_clean_data.do
 do ${code}02_descriptives.do 
 
 ** Create maps 
-rcall script "${code}R/map_code.R", vanilla
-
-** Synthetic Difference-in-Difference Analysis
-*do ${code}02_sdid_analysis_parallel.do 
-do ${code}02_sdid_analysis.do 
+*rcall script "${code}R/map_code.R", vanilla
 
 ** Flow-based models (IRS)
-do ${code}02_flow_analysis.do
-
-** Individual-level Model
-do ${code}02_indiv_analysis.do 
+*do ${code}02_flow_analysis.do
 
 ** Difference-in-Difference (ACS)
 do ${code}02_did_analysis.do
+
+** Synthetic Difference-in-Difference Analysis
+*do ${code}02_sdid_analysis_parallel.do 
+*do ${code}02_sdid_analysis.do 
+
+** Individual-level Model
+do ${code}02_indiv_analysis.do 
 
 ** Multinomial Logit Model
 *do ${code}02_multi_analysis.do 

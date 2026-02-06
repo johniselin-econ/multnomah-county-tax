@@ -32,6 +32,8 @@ drop if year == 2015 					// Sample: 2016-2024
 drop if qmigplc1 == 4					// Error in migration place
 drop if inlist(state_fips_o, 2, 15)   	// Alaska and Hawaii
 drop if inlist(state_fips_d, 2, 15)   	// Alaska and Hawaii
+drop if age < 25 						// Dropping under 25
+drop if ftotinc < 0 					// Negative Family Income 	
 
 ********************************************************************************
 ** DEFINE SAMPLES AND TREATMENT
@@ -42,10 +44,12 @@ gen multnomah_o = (state_fips_o == 41 & county_fips_o == 51)
 gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
 
 ** Analysis samples
-gen sample_1 = (multnomah_o == 1)       // Multnomah in origin (out-migration)
-gen sample_2 = (multnomah_o != 1) & 	/// Not Multnomah in origin
-			   inlist(state_fips_o, 6, 41, 53)  // CA, OR, WA (in-migration)
-gen sample_3 = (multnomah_o != 1) 		// Not Multnomah in origin
+gen sample_1 = (multnomah_o == 1) & year != 2020    // Multnomah in origin (out-migration)
+gen sample_2 = (multnomah_o != 1) & 				///
+				year != 2020 &						/// Not Multnomah in origin
+			   inlist(state_fips_o, 6, 41, 53)  	// CA, OR, WA (in-migration)
+gen sample_3 = (multnomah_o != 1) & 				/// Not Multnomah in origin
+				year != 2020						// 
 
 label var sample_1 "Out-migration Sample"
 label var sample_2 "In-migration Sample (West Coast)"
@@ -57,6 +61,9 @@ label var out_1 "Moved out of Multnomah (%)"
 
 gen out_2 = (multnomah_d == 1) * 100
 label var out_2 "Moved to Multnomah (%)"
+
+gen out_3 = (state_fips_o != state_fips_d) * 100
+label var out_3 "Moved out of Oregon (%)"
 
 ** Treatment variables
 gen post = year > 2020
@@ -74,10 +81,9 @@ label var treated "College Degree × Post"
 
 ** Age categories
 recode age ///
-    (18/24   = 1 "18-24") ///
-    (25/44   = 2 "25-44") ///
-    (45/64   = 3 "45-64") ///
-    (65/max  = 4 "65+"), ///
+    (25/44   = 1 "25-44") ///
+    (45/64   = 2 "45-64") ///
+    (65/max  = 3 "65+"), ///
     gen(cat_age)
 label var cat_age "Age categories"
 
@@ -132,70 +138,77 @@ label var cat_educ "Education categories"
 estimates clear
 
 ** Out-migration regression (Sample 1: Multnomah residents)
-reghdfe out_1 treated if sample_1 == 1 [fw = perwt], 	///
+reghdfe out_1 treated if sample_1 == 1 [pw = perwt], 	///
 	vce(robust) absorb(year cat_*)
+qui count if e(sample)
+estadd scalar N_unwtd = r(N)
 estimates store did_out
 
 ** In-migration regression (Sample 2: CA/OR/WA residents)
-reghdfe out_2 treated if sample_2 == 1 [fw = perwt], 	///
+reghdfe out_2 treated if sample_2 == 1 [pw = perwt], 	///
 	vce(cluster fips_o) absorb(year fips_o cat_*)
+qui count if e(sample)
+estadd scalar N_unwtd = r(N)
 estimates store did_in_west
 
 ** In-migration regression (Sample 3: Lower 48 + DC residents)
-reghdfe out_2 treated if sample_3 == 1 [fw = perwt], 	///
+reghdfe out_2 treated if sample_3 == 1 [pw = perwt], 	///
 	vce(cluster fips_o) absorb(year fips_o cat_*)
+qui count if e(sample)
+estadd scalar N_unwtd = r(N)
 estimates store did_in_48
 
+** Out-of-state migration regression (Sample 1: Multnomah residents)
+reghdfe out_3 treated if sample_1 == 1 [pw = perwt], 	///
+	vce(robust) absorb(year cat_*)
+qui count if e(sample)
+estadd scalar N_unwtd = r(N)
+estimates store did_out_state
+
 ********************************************************************************
-** COEFFICIENT PLOT: DiD RESULTS
+** TABLE: DiD RESULTS
 ********************************************************************************
 
-coefplot 	(did_out, label("Out-migration from Multnomah") 					///
-				mc(sea) ciopts(lc(sea))) 										///
-			(did_in_west, label("In-migration to Multnomah, West Coast Sample")	///
-				mc(vermillion) ciopts(lc(vermillion))) 									///
-			(did_in_48, label("In-migration to Multnomah, Lower 48 + DC Sample")	///
-				mc(turquoise) ciopts(lc(turquoise))), 				///	
-	keep(treated) 												///
-	ciopts(recast(rcap)) 										///
-	yline(0, lc(gs10) lp(dash)) 								///
-	xline(0, lc(gs10) lp(dash)) 								///
-	coeflabels(treated = "College Degree × Post") 				///
-	ytitle("") 													///
-	xtitle("Effect on Migration Rate (pp)")						///
-	legend(pos(6) rows(1)) 										///
-	title("Effect of Multnomah County Tax on Migration")		///
-	subtitle("Difference-in-Differences Estimates")				///
-	graphregion(color(white))
-
-graph export "${results}did/fig_did_coefplot.png", replace
+esttab did_out did_out_state did_in_west did_in_48 						///
+	using "${results}did/tab_did_overall.tex",							///
+	starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
+	b(%-9.3f) se(%-9.3f) replace 										///
+	keep(treated) 														///
+	coeflabels(treated  "College Degree $\times$ Post")				///
+	mtitle(	"Out-migration" 											///
+			"Out-of-state"												///
+			"In-migration (West Coast)" 								///
+			"In-migration (Lower 48 + DC)")								///
+	stats(N_unwtd, fmt(%12.0fc) labels("Observations"))
 
 ********************************************************************************
 ** REGRESSION 2: EVENT STUDY
 ********************************************************************************
 
-** Create year × education interactions (base year = 2020)
-forvalues y = 2016/2024 {
+** Create year × education interactions (base year = 2019, 2020 excluded)
+foreach y in 2016 2017 2018 2021 2022 2023 2024 {
 	gen x_high_ed_`y' = high_ed * (year == `y')
 }
 
-** Drop base year (2020)
-drop x_high_ed_2020
-
 ** Out-migration event study
-reghdfe out_1 x_high_ed_* if sample_1 == 1 [fw = perwt], 	///
+reghdfe out_1 x_high_ed_* if sample_1 == 1 [pw = perwt], 	///
 	vce(robust) absorb(year cat_*)
 estimates store es_out
 
 ** In-migration event study
-reghdfe out_2 x_high_ed_* if sample_2 == 1 [fw = perwt], 	///
+reghdfe out_2 x_high_ed_* if sample_2 == 1 [pw = perwt], 	///
 	vce(cluster fips_o) absorb(year fips_o cat_*)
 estimates store es_in_west
 
 ** In-migration event study
-reghdfe out_2 x_high_ed_* if sample_3 == 1 [fw = perwt], 	///
+reghdfe out_2 x_high_ed_* if sample_3 == 1 [pw = perwt], 	///
 	vce(cluster fips_o) absorb(year fips_o cat_*)
 estimates store es_in_48
+
+** Out-of-state migration event study
+reghdfe out_3 x_high_ed_* if sample_1 == 1 [pw = perwt], 	///
+	vce(robust) absorb(year cat_*)
+estimates store es_out_state
 
 ********************************************************************************
 ** EVENT STUDY PLOTS
@@ -222,8 +235,13 @@ preserve
 	gen in_48_ci_lo = .
 	gen in_48_ci_hi = .
 
+	** Out-of-state migration coefficients
+	gen out_state_coef = .
+	gen out_state_ci_lo = .
+	gen out_state_ci_hi = .
+
 	** Fill in coefficients (2020 = base year = 0)
-	foreach y in 2016 2017 2018 2019 2021 2022 2023 2024 {
+	foreach y in 2016 2017 2018 2021 2022 2023 2024 {
 
 		** Out-migration
 		estimates restore es_out
@@ -248,22 +266,31 @@ preserve
 			replace in_48_ci_lo = _b[x_high_ed_`y'] - 1.96 * _se[x_high_ed_`y'] if year == `y'
 			replace in_48_ci_hi = _b[x_high_ed_`y'] + 1.96 * _se[x_high_ed_`y'] if year == `y'
 		}
-		
+
+		** Out-of-state migration
+		estimates restore es_out_state
+		capture {
+			replace out_state_coef = _b[x_high_ed_`y'] if year == `y'
+			replace out_state_ci_lo = _b[x_high_ed_`y'] - 1.96 * _se[x_high_ed_`y'] if year == `y'
+			replace out_state_ci_hi = _b[x_high_ed_`y'] + 1.96 * _se[x_high_ed_`y'] if year == `y'
+		}
+
 	}
 
-	** Base year (2020) = 0
-	foreach v in out_coef out_ci_lo out_ci_hi in_west_coef in_west_ci_lo in_west_ci_hi in_48_coef in_48_ci_lo in_48_ci_hi {
-		replace `v' = 0 if year == 2020
+	** Base year (2019) = 0; 2020 excluded (no coefficient)
+	foreach v in out_coef out_ci_lo out_ci_hi in_west_coef in_west_ci_lo in_west_ci_hi in_48_coef in_48_ci_lo in_48_ci_hi out_state_coef out_state_ci_lo out_state_ci_hi {
+		replace `v' = 0 if year == 2019
 	}
 
 	** Offset years slightly for visibility
-	gen year_out = year - 0.15
-	gen year_in_west = year
-	gen year_in_48 = year + 0.15
+	gen year_out = year - 0.2
+	gen year_out_state = year - 0.07
+	gen year_in_west = year + 0.07
+	gen year_in_48 = year + 0.2
 
 	** Plot 1: Out-migration event study
 	twoway 	(rcap out_ci_lo out_ci_hi year, lc(navy)) 				///
-			(connected out_coef year, mc(navy) lc(navy) ms(O)),		///
+			(scatter out_coef year, mc(navy) ms(O)),		///
 		yline(0, lc(gs10) lp(dash)) 								///
 		xline(2020.5, lc(black) lp(solid))							///
 		xlabel(2016(1)2024) 										///
@@ -272,14 +299,14 @@ preserve
 		legend(off) 												///
 		title("Out-Migration from Multnomah County")				///
 		subtitle("College Degree vs. No College Degree")			///
-		note("Base year: 2020. Vertical line indicates tax implementation.")	///
+		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_out_migration.png", replace
 
 	** Plot 2: In-migration event study (West Coast)
 	twoway 	(rcap in_west_ci_lo in_west_ci_hi year, lc(maroon)) 	///
-			(connected in_west_coef year, mc(maroon) lc(maroon) ms(O)),	///
+			(scatter in_west_coef year, mc(maroon) ms(O)),	///
 		yline(0, lc(gs10) lp(dash)) 								///
 		xline(2020.5, lc(black) lp(solid))							///
 		xlabel(2016(1)2024) 										///
@@ -288,14 +315,14 @@ preserve
 		legend(off) 												///
 		title("In-Migration to Multnomah County (West Coast)")		///
 		subtitle("College Degree vs. No College Degree")			///
-		note("Base year: 2020. Vertical line indicates tax implementation.")	///
+		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_in_migration_west.png", replace
 
 	** Plot 3: In-migration event study (Lower 48 + DC)
 	twoway 	(rcap in_48_ci_lo in_48_ci_hi year, lc(forest_green)) 	///
-			(connected in_48_coef year, mc(forest_green) lc(forest_green) ms(O)),	///
+			(scatter in_48_coef year, mc(forest_green) ms(O)),	///
 		yline(0, lc(gs10) lp(dash)) 								///
 		xline(2020.5, lc(black) lp(solid))							///
 		xlabel(2016(1)2024) 										///
@@ -304,33 +331,298 @@ preserve
 		legend(off) 												///
 		title("In-Migration to Multnomah County (Lower 48 + DC)")	///
 		subtitle("College Degree vs. No College Degree")			///
-		note("Base year: 2020. Vertical line indicates tax implementation.")	///
+		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_in_migration_48.png", replace
 
-	** Plot 4: Combined event study
+	** Plot 4: Out-of-state migration event study
+	twoway 	(rcap out_state_ci_lo out_state_ci_hi year, lc(purple)) 		///
+			(scatter out_state_coef year, mc(purple) ms(D)),				///
+		yline(0, lc(gs10) lp(dash)) 										///
+		xline(2020.5, lc(black) lp(solid))									///
+		xlabel(2016(1)2024) 												///
+		ytitle("Effect on Out-of-State Migration (pp)") 					///
+		xtitle("Year")														///
+		legend(off) 														///
+		title("Out-of-State Migration from Multnomah County")				///
+		subtitle("College Degree vs. No College Degree")					///
+		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
+		graphregion(color(white))
+
+	graph export "${results}did/fig_es_out_state_migration.png", replace
+
+	** Plot 5: Combined event study
 	twoway 	(rcap out_ci_lo out_ci_hi year_out, lc(navy)) 					///
-			(connected out_coef year_out, mc(navy) lc(navy) ms(O)) 			///
+			(scatter out_coef year_out, mc(navy) ms(O)) 			///
+			(rcap out_state_ci_lo out_state_ci_hi year_out_state, lc(purple)) 	///
+			(scatter out_state_coef year_out_state, mc(purple) ms(D))	///
 			(rcap in_west_ci_lo in_west_ci_hi year_in_west, lc(maroon)) 	///
-			(connected in_west_coef year_in_west, mc(maroon) lc(maroon) ms(T))	///
+			(scatter in_west_coef year_in_west, mc(maroon) ms(T))	///
 			(rcap in_48_ci_lo in_48_ci_hi year_in_48, lc(forest_green)) 	///
-			(connected in_48_coef year_in_48, mc(forest_green) lc(forest_green) ms(S)),	///
+			(scatter in_48_coef year_in_48, mc(forest_green) ms(S)),	///
 		yline(0, lc(gs10) lp(dash)) 										///
 		xline(2020.5, lc(black) lp(solid))									///
 		xlabel(2016(1)2024) 												///
 		ytitle("Effect on Migration Rate (pp)") 							///
 		xtitle("Year")														///
-		legend(order(2 "Out-migration" 4 "In-migration (West Coast)" 		///
-			6 "In-migration (Lower 48 + DC)") pos(6) rows(1)) 				///
+		legend(order(2 "Out-migration" 4 "Out-of-state" 					///
+			6 "In-migration (West Coast)" 									///
+			8 "In-migration (Lower 48 + DC)") pos(6) rows(1)) 				///
 		title("Migration Effects: Multnomah County Tax")					///
 		subtitle("College Degree vs. No College Degree")					///
-		note("Base year: 2020. Vertical line indicates tax implementation.")	///
+		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_combined.png", replace
 
 restore
+
+********************************************************************************
+** REGRESSION 3: DIFFERENCE-IN-DIFFERENCES BY AGE
+********************************************************************************
+
+** Create age × treatment interactions
+gen treated_age_1 = treated * (cat_age == 1)
+gen treated_age_2 = treated * (cat_age == 2)
+gen treated_age_3 = treated * (cat_age == 3)
+
+label var treated_age_1 "College x Post x Age 25-44"
+label var treated_age_2 "College x Post x Age 45-64"
+label var treated_age_3 "College x Post x Age 65+"
+
+** Store estimates
+estimates clear
+
+** Out-migration regression by age (Sample 1: Multnomah residents)
+reghdfe out_1 treated_age_* if sample_1 == 1 [pw = perwt], 	///
+	vce(robust) absorb(year cat_*)
+qui count if e(sample)
+estadd scalar N_unwtd = r(N)
+estimates store did_age_out
+
+** In-migration regression by age (Sample 2: CA/OR/WA residents)
+reghdfe out_2 treated_age_* if sample_2 == 1 [pw = perwt], 	///
+	vce(cluster fips_o) absorb(year fips_o cat_*)
+qui count if e(sample)
+estadd scalar N_unwtd = r(N)
+estimates store did_age_in_west
+
+** In-migration regression by age (Sample 3: Lower 48 + DC residents)
+reghdfe out_2 treated_age_* if sample_3 == 1 [pw = perwt], 	///
+	vce(cluster fips_o) absorb(year fips_o cat_*)
+qui count if e(sample)
+estadd scalar N_unwtd = r(N)
+estimates store did_age_in_48
+
+** Out-of-state migration regression by age (Sample 1: Multnomah residents)
+reghdfe out_3 treated_age_* if sample_1 == 1 [pw = perwt], 	///
+	vce(robust) absorb(year cat_*)
+qui count if e(sample)
+estadd scalar N_unwtd = r(N)
+estimates store did_age_out_state
+
+********************************************************************************
+** TABLE: DiD BY AGE
+********************************************************************************
+
+esttab did_age_out did_age_out_state did_age_in_west did_age_in_48 		///
+	using "${results}did/tab_did_by_age.tex",							///
+	starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
+	b(%-9.3f) se(%-9.3f) replace 										///
+	keep(treated_age_*) 												///
+	order(treated_age_1 treated_age_2 treated_age_3)					///
+	coeflabels(	treated_age_1  "College $\times$ Post $\times$ Age 25-44"	///
+				treated_age_2  "College $\times$ Post $\times$ Age 45-64"	///
+				treated_age_3  "College $\times$ Post $\times$ Age 65+")	///
+	mtitle(	"Out-migration" 											///
+			"Out-of-state"												///
+			"In-migration (West Coast)" 								///
+			"In-migration (Lower 48 + DC)")								///
+	stats(N_unwtd, fmt(%12.0fc) labels("Observations"))
+
+********************************************************************************
+** REGRESSION 4: EVENT STUDY BY AGE
+********************************************************************************
+
+** Create year × education × age interactions (base year = 2019, 2020 excluded)
+foreach y in 2016 2017 2018 2021 2022 2023 2024 {
+	forvalues a = 1/3 {
+		gen x_he_`y'_age`a' = high_ed * (year == `y') * (cat_age == `a')
+	}
+}
+
+** Out-migration event study by age
+reghdfe out_1 x_he_*_age* if sample_1 == 1 [pw = perwt], 	///
+	vce(robust) absorb(year cat_*)
+estimates store es_age_out
+
+** In-migration event study by age (West Coast)
+reghdfe out_2 x_he_*_age* if sample_2 == 1 [pw = perwt], 	///
+	vce(cluster fips_o) absorb(year fips_o cat_*)
+estimates store es_age_in_west
+
+** In-migration event study by age (Lower 48 + DC)
+reghdfe out_2 x_he_*_age* if sample_3 == 1 [pw = perwt], 	///
+	vce(cluster fips_o) absorb(year fips_o cat_*)
+estimates store es_age_in_48
+
+** Out-of-state migration event study by age
+reghdfe out_3 x_he_*_age* if sample_1 == 1 [pw = perwt], 	///
+	vce(robust) absorb(year cat_*)
+estimates store es_age_out_state
+
+********************************************************************************
+** EVENT STUDY BY AGE PLOTS
+********************************************************************************
+
+
+	clear
+	set obs 9
+	gen year = 2015 + _n
+
+	** Create coefficient variables for each age group and sample
+	forvalues a = 1/3 {
+		foreach s in "out" "out_state" "in_west" "in_48" {
+			gen `s'_coef_age`a' = .
+			gen `s'_ci_lo_age`a' = .
+			gen `s'_ci_hi_age`a' = .
+		}
+	}
+
+	** Fill in coefficients
+	foreach y in 2016 2017 2018 2021 2022 2023 2024 {
+		forvalues a = 1/3 {
+
+			** Out-migration
+			estimates restore es_age_out
+			capture {
+				replace out_coef_age`a' = _b[x_he_`y'_age`a'] if year == `y'
+				replace out_ci_lo_age`a' = _b[x_he_`y'_age`a'] - 1.96 * _se[x_he_`y'_age`a'] if year == `y'
+				replace out_ci_hi_age`a' = _b[x_he_`y'_age`a'] + 1.96 * _se[x_he_`y'_age`a'] if year == `y'
+			}
+
+			** Out-of-state migration
+			estimates restore es_age_out_state
+			capture {
+				replace out_state_coef_age`a' = _b[x_he_`y'_age`a'] if year == `y'
+				replace out_state_ci_lo_age`a' = _b[x_he_`y'_age`a'] - 1.96 * _se[x_he_`y'_age`a'] if year == `y'
+				replace out_state_ci_hi_age`a' = _b[x_he_`y'_age`a'] + 1.96 * _se[x_he_`y'_age`a'] if year == `y'
+			}
+
+			** In-migration (West Coast)
+			estimates restore es_age_in_west
+			capture {
+				replace in_west_coef_age`a' = _b[x_he_`y'_age`a'] if year == `y'
+				replace in_west_ci_lo_age`a' = _b[x_he_`y'_age`a'] - 1.96 * _se[x_he_`y'_age`a'] if year == `y'
+				replace in_west_ci_hi_age`a' = _b[x_he_`y'_age`a'] + 1.96 * _se[x_he_`y'_age`a'] if year == `y'
+			}
+
+			** In-migration (Lower 48)
+			estimates restore es_age_in_48
+			capture {
+				replace in_48_coef_age`a' = _b[x_he_`y'_age`a'] if year == `y'
+				replace in_48_ci_lo_age`a' = _b[x_he_`y'_age`a'] - 1.96 * _se[x_he_`y'_age`a'] if year == `y'
+				replace in_48_ci_hi_age`a' = _b[x_he_`y'_age`a'] + 1.96 * _se[x_he_`y'_age`a'] if year == `y'
+			}
+
+		}
+	}
+
+	** Base year (2019) = 0; 2020 excluded (no coefficient)
+	forvalues a = 1/3 {
+		foreach s in "out" "out_state" "in_west" "in_48" {
+			foreach v in coef ci_lo ci_hi {
+				replace `s'_`v'_age`a' = 0 if year == 2019
+			}
+		}
+	}
+
+	** Offset years slightly for visibility across age groups
+	gen year_age1 = year - 0.15
+	gen year_age2 = year
+	gen year_age3 = year + 0.15
+
+	** Plot 1: Out-migration event study by age
+	twoway 	(rcap out_ci_lo_age1 out_ci_hi_age1 year_age1, lc(maroon)) 				///
+			(scatter out_coef_age1 year_age1, mc(maroon) ms(O)) 			///
+			(rcap out_ci_lo_age2 out_ci_hi_age2 year_age2, lc(forest_green)) 			///
+			(scatter out_coef_age2 year_age2, mc(forest_green) ms(T)) 	///
+			(rcap out_ci_lo_age3 out_ci_hi_age3 year_age3, lc(dkorange)) 				///
+			(scatter out_coef_age3 year_age3, mc(dkorange) ms(S)),		///
+		yline(0, lc(gs10) lp(dash)) 													///
+		xline(2020.5, lc(black) lp(solid))												///
+		xlabel(2016(1)2024) 															///
+		ytitle("Effect on Out-Migration (pp)") 											///
+		xtitle("Year")																	///
+		legend(order(2 "25-44" 4 "45-64" 6 "65+") pos(6) rows(1)) 						///
+		title("Out-Migration from Multnomah County by Age")								///
+		subtitle("College Degree vs. No College Degree")								///
+		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
+		graphregion(color(white))
+
+	graph export "${results}did/fig_es_age_out_migration.png", replace
+
+	** Plot 2: In-migration (West Coast) event study by age
+	twoway 	(rcap in_west_ci_lo_age1 in_west_ci_hi_age1 year_age1, lc(maroon)) 		///
+			(scatter in_west_coef_age1 year_age1, mc(maroon) ms(O)) 		///
+			(rcap in_west_ci_lo_age2 in_west_ci_hi_age2 year_age2, lc(forest_green)) 	///
+			(scatter in_west_coef_age2 year_age2, mc(forest_green) ms(T)) ///
+			(rcap in_west_ci_lo_age3 in_west_ci_hi_age3 year_age3, lc(dkorange)) 		///
+			(scatter in_west_coef_age3 year_age3, mc(dkorange) ms(S)),	///
+		yline(0, lc(gs10) lp(dash)) 													///
+		xline(2020.5, lc(black) lp(solid))												///
+		xlabel(2016(1)2024) 															///
+		ytitle("Effect on In-Migration (pp)") 											///
+		xtitle("Year")																	///
+		legend(order(2 "25-44" 4 "45-64" 6 "65+") pos(6) rows(1)) 						///
+		title("In-Migration to Multnomah (West Coast) by Age")							///
+		subtitle("College Degree vs. No College Degree")								///
+		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
+		graphregion(color(white))
+
+	graph export "${results}did/fig_es_age_in_migration_west.png", replace
+
+	** Plot 3: In-migration (Lower 48 + DC) event study by age
+	twoway 	(rcap in_48_ci_lo_age1 in_48_ci_hi_age1 year_age1, lc(maroon)) 			///
+			(scatter in_48_coef_age1 year_age1, mc(maroon) ms(O)) 		///
+			(rcap in_48_ci_lo_age2 in_48_ci_hi_age2 year_age2, lc(forest_green)) 		///
+			(scatter in_48_coef_age2 year_age2, mc(forest_green) ms(T)) ///
+			(rcap in_48_ci_lo_age3 in_48_ci_hi_age3 year_age3, lc(dkorange)) 			///
+			(scatter in_48_coef_age3 year_age3, mc(dkorange) ms(S)),	///
+		yline(0, lc(gs10) lp(dash)) 													///
+		xline(2020.5, lc(black) lp(solid))												///
+		xlabel(2016(1)2024) 															///
+		ytitle("Effect on In-Migration (pp)") 											///
+		xtitle("Year")																	///
+		legend(order(2 "25-44" 4 "45-64" 6 "65+") pos(6) rows(1)) 						///
+		title("In-Migration to Multnomah (Lower 48 + DC) by Age")						///
+		subtitle("College Degree vs. No College Degree")								///
+		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
+		graphregion(color(white))
+
+	graph export "${results}did/fig_es_age_in_migration_48.png", replace
+
+	** Plot 4: Out-of-state migration event study by age
+	twoway 	(rcap out_state_ci_lo_age1 out_state_ci_hi_age1 year_age1, lc(maroon)) 			///
+			(scatter out_state_coef_age1 year_age1, mc(maroon) ms(O)) 		///
+			(rcap out_state_ci_lo_age2 out_state_ci_hi_age2 year_age2, lc(forest_green)) 		///
+			(scatter out_state_coef_age2 year_age2, mc(forest_green) ms(T)) ///
+			(rcap out_state_ci_lo_age3 out_state_ci_hi_age3 year_age3, lc(dkorange)) 			///
+			(scatter out_state_coef_age3 year_age3, mc(dkorange) ms(S)),	///
+		yline(0, lc(gs10) lp(dash)) 													///
+		xline(2020.5, lc(black) lp(solid))												///
+		xlabel(2016(1)2024) 															///
+		ytitle("Effect on Out-of-State Migration (pp)") 								///
+		xtitle("Year")																	///
+		legend(order(2 "25-44" 4 "45-64" 6 "65+") pos(6) rows(1)) 						///
+		title("Out-of-State Migration from Multnomah County by Age")					///
+		subtitle("College Degree vs. No College Degree")								///
+		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
+		graphregion(color(white))
+
+	graph export "${results}did/fig_es_age_out_state_migration.png", replace
+
 
 ********************************************************************************
 ** CLEANUP

@@ -968,17 +968,17 @@ clear
 
 ** Create gross-migration files for ACS 
 
-** All (18+)
+** All (25+)
 acs_make_gross_migration using "${data}working/acs_migration_file", ///
-    saving("${data}working/acs_county_gross_18plus") replace 
+    saving("${data}working/acs_county_gross_25plus") replace sample("age >= 25")
 	
 ** College-degrees 
 acs_make_gross_migration  using "${data}working/acs_migration_file", ///
-    saving("${data}working/acs_county_gross_college") replace sample("hh_any_college == 1")
+    saving("${data}working/acs_county_gross_college") replace sample("hh_any_college == 1" & "age >= 25")
 	
 ** No Kids
 acs_make_gross_migration using "${data}working/acs_migration_file", ///
-    saving("${data}working/acs_county_gross_nokids") replace sample("hh_any_child == 0")
+    saving("${data}working/acs_county_gross_nokids") replace sample("hh_any_child == 0" & "age >= 25")
 	
 ********************************************************************************
 ** STEP 5: Import and Clean IRS Migration Data 
@@ -1559,7 +1559,7 @@ save "${data}working/dol_childcare", replace
 ** STEP 8: Calculate County-Level Property Tax Rates from ACS Data
 ********************************************************************************
 
-** Load ACS migration file (contains proptx99, valueh, qproptx99, qvalueh)
+** Load ACS migration file (contains proptx99, valueh, qprotx99, qvalueh)
 use "${data}working/acs_migration_file", clear
 
 ** Keep household heads only (relate == 1 for household reference person)
@@ -1688,11 +1688,11 @@ export delimited using "${data}working/property_tax_rates_overall.csv", replace
 restore
 
 ** ============================================================================
-** VERSION 2: Excluding allocated values (qproptx99 != 4, qvalueh != 4)
+** VERSION 2: Excluding allocated values (qprotx99 != 4, qvalueh != 4)
 ** ============================================================================
 
 ** Drop observations where values are allocated (quality flag == 4)
-drop if qproptx99 == 4
+drop if qprotx99 == 4
 drop if qvalueh == 4
 
 ** Collapse to county X year, weighted by household weight

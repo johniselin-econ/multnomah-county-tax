@@ -1,0 +1,22 @@
+{
+\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}
+\begin{tabular}{l*{4}{c}}
+\hline\hline
+            &\multicolumn{1}{c}{(1)}&\multicolumn{1}{c}{(2)}&\multicolumn{1}{c}{(3)}&\multicolumn{1}{c}{(4)}\\
+            &\multicolumn{1}{c}{Out-migration}&\multicolumn{1}{c}{Out-of-state}&\multicolumn{1}{c}{In-migration (West Coast)}&\multicolumn{1}{c}{In-migration (Lower 48 + DC)}\\
+\hline
+College $\times$ Post $\times$ Age 25-44&       2.265***&       1.780***&       0.014   &       0.004   \\
+            &     (0.755)   &     (0.610)   &     (0.016)   &     (0.003)   \\
+[1em]
+College $\times$ Post $\times$ Age 45-64&       2.038***&       1.656***&      -0.019   &      -0.007***\\
+            &     (0.691)   &     (0.549)   &     (0.015)   &     (0.003)   \\
+[1em]
+College $\times$ Post $\times$ Age 65+&       0.474   &      -0.527   &      -0.027*  &      -0.008***\\
+            &     (0.662)   &     (0.409)   &     (0.014)   &     (0.003)   \\
+\hline
+Observations&      43,700   &      43,700   &   2,671,879   &  17,535,332   \\
+\hline\hline
+\multicolumn{5}{l}{\footnotesize Standard errors in parentheses}\\
+\multicolumn{5}{l}{\footnotesize * p<0.10, ** p<0.05, *** p<0.01}\\
+\end{tabular}
+}
