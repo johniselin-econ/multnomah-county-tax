@@ -19,13 +19,14 @@
 suppressPackageStartupMessages({
   library(dplyr)
   library(tidyr)
+  library(stringr)
   library(fixest)
   library(ggplot2)
   library(patchwork)
 })
 
-source(file.path(r_dir, "utils", "globals.R"))
-source(file.path(r_dir, "utils", "helpers.R"))
+source(here::here("R", "utils", "globals.R"))
+source(here::here("R", "utils", "helpers.R"))
 
 message("=== 02_did_analysis.R: Starting DiD analysis ===")
 
@@ -183,25 +184,23 @@ did_out_state <- feols(
 # =============================================================================
 message("Creating DiD results table...")
 
-# Keep model_colors for event study combined plot
-model_colors <- c(
-  "Out-migration from Multnomah"    = "#1f77b4",
-  "Out-of-state from Multnomah"     = "#9467bd",
-  "In-migration (West Coast)"       = "#d62728",
-  "In-migration (Lower 48 + DC)"    = "#2ca02c"
-)
+# Use shared migration_colors and migration_shapes from globals.R
 
-etable(did_out, did_out_state, did_in_west, did_in_48,
-       keep = "treated",
-       dict = c(treated = "College Degree x Post"),
-       headers = c("Out-migration", "Out-of-state",
-                    "In-migration (West Coast)",
-                    "In-migration (Lower 48 + DC)"),
-       tex = TRUE,
-       file = file.path(results_did, "tab_did_overall.tex"),
-       replace = TRUE,
-       signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.10),
-       fitstat = ~ n)
+tryCatch({
+  etable(did_out, did_out_state, did_in_west, did_in_48,
+         keep = "treated",
+         dict = c(treated = "College Degree x Post"),
+         headers = c("Out-migration", "Out-of-state",
+                      "In-migration (West Coast)",
+                      "In-migration (Lower 48 + DC)"),
+         tex = TRUE,
+         file = file.path(results_did, "tab_did_overall.tex"),
+         replace = TRUE,
+         signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.10),
+         fitstat = ~ n)
+}, error = function(e) {
+  message("  Warning: DiD overall table skipped — ", conditionMessage(e))
+})
 
 # =============================================================================
 # REGRESSION 2: EVENT STUDY
@@ -282,13 +281,14 @@ es_data <- bind_rows(
 )
 
 # Individual event study plots
-make_es_plot <- function(data, title_text, color) {
+make_es_plot <- function(data, title_text, color, shape = 16) {
   ggplot(data, aes(x = year, y = estimate)) +
-    geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+    geom_hline(yintercept = 0, linetype = "dashed", color = stata_gs10) +
     geom_vline(xintercept = 2020.5, linetype = "solid", color = "black") +
-    geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2, fill = color) +
+    geom_errorbar(aes(ymin = conf.low, ymax = conf.high),
+                  width = 0.1, alpha = 0.5, color = color) +
     geom_line(color = color, linewidth = 1) +
-    geom_point(color = color, size = 2.5) +
+    geom_point(color = color, shape = shape, size = 2.5) +
     scale_x_continuous(breaks = 2016:2024) +
     labs(
       title = title_text,
@@ -300,22 +300,22 @@ make_es_plot <- function(data, title_text, color) {
 
 p_es_out <- make_es_plot(
   filter(es_data, model == "Out-migration from Multnomah"),
-  "Out-Migration from Multnomah County", "#1f77b4"
+  "Out-Migration from Multnomah County", stata_navy, shape = 16
 )
 
 p_es_in_west <- make_es_plot(
   filter(es_data, model == "In-migration (West Coast)"),
-  "In-Migration to Multnomah County (West Coast)", "#8b0000"
+  "In-Migration to Multnomah County (West Coast)", stata_maroon, shape = 17
 )
 
 p_es_in_48 <- make_es_plot(
   filter(es_data, model == "In-migration (Lower 48 + DC)"),
-  "In-Migration to Multnomah County (Lower 48 + DC)", "#228b22"
+  "In-Migration to Multnomah County (Lower 48 + DC)", stata_forest_green, shape = 15
 )
 
 p_es_out_state <- make_es_plot(
   filter(es_data, model == "Out-of-state from Multnomah"),
-  "Out-of-State Migration from Multnomah County", "#9467bd"
+  "Out-of-State Migration from Multnomah County", stata_purple, shape = 18
 )
 
 ggsave(file.path(results_did, "fig_es_out_migration.png"), p_es_out,
@@ -338,10 +338,14 @@ es_combined <- es_data |>
 
 p_es_combined <- ggplot(es_combined, aes(x = year_offset, y = estimate,
                                           color = model, shape = model)) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = stata_gs10) +
   geom_vline(xintercept = 2020.5, linetype = "solid", color = "black") +
-  geom_pointrange(aes(ymin = conf.low, ymax = conf.high), size = 0.5) +
-  scale_color_manual(values = model_colors) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high),
+                width = 0.1, alpha = 0.5) +
+  geom_line(linewidth = 0.5) +
+  geom_point(size = 2.5) +
+  scale_color_manual(values = migration_colors) +
+  scale_shape_manual(values = migration_shapes) +
   scale_x_continuous(breaks = 2016:2024) +
   labs(
     title = "Migration Effects: Multnomah County Tax",
@@ -350,8 +354,7 @@ p_es_combined <- ggplot(es_combined, aes(x = year_offset, y = estimate,
     color = NULL, shape = NULL,
     caption = "Base year: 2019. 2020 excluded. Vertical line indicates tax implementation."
   ) +
-  theme(legend.position = "bottom") +
-  guides(shape = "none")
+  theme(legend.position = "bottom")
 
 ggsave(file.path(results_did, "fig_es_combined.png"), p_es_combined,
        width = 10, height = 6, dpi = 300)
@@ -410,20 +413,24 @@ did_age_out_state <- feols(
 # =============================================================================
 message("Creating DiD by age results table...")
 
-etable(did_age_out, did_age_out_state, did_age_in_west, did_age_in_48,
-       keep = "treated_age_",
-       order = c("treated_age_1", "treated_age_2", "treated_age_3"),
-       dict = c(treated_age_1 = "College x Post x Age 25-44",
-                treated_age_2 = "College x Post x Age 45-64",
-                treated_age_3 = "College x Post x Age 65+"),
-       headers = c("Out-migration", "Out-of-state",
-                    "In-migration (West Coast)",
-                    "In-migration (Lower 48 + DC)"),
-       tex = TRUE,
-       file = file.path(results_did, "tab_did_by_age.tex"),
-       replace = TRUE,
-       signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.10),
-       fitstat = ~ n)
+tryCatch({
+  etable(did_age_out, did_age_out_state, did_age_in_west, did_age_in_48,
+         keep = "treated_age_",
+         order = c("treated_age_1", "treated_age_2", "treated_age_3"),
+         dict = c(treated_age_1 = "College x Post x Age 25-44",
+                  treated_age_2 = "College x Post x Age 45-64",
+                  treated_age_3 = "College x Post x Age 65+"),
+         headers = c("Out-migration", "Out-of-state",
+                      "In-migration (West Coast)",
+                      "In-migration (Lower 48 + DC)"),
+         tex = TRUE,
+         file = file.path(results_did, "tab_did_by_age.tex"),
+         replace = TRUE,
+         signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.10),
+         fitstat = ~ n)
+}, error = function(e) {
+  message("  Warning: DiD by-age table skipped — ", conditionMessage(e))
+})
 
 # =============================================================================
 # REGRESSION 4: EVENT STUDY BY AGE
@@ -509,7 +516,7 @@ age_es_data <- bind_rows(
   extract_age_es_coefs(es_age_in_48, "In-migration (Lower 48 + DC)")
 )
 
-age_colors <- c("25-44" = "#8b0000", "45-64" = "#228b22", "65+" = "#ff8c00")
+# age_colors and age_shapes defined in globals.R
 
 # Individual event study by age plots
 plot_configs <- list(
@@ -536,11 +543,14 @@ for (cfg in plot_configs) {
 
   p <- ggplot(pdata, aes(x = year_offset, y = estimate,
                            color = age_group, shape = age_group)) +
-    geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+    geom_hline(yintercept = 0, linetype = "dashed", color = stata_gs10) +
     geom_vline(xintercept = 2020.5, linetype = "solid", color = "black") +
-    geom_pointrange(aes(ymin = conf.low, ymax = conf.high), size = 0.4) +
+    geom_errorbar(aes(ymin = conf.low, ymax = conf.high),
+                  width = 0.1, alpha = 0.5) +
     geom_line(linewidth = 0.5) +
+    geom_point(size = 2.5) +
     scale_color_manual(values = age_colors) +
+    scale_shape_manual(values = age_shapes) +
     scale_x_continuous(breaks = 2016:2024) +
     labs(
       title = cfg$title,

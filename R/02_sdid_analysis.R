@@ -38,11 +38,13 @@ suppressPackageStartupMessages({
   library(modelsummary)
   library(patchwork)
   library(openxlsx)
+  library(future)
+  library(future.apply)
 })
 
 # Source configuration
-source(file.path(r_dir, "utils", "globals.R"))
-source(file.path(r_dir, "utils", "helpers.R"))
+source(here::here("R", "utils", "globals.R"))
+source(here::here("R", "utils", "helpers.R"))
 
 message("=== 02_sdid_analysis.R: Starting SDID analysis ===")
 message("  Run date: ", run_date)
@@ -73,7 +75,7 @@ irs_data <- irs_data |>
 acs1_data <- load_data(file.path(data_working, "acs_county_gross_25plus"))
 df <- irs_data |>
   left_join(acs1_data, by = c("year", "fips"), suffix = c("", ".acs1")) |>
-  mutate(merge_acs_1 = if_else(!is.na(persons_net_3.acs1) | !is.na(persons_out_1.acs1), 3L, 1L))
+  mutate(merge_acs_1 = if_else(!is.na(persons_net_3) | !is.na(persons_out_1), 3L, 1L))
 
 ## Keep required variables and label ACS1 columns
 ## Rename ACS 18+ columns with acs1_ prefix
@@ -331,12 +333,11 @@ if (nrow(kmeans_plot_data) > 0) {
                                        color = factor(kmean_group))) +
     geom_line(linewidth = 0.8) +
     labs(x = "Month", y = "Cumulative cases per 1,000",
-         color = "K-means cluster") +
-    theme_minimal()
+         color = "K-means cluster")
 
   dir.create(results_sdid, recursive = TRUE, showWarnings = FALSE)
   ggsave(file.path(results_sdid, "fig_kmeans.jpg"), p_kmeans,
-         width = 8, height = 5, dpi = 100)
+         width = 8, height = 5, dpi = fig_dpi)
 }
 
 ## Debug mode: limit donor pool to a random subset of counties
@@ -439,6 +440,9 @@ message("  Data preparation complete. Panel dimensions: ",
         n_distinct(df$year), " years = ",
         nrow(df), " obs")
 
+## Save prepared panel data so other scripts (e.g. 02_revenue.R) can load it
+save_data(df, file.path(data_working, "sdid_analysis_data"))
+
 # =============================================================================
 # SDID ESTIMATION
 # =============================================================================
@@ -505,6 +509,105 @@ get_out_txt <- function(data_var, type) {
   if (data_var == "acs_period_2" && type == "acs1") return("acs_16_24_all")
   if (data_var == "acs_period_2" && type == "acs2") return("acs_16_24_col")
   return("unknown")
+}
+
+## Helper: compute SDID event-study estimates following Ciccia (2024)
+##
+## Implements the period-specific SDID estimator from:
+##   Ciccia, D. (2024). "A Short Note on Event-Study Synthetic
+##   Difference-in-Differences Estimators." arXiv:2407.09565v2.
+##
+## For each period t, the estimator is (Eq. 3):
+##   tau_t = gap(t) - sum_{s=1}^{T0} lambda_s * gap(s)
+## where gap(t) = (1/N_tr) sum_{treated} Y_i,t - sum_{controls} omega_i * Y_i,t
+##
+## Placebo inference: for each control unit j, treat j as the pseudo-treated
+## unit, construct a synthetic control from the remaining donors using
+## renormalized omega weights, and compute pseudo period-specific effects.
+## SE(t) = sd of the placebo distribution.
+##
+## @param estimate  A synthdid_estimate object
+## @param panel     Output of panel_matrices() with Y, N0, T0
+## @return tibble with columns: year, tau, se, ci_lower, ci_upper, period
+sdid_event_study <- function(estimate, panel) {
+
+  wt <- attr(estimate, "weights")
+  omega  <- as.numeric(wt$omega)   # N0 x 1
+
+  lambda <- as.numeric(wt$lambda)  # T0 x 1
+
+  Y  <- panel$Y
+  N0 <- panel$N0
+  T0 <- panel$T0
+  N1 <- nrow(Y) - N0
+  T1 <- ncol(Y) - T0
+
+  time_names <- as.numeric(colnames(Y))
+
+  ## ---- Point estimates ----
+  ## Treated unit(s) average outcome at each time
+  Y_treat <- colMeans(Y[(N0 + 1):nrow(Y), , drop = FALSE])
+
+  ## Synthetic control outcome at each time
+  Y_synth <- as.numeric(crossprod(omega, Y[1:N0, ]))
+
+  ## Gaps: treated - synthetic
+
+  gaps <- Y_treat - Y_synth
+
+  ## Lambda-weighted pre-treatment adjustment (constant across periods)
+  pre_adj <- sum(lambda * gaps[1:T0])
+
+  ## Period-specific SDID estimates (Eq. 3 from Ciccia 2024)
+  tau <- gaps - pre_adj
+
+  ## ---- Placebo inference ----
+  ## For each control unit j, compute period-specific pseudo-effects
+  ## using the same lambda but with j as pseudo-treated and remaining
+  ## controls weighted by renormalized omega (excluding j).
+  placebo_taus <- matrix(NA_real_, nrow = N0, ncol = T0 + T1)
+
+  for (j in seq_len(N0)) {
+    ## Unit j's outcome series
+    Y_j <- Y[j, ]
+
+    ## Remaining control indices and their omega weights
+    idx_remain <- setdiff(seq_len(N0), j)
+    omega_j <- omega[idx_remain]
+
+    ## Renormalize so weights sum to 1
+    omega_sum <- sum(omega_j)
+    if (omega_sum > 0) {
+      omega_j <- omega_j / omega_sum
+    } else {
+      ## If all remaining weights are zero, use equal weights
+      omega_j <- rep(1 / length(idx_remain), length(idx_remain))
+    }
+
+    ## Synthetic for unit j
+    Y_synth_j <- as.numeric(crossprod(omega_j, Y[idx_remain, , drop = FALSE]))
+
+    ## Gaps for unit j
+    gaps_j <- Y_j - Y_synth_j
+
+    ## Lambda-weighted pre-treatment adjustment
+    pre_adj_j <- sum(lambda * gaps_j[1:T0])
+
+    ## Period-specific placebo estimates
+    placebo_taus[j, ] <- gaps_j - pre_adj_j
+  }
+
+  ## SE from placebo distribution (SD across control units)
+  se <- apply(placebo_taus, 2, sd, na.rm = TRUE)
+
+  tibble(
+    year     = time_names,
+    tau      = tau,
+    se       = se,
+    ci_lower = tau - 1.96 * se,
+    ci_upper = tau + 1.96 * se,
+    period   = if_else(seq_along(tau) <= T0, "pre", "post")
+  )
 }
 
 ## Helper: run a single SDID specification
@@ -590,36 +693,9 @@ run_single_sdid <- function(df, outcome_var, unit_var, time_var, treat_var,
     tibble(fips = double(), weight = double())
   })
 
-  ## Compute pre/post effects for event study
+  ## Compute event-study estimates (Ciccia 2024 method)
   event_results <- tryCatch({
-    ## Get lambda (time weights) and omega (unit weights)
-    wt <- attr(est, "weights")
-    omega <- wt$omega
-    lambda <- wt$lambda
-
-    Y <- panel$Y
-    N0 <- panel$N0
-    T0 <- panel$T0
-    N1 <- nrow(Y) - N0
-    T1 <- ncol(Y) - T0
-
-    ## Treated unit(s) average outcome over time
-    Y_treat <- colMeans(Y[(N0 + 1):nrow(Y), , drop = FALSE])
-
-    ## Synthetic control outcome over time
-    Y_synth <- as.numeric(t(omega) %*% Y[1:N0, ])
-
-    ## Time effects: difference between treated and synthetic
-    effects <- Y_treat - Y_synth
-
-    ## Time variable names
-    time_names <- as.numeric(colnames(Y))
-
-    tibble(
-      year = time_names,
-      effect = effects,
-      period = if_else(seq_along(effects) <= T0, "pre", "post")
-    )
+    sdid_event_study(est, panel)
   }, error = function(e) {
     NULL
   })
@@ -636,35 +712,46 @@ run_single_sdid <- function(df, outcome_var, unit_var, time_var, treat_var,
 }
 
 ## Helper: create event study plot
+## event_df must have columns: year, tau, se, ci_lower, ci_upper, period
 make_event_plot <- function(event_df, label, treatment_year = 2020,
                              exl = 0, save_path = NULL) {
   if (is.null(event_df) || nrow(event_df) == 0) return(invisible(NULL))
 
-  ## If excluding 2020, insert a gap
+  ## If excluding 2020, insert a gap row
   if (exl == 1) {
-    ## Shift pre-treatment years
     event_df <- event_df |>
       mutate(year_plot = year) |>
-      bind_rows(tibble(year = 2020, year_plot = 2020, effect = NA_real_,
+      bind_rows(tibble(year = 2020, year_plot = 2020,
+                        tau = NA_real_, se = NA_real_,
+                        ci_lower = NA_real_, ci_upper = NA_real_,
                         period = "pre")) |>
       arrange(year_plot)
   } else {
     event_df <- event_df |> mutate(year_plot = year)
   }
 
-  p <- ggplot(event_df, aes(x = year_plot, y = effect)) +
-    geom_point(color = "black", size = 2) +
-    geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  has_ci <- "ci_lower" %in% names(event_df) &&
+    any(!is.na(event_df$ci_lower))
+
+  p <- ggplot(event_df, aes(x = year_plot, y = tau))
+
+  if (has_ci) {
+    p <- p +
+      geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper),
+                    width = 0.1, alpha = 0.5, color = stata_navy, na.rm = TRUE)
+  }
+
+  p <- p +
+    geom_point(color = stata_navy, size = 2, na.rm = TRUE) +
+    geom_line(color = stata_navy, linewidth = 0.5, na.rm = TRUE) +
+    geom_hline(yintercept = 0, color = stata_gs10, linetype = "dashed") +
     geom_vline(xintercept = treatment_year + 0.5, color = "black",
                linetype = "solid") +
-    scale_y_continuous(labels = scales::number_format(accuracy = 0.1),
-                       limits = c(-10, 10)) +
     labs(x = "Year (destination)", y = label) +
-    theme_minimal() +
     theme(legend.position = "none")
 
   if (!is.null(save_path)) {
-    ggsave(save_path, p, width = 8, height = 5, dpi = 100)
+    ggsave(save_path, p, width = 8, height = 5, dpi = fig_dpi)
   }
 
   return(p)
@@ -781,21 +868,46 @@ make_sdid_table <- function(results_list, data_type, save_path) {
 }
 
 ## ============================================================================
-## MAIN ESTIMATION LOOP
+## MAIN ESTIMATION LOOP (parallelized)
 ## ============================================================================
 
-spec_counter <- 0
-total_specs <- 0
+## Build flat list of all spec parameter combinations
+spec_list <- list()
+spec_idx <- 0
 
-## Count total specifications for progress tracking
 for (ds in data_specs) {
   for (type in ds$out_types) {
     for (samp_var in c("sample_all", "sample_urban95", "sample_urban95_covid")) {
       for (exl in 1:0) {
         for (migr in c("net", "in", "out")) {
           for (x in c("n1", "n2", "agi")) {
+            outcome_var <- paste0(x, "_", migr, "_rate_", type)
+            if (!outcome_var %in% names(df)) next
+
+            ## Build sample mask as logical vector
+            sample_mask <- df[[samp_var]] == 1 & df[[ds$data_var]] == 1
+            if (exl == 1) {
+              sample_mask <- sample_mask & df$year != 2020
+            }
+
+            ## Check if treated unit is in sample
+            if (sum(df$multnomah[sample_mask] == 1) == 0) next
+
             for (c_flag in 0:1) {
-              total_specs <- total_specs + 1
+              spec_idx <- spec_idx + 1
+              spec_list[[spec_idx]] <- list(
+                data_var      = ds$data_var,
+                type          = type,
+                covariates    = ds$covariates,
+                samp_var      = samp_var,
+                exl           = exl,
+                migr          = migr,
+                x             = x,
+                c_flag        = c_flag,
+                outcome_var   = outcome_var,
+                out_txt       = get_out_txt(ds$data_var, type),
+                sample_mask   = sample_mask
+              )
             }
           }
         }
@@ -803,238 +915,232 @@ for (ds in data_specs) {
     }
   }
 }
+
+total_specs <- length(spec_list)
 message("  Total specifications to run: ", total_specs)
 
-## Loop over data sources
-for (ds in data_specs) {
+## Create output subdirectories
+for (lbl in unique(sapply(spec_list, `[[`, "out_txt"))) {
+  dir.create(file.path(results_sdid, lbl), recursive = TRUE, showWarnings = FALSE)
+}
 
-  data_var <- ds$data_var
-  covariates_list <- ds$covariates
+## Worker function: run a single SDID specification
+run_one_spec <- function(spec, df, reps) {
+  result <- tryCatch({
+    run_single_sdid(
+      df          = df,
+      outcome_var = spec$outcome_var,
+      unit_var    = "fips",
+      time_var    = "year",
+      treat_var   = "Treated",
+      sample_mask = spec$sample_mask,
+      covariates  = if (spec$c_flag == 1) spec$covariates else NULL,
+      use_covars  = (spec$c_flag == 1),
+      reps        = reps
+    )
+  }, error = function(e) {
+    list(success = FALSE, msg = conditionMessage(e))
+  })
 
-  ## Loop over outcome variable types
-  for (type in ds$out_types) {
+  if (!result$success) {
+    return(list(result_row = NULL, weight_rows = NULL, estimate = NULL,
+                event = NULL, success = FALSE))
+  }
 
-    out_txt <- get_out_txt(data_var, type)
-    message("  Processing: ", out_txt)
+  pre_mean <- mean(
+    df[[spec$outcome_var]][df$multnomah == 1 & df$Treated == 0 & spec$sample_mask],
+    na.rm = TRUE
+  )
+  n_counties <- sum(!is.na(df[[spec$outcome_var]][df$year == 2021 & spec$sample_mask]))
 
-    ## Create output subdirectory
-    dir.create(file.path(results_sdid, out_txt),
-               recursive = TRUE, showWarnings = FALSE)
+  pval <- if (!is.na(result$se) && result$se > 0) {
+    2 * (1 - pnorm(abs(result$tau / result$se)))
+  } else {
+    NA_real_
+  }
 
-    ## Loop over donor pool samples
-    for (samp_var in c("sample_all", "sample_urban95", "sample_urban95_covid")) {
+  result_row <- tibble(
+    sample_data = spec$out_txt,
+    sample      = spec$samp_var,
+    outcome     = spec$outcome_var,
+    controls    = spec$c_flag,
+    exclusion   = spec$exl,
+    tau         = result$tau,
+    se          = result$se,
+    pval        = pval,
+    ci_lower    = result$tau - 1.96 * result$se,
+    ci_upper    = result$tau + 1.96 * result$se,
+    n_counties  = as.integer(n_counties),
+    pre_mean    = pre_mean,
+    significant = as.integer(!is.na(pval) & pval < 0.05)
+  )
 
-      ## Loop over exclusion of 2020
-      for (exl in 1:0) {
+  weight_rows <- NULL
+  if (nrow(result$weights) > 0) {
+    weight_rows <- result$weights |>
+      mutate(
+        sample_data = spec$out_txt,
+        out         = spec$outcome_var,
+        sample      = spec$samp_var,
+        controls    = spec$c_flag,
+        exclusion   = spec$exl
+      )
+  }
 
-        ## Define the sample mask
-        sample_mask <- df[[samp_var]] == 1 & df[[data_var]] == 1
-        if (exl == 1) {
-          sample_mask <- sample_mask & df$year != 2020
-        }
+  list(
+    result_row = result_row,
+    weight_rows = weight_rows,
+    estimate   = result$estimate,
+    event      = result$event,
+    success    = TRUE,
+    tau        = result$tau,
+    se         = result$se,
+    n_counties = as.integer(n_counties),
+    pre_mean   = pre_mean
+  )
+}
 
-        ## Check if treated unit is in sample
-        if (sum(df$multnomah[sample_mask] == 1) == 0) {
-          message("    Skipping: no treated unit for ", out_txt, " / ",
-                  samp_var, " / excl=", exl)
-          next
-        }
+## Run all specifications (parallel or sequential)
+if (use_parallel) {
+  message("  Setting up parallel backend...")
+  future::plan(multisession)
 
-        ## Storage for table models (6 models per migration direction)
-        table_models <- list()
+  spec_outputs <- future_lapply(spec_list, run_one_spec,
+                                 df = df, reps = reps,
+                                 future.seed = TRUE)
 
-        ## Loop over migration directions
-        for (migr in c("net", "in", "out")) {
+  future::plan(sequential)
+} else {
+  spec_outputs <- lapply(seq_along(spec_list), function(i) {
+    if (i %% 20 == 0) message("    Progress: ", i, " / ", total_specs)
+    run_one_spec(spec_list[[i]], df, reps)
+  })
+}
 
-          ## Initialize table model list for this migration direction
-          migr_models <- list()
+## Collect results and weights from parallel outputs
+result_rows <- lapply(spec_outputs, `[[`, "result_row")
+weight_rows <- lapply(spec_outputs, `[[`, "weight_rows")
 
-          ## Loop over outcome variables (n1, n2, agi)
-          for (x in c("n1", "n2", "agi")) {
+all_results <- bind_rows(compact(result_rows))
+all_weights <- bind_rows(compact(weight_rows))
 
-            ## Full outcome variable name
-            outcome_var <- paste0(x, "_", migr, "_rate_", type)
+message("  Completed ", sum(sapply(spec_outputs, `[[`, "success")),
+        " / ", total_specs, " specifications successfully")
 
-            ## Check if outcome variable exists
-            if (!outcome_var %in% names(df)) {
-              message("    Skipping: outcome ", outcome_var, " not found")
-              next
-            }
+## ============================================================================
+## POST-PROCESSING: Generate figures and tables sequentially
+## ============================================================================
+message("  Generating figures and tables...")
 
-            ## Loop over covariate settings (0 = no covariates, 1 = covariates)
-            for (c_flag in 0:1) {
+for (i in seq_along(spec_list)) {
+  spec <- spec_list[[i]]
+  out  <- spec_outputs[[i]]
 
-              spec_counter <- spec_counter + 1
-              if (spec_counter %% 20 == 0) {
-                message("    Progress: ", spec_counter, " / ", total_specs)
-              }
+  if (!out$success) next
 
-              ## File paths for figures
-              if (exl == 0) {
-                fig_path_base <- file.path(results_sdid, out_txt,
-                                           paste0("fig_", out_txt, "_", outcome_var,
-                                                  "_", c_flag, "_", samp_var, "_"))
-              } else {
-                fig_path_base <- file.path(results_sdid, out_txt,
-                                           paste0("fig_", out_txt, "_", outcome_var,
-                                                  "_", c_flag, "_", samp_var,
-                                                  "_excl2020_"))
-              }
+  ## File path base for figures
+  if (spec$exl == 0) {
+    fig_path_base <- file.path(results_sdid, spec$out_txt,
+                               paste0("fig_", spec$out_txt, "_", spec$outcome_var,
+                                      "_", spec$c_flag, "_", spec$samp_var, "_"))
+  } else {
+    fig_path_base <- file.path(results_sdid, spec$out_txt,
+                               paste0("fig_", spec$out_txt, "_", spec$outcome_var,
+                                      "_", spec$c_flag, "_", spec$samp_var,
+                                      "_excl2020_"))
+  }
 
-              ## Run SDID
-              result <- tryCatch({
-                run_single_sdid(
-                  df = df,
-                  outcome_var = outcome_var,
-                  unit_var = "fips",
-                  time_var = "year",
-                  treat_var = "Treated",
-                  sample_mask = sample_mask,
-                  covariates = if (c_flag == 1) covariates_list else NULL,
-                  use_covars = (c_flag == 1),
-                  reps = reps
-                )
-              }, error = function(e) {
-                list(success = FALSE, msg = conditionMessage(e))
-              })
+  ## Export SDID diagnostic plot
+  tryCatch({
+    sdid_plot_path <- paste0(fig_path_base, "sdid.pdf")
+    pdf(sdid_plot_path, width = 8, height = 6)
+    synthdid_plot(out$estimate)
+    dev.off()
+  }, error = function(e) {
+    try(dev.off(), silent = TRUE)
+  })
 
-              if (!result$success) {
-                message("    FAILED: ", outcome_var, " c=", c_flag,
-                        " (", result$msg, ")")
-                next
-              }
+  ## Export event study plot
+  if (!is.null(out$event)) {
+    if (spec$exl == 0) {
+      ev_path <- file.path(results_sdid, spec$out_txt,
+                           paste0("fig_", spec$out_txt, "_", spec$outcome_var,
+                                  "_", spec$c_flag, "_", spec$samp_var,
+                                  "_eventstudy.jpg"))
+    } else {
+      ev_path <- file.path(results_sdid, spec$out_txt,
+                           paste0("fig_", spec$out_txt, "_", spec$outcome_var,
+                                  "_", spec$c_flag, "_", spec$samp_var,
+                                  "_excl2020_eventstudy.jpg"))
+    }
 
-              ## Pre-treatment mean for treated unit
-              pre_mean <- mean(
-                df[[outcome_var]][df$multnomah == 1 & df$Treated == 0 & sample_mask],
-                na.rm = TRUE
-              )
+    x_label <- switch(spec$x,
+      "n1" = if (str_detect(spec$type, "acs")) "Households" else "Returns",
+      "n2" = if (str_detect(spec$type, "acs")) "Adults" else "Exemptions",
+      "agi" = if (str_detect(spec$type, "acs")) "Household Income" else "AGI"
+    )
+    y_label <- switch(spec$migr,
+      "net" = "Net domestic migration",
+      "in"  = "Domestic in-migration",
+      "out" = "Domestic out-migration"
+    )
+    ev_label <- paste0(y_label, " rate, ", x_label, " (%)")
 
-              ## County count (number of units in post-treatment year)
-              n_counties <- sum(!is.na(df[[outcome_var]][df$year == 2021 & sample_mask]))
+    make_event_plot(out$event, label = ev_label,
+                    treatment_year = treatment_year,
+                    exl = spec$exl, save_path = ev_path)
+  }
+}
 
-              ## p-value
-              pval <- if (!is.na(result$se) && result$se > 0) {
-                2 * (1 - pnorm(abs(result$tau / result$se)))
-              } else {
-                NA_real_
-              }
+## Generate LaTeX tables (grouped by data_var, type, samp_var, exl, migr)
+table_groups <- list()
+for (i in seq_along(spec_list)) {
+  spec <- spec_list[[i]]
+  out  <- spec_outputs[[i]]
+  if (!out$success) next
 
-              ## Store treatment effect results
-              new_result <- tibble(
-                sample_data = out_txt,
-                sample      = samp_var,
-                outcome     = outcome_var,
-                controls    = c_flag,
-                exclusion   = exl,
-                tau         = result$tau,
-                se          = result$se,
-                pval        = pval,
-                ci_lower    = result$tau - 1.96 * result$se,
-                ci_upper    = result$tau + 1.96 * result$se,
-                n_counties  = as.integer(n_counties),
-                pre_mean    = pre_mean,
-                significant = as.integer(!is.na(pval) & pval < 0.05)
-              )
-              all_results <- bind_rows(all_results, new_result)
+  group_key <- paste(spec$data_var, spec$type, spec$samp_var, spec$exl, spec$migr, sep = "|")
+  model_key <- paste0(spec$x, "_", spec$c_flag)
 
-              ## Store weights
-              if (nrow(result$weights) > 0) {
-                new_weights <- result$weights |>
-                  mutate(
-                    sample_data = out_txt,
-                    out         = outcome_var,
-                    sample      = samp_var,
-                    controls    = c_flag,
-                    exclusion   = exl
-                  )
-                all_weights <- bind_rows(all_weights, new_weights)
-              }
+  if (is.null(table_groups[[group_key]])) {
+    table_groups[[group_key]] <- list(
+      data_var = spec$data_var,
+      type     = spec$type,
+      samp_var = spec$samp_var,
+      exl      = spec$exl,
+      migr     = spec$migr,
+      out_txt  = spec$out_txt,
+      models   = list()
+    )
+  }
 
-              ## Store model info for table generation
-              model_key <- paste0(x, "_", c_flag)
-              migr_models[[model_key]] <- list(
-                success    = TRUE,
-                tau        = result$tau,
-                se         = result$se,
-                n_counties = as.integer(n_counties),
-                pre_mean   = pre_mean
-              )
+  table_groups[[group_key]]$models[[model_key]] <- list(
+    success    = TRUE,
+    tau        = out$tau,
+    se         = out$se,
+    n_counties = out$n_counties,
+    pre_mean   = out$pre_mean
+  )
+}
 
-              ## Export SDID diagnostic plot
-              tryCatch({
-                sdid_plot_path <- paste0(fig_path_base, "sdid.pdf")
-                pdf(sdid_plot_path, width = 8, height = 6)
-                synthdid_plot(result$estimate)
-                dev.off()
-              }, error = function(e) {
-                try(dev.off(), silent = TRUE)
-              })
+for (grp in table_groups) {
+  if (length(grp$models) == 0) next
 
-              ## Export event study plot
-              if (!is.null(result$event)) {
-                if (exl == 0) {
-                  ev_path <- file.path(results_sdid, out_txt,
-                                       paste0("fig_", out_txt, "_", outcome_var,
-                                              "_", c_flag, "_", samp_var,
-                                              "_eventstudy.jpg"))
-                } else {
-                  ev_path <- file.path(results_sdid, out_txt,
-                                       paste0("fig_", out_txt, "_", outcome_var,
-                                              "_", c_flag, "_", samp_var,
-                                              "_excl2020_eventstudy.jpg"))
-                }
+  if (grp$exl == 0) {
+    tab_path <- file.path(results_sdid, grp$out_txt,
+                          paste0("tab_sdid_", grp$out_txt, "_", grp$migr, "_",
+                                 grp$samp_var, ".tex"))
+  } else {
+    tab_path <- file.path(results_sdid, grp$out_txt,
+                          paste0("tab_sdid_", grp$out_txt, "_", grp$migr, "_",
+                                 grp$samp_var, "_excl2020.tex"))
+  }
 
-                ## Get variable label for y-axis
-                x_label <- switch(x,
-                  "n1" = if (str_detect(type, "acs")) "Households" else "Returns",
-                  "n2" = if (str_detect(type, "acs")) "Adults" else "Exemptions",
-                  "agi" = if (str_detect(type, "acs")) "Household Income" else "AGI"
-                )
-                y_label <- switch(migr,
-                  "net" = "Net domestic migration",
-                  "in"  = "Domestic in-migration",
-                  "out" = "Domestic out-migration"
-                )
-                ev_label <- paste0(y_label, " rate, ", x_label, " (%)")
+  ordered_keys <- c("n1_0", "n1_1", "n2_0", "n2_1", "agi_0", "agi_1")
+  ordered_models <- grp$models[intersect(ordered_keys, names(grp$models))]
 
-                make_event_plot(result$event, label = ev_label,
-                                treatment_year = treatment_year,
-                                exl = exl, save_path = ev_path)
-              }
-
-            } # END covariate loop
-
-          } # END outcome variable loop
-
-          ## Generate LaTeX table for this migration direction
-          if (length(migr_models) > 0) {
-            if (exl == 0) {
-              tab_path <- file.path(results_sdid, out_txt,
-                                    paste0("tab_sdid_", out_txt, "_", migr, "_",
-                                           samp_var, ".tex"))
-            } else {
-              tab_path <- file.path(results_sdid, out_txt,
-                                    paste0("tab_sdid_", out_txt, "_", migr, "_",
-                                           samp_var, "_excl2020.tex"))
-            }
-
-            ## Reorder models: n1_0, n1_1, n2_0, n2_1, agi_0, agi_1
-            ordered_keys <- c("n1_0", "n1_1", "n2_0", "n2_1", "agi_0", "agi_1")
-            ordered_models <- migr_models[intersect(ordered_keys, names(migr_models))]
-
-            make_sdid_table(ordered_models, data_var, tab_path)
-          }
-
-        } # END migration direction loop
-
-      } # END exclusion loop
-
-    } # END sample loop
-
-  } # END outcome type loop
-
-} # END data source loop
+  make_sdid_table(ordered_models, grp$data_var, tab_path)
+}
 
 # =============================================================================
 # SAVE COMBINED RESULTS
@@ -1042,9 +1148,11 @@ for (ds in data_specs) {
 
 message("STEP 3: Saving combined results...")
 
-## Save results
-all_results <- all_results |>
-  arrange(sample_data, sample, outcome, controls, exclusion)
+## Save results (guard against empty results when all specs fail)
+if (nrow(all_results) > 0) {
+  all_results <- all_results |>
+    arrange(sample_data, sample, outcome, controls, exclusion)
+}
 save_data(all_results, file.path(results_sdid, "sdid_results"))
 
 ## Export to Excel
@@ -1055,9 +1163,11 @@ tryCatch({
   warning("Failed to write Excel: ", conditionMessage(e))
 })
 
-## Save weights
-all_weights <- all_weights |>
-  arrange(sample_data, sample, out, controls, exclusion, desc(weight))
+## Save weights (guard against empty results)
+if (nrow(all_weights) > 0) {
+  all_weights <- all_weights |>
+    arrange(sample_data, sample, out, controls, exclusion, desc(weight))
+}
 save_data(all_weights, file.path(results_sdid, "sdid_weights"))
 
 ## Export weights to Excel
@@ -1073,6 +1183,10 @@ tryCatch({
 # =============================================================================
 
 message("STEP 4: Creating specification curve plots...")
+
+if (nrow(all_results) == 0) {
+  message("  No successful SDID results — skipping spec curves and event studies.")
+} else {
 
 ## Load results (or use in-memory if still available)
 spec_results <- all_results
@@ -1398,7 +1512,7 @@ for (otype in c("n1", "n2", "agi")) {
            p_combined, width = 10, height = 8)
     ggsave(file.path(results_sdid,
                      paste0("fig_speccurve_", otype, "_", migr, fsuffix, ".jpg")),
-           p_combined, width = 10, height = 8, dpi = 100)
+           p_combined, width = 10, height = 8, dpi = fig_dpi)
 
     message("    Spec curve plot: ", otype, " / ", migr,
             if (pset == "irs5") " (irs5)" else "",
@@ -1411,6 +1525,8 @@ for (otype in c("n1", "n2", "agi")) {
 # =============================================================================
 # FINISH
 # =============================================================================
+
+} # END if (nrow(all_results) > 0)
 
 message("")
 message("==============================================")

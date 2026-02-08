@@ -51,11 +51,13 @@ suppressPackageStartupMessages({
   library(fixest)
   library(openxlsx)
   library(tibble)
+  library(future)
+  library(future.apply)
 })
 
 # Source configuration
-source(file.path(r_dir, "utils", "globals.R"))
-source(file.path(r_dir, "utils", "helpers.R"))
+source(here::here("R", "utils", "globals.R"))
+source(here::here("R", "utils", "helpers.R"))
 
 message("=== 02_flow_analysis.R: Starting flow analysis ===")
 message("  Run date: ", run_date)
@@ -355,7 +357,7 @@ for (sample_type in c("acs", "all")) {
         mutate(term = factor(term, levels = coef_labels))
 
       p <- ggplot(plot_data, aes(x = term, y = est, color = model, shape = model)) +
-        geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
+        geom_hline(yintercept = 0, linetype = "dashed", color = stata_gs10) +
         geom_pointrange(aes(ymin = ci_lo, ymax = ci_hi),
                         position = position_dodge(width = 0.4), size = 0.7) +
         scale_color_manual(values = c("With Covariates" = "navy",
@@ -419,25 +421,15 @@ for (sample_type in c("acs", "all")) {
   # Prepare filtered data for the county loop (movers only, sample condition)
   df_movers <- df |> filter(mover == 1)
 
-  # Accumulate results in a list (much faster than growing a data frame)
-  results_list <- vector("list", n_fips)
-
-  for (i in seq_along(fips_list)) {
-    f <- fips_list[i]
-
-    if (i %% 100 == 0) {
-      message("    Processing county ", i, " of ", n_fips, " (fips = ", f, ")...")
-    }
-
-    result <- tryCatch({
-      # Create treatment variables for this county
+  # Per-county PPML regression function
+  run_county_ppml <- function(f, df_movers, covar_names) {
+    tryCatch({
       df_tmp <- df_movers |>
         mutate(
           out_post_tmp = as.integer(fips_o == f) * post,
           in_post_tmp  = as.integer(fips_d == f) * post
         )
 
-      # Run PPML regression with covariates
       fml_county <- as.formula(paste0(
         "agi ~ i(out_post_tmp) + i(in_post_tmp) + ",
         paste(covar_names, collapse = " + "),
@@ -445,7 +437,6 @@ for (sample_type in c("acs", "all")) {
       ))
 
       fit_county <- fepois(fml_county, data = df_tmp, cluster = ~flow_id)
-
       ct <- coeftable(fit_county)
 
       tibble(
@@ -457,12 +448,29 @@ for (sample_type in c("acs", "all")) {
       )
     },
     error = function(e) {
-      message("    Warning: Regression failed for fips ", f, ": ", conditionMessage(e))
       tibble(fips = f, b_out = NA_real_, se_out = NA_real_,
              b_in = NA_real_, se_in = NA_real_)
     })
+  }
 
-    results_list[[i]] <- result
+  # Run county regressions (parallel or sequential)
+  if (use_parallel) {
+    message("  Setting up parallel backend...")
+    future::plan(multisession)
+    on.exit(future::plan(sequential), add = TRUE)
+
+    results_list <- future_lapply(fips_list, run_county_ppml,
+                                  df_movers = df_movers,
+                                  covar_names = covar_names,
+                                  future.seed = TRUE)
+  } else {
+    results_list <- lapply(fips_list, function(f) {
+      idx <- which(fips_list == f)
+      if (idx %% 100 == 0) {
+        message("    Processing county ", idx, " of ", n_fips, " (fips = ", f, ")...")
+      }
+      run_county_ppml(f, df_movers, covar_names)
+    })
   }
 
   # Combine results
@@ -529,7 +537,14 @@ for (sample_type in c("acs", "all")) {
   # ============================================================================
   message("  Creating distribution plots...")
 
+  # Skip plotting if all coefficients are NA (e.g., debug mode with limited data)
+  has_valid_coefs <- any(!is.na(county_coefs$b_out)) || any(!is.na(county_coefs$b_in))
+  if (!has_valid_coefs) {
+    message("  Skipping distribution plots: all coefficients are NA")
+  }
+
   for (x in c("b", "t")) {
+    if (!has_valid_coefs) break
 
     txt <- if (x == "b") "Coefficients" else "T-Statistics"
 
@@ -606,8 +621,8 @@ for (sample_type in c("acs", "all")) {
         aes(x = !!sym(out_var), y = !!sym(in_var)),
         color = "red", shape = 18, size = 4
       ) +
-      geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
-      geom_vline(xintercept = 0, linetype = "dashed", color = "grey60") +
+      geom_hline(yintercept = 0, linetype = "dashed", color = stata_gs10) +
+      geom_vline(xintercept = 0, linetype = "dashed", color = stata_gs10) +
       labs(
         title = paste0("Out- vs In-Migration Effects by County", title_suffix),
         x     = paste0("Out-migration ", txt),
@@ -644,8 +659,8 @@ for (sample_type in c("acs", "all")) {
                         aes(x = !!sym(out_var), y = !!sym(in_var),
                             color = county_type, shape = county_type,
                             size = county_type, alpha = county_type)) +
-      geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
-      geom_vline(xintercept = 0, linetype = "dashed", color = "grey60") +
+      geom_hline(yintercept = 0, linetype = "dashed", color = stata_gs10) +
+      geom_vline(xintercept = 0, linetype = "dashed", color = stata_gs10) +
       geom_point() +
       scale_color_manual(values = c("Other Counties" = "navy",
                                     "Multnomah County" = "red")) +
@@ -1014,7 +1029,7 @@ for (sample_type in c("acs", "all")) {
                  shape = 17, size = 2.5, na.rm = TRUE) +
       geom_line(aes(x = year_in, y = out_coef_nc), color = "maroon",
                 na.rm = TRUE) +
-      geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
+      geom_hline(yintercept = 0, linetype = "dashed", color = stata_gs10) +
       geom_vline(xintercept = 2020.5, linetype = "solid", color = "black") +
       scale_x_continuous(breaks = 2016:2022) +
       labs(
@@ -1062,7 +1077,7 @@ for (sample_type in c("acs", "all")) {
                  shape = 17, size = 2.5, na.rm = TRUE) +
       geom_line(aes(x = year_in, y = in_coef_nc), color = "maroon",
                 na.rm = TRUE) +
-      geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
+      geom_hline(yintercept = 0, linetype = "dashed", color = stata_gs10) +
       geom_vline(xintercept = 2020.5, linetype = "solid", color = "black") +
       scale_x_continuous(breaks = 2016:2022) +
       labs(
@@ -1105,7 +1120,7 @@ for (sample_type in c("acs", "all")) {
                  shape = 17, size = 2.5, na.rm = TRUE) +
       geom_line(aes(x = year_in, y = in_coef_wc), color = "maroon",
                 na.rm = TRUE) +
-      geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
+      geom_hline(yintercept = 0, linetype = "dashed", color = stata_gs10) +
       geom_vline(xintercept = 2020.5, linetype = "solid", color = "black") +
       scale_x_continuous(breaks = 2016:2022) +
       labs(

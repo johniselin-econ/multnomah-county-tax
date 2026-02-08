@@ -7,7 +7,7 @@
 # =============================================================================
 
 # ---- Project paths ----------------------------------------------------------
-dir <- "C:/Users/ji252/Documents/GitHub/multnomah-county-tax/"
+dir <- here::here()
 code_dir    <- file.path(dir, "code")
 data_dir    <- file.path(dir, "data")
 results_dir <- file.path(dir, "results")
@@ -43,10 +43,21 @@ end_year_acs   <- 2024
 sdid_reps <- 100
 
 # Parallel processing flag (1 = parallel, 0 = sequential)
-use_parallel <- TRUE
+use_parallel <- FALSE
 
 # Debug mode: set TRUE to run all analysis on reduced samples for faster iteration
-debug <- FALSE
+debug <- TRUE
+
+# ---- Paper output flag -------------------------------------------------------
+# If TRUE, copy paper figures/tables to Overleaf Dropbox directory
+# If FALSE, store in results/paper/ within the project
+overleaf <- TRUE
+overleaf_dir <- "C:/Users/ji252/Dropbox/Apps/Overleaf/Multnomah County"
+
+# Paper output directory (figures + tables for the paper)
+results_paper <- if (overleaf) overleaf_dir else file.path(results_dir, "paper")
+paper_figures <- file.path(results_paper, "figures")
+paper_tables  <- file.path(results_paper, "tables")
 
 # Multnomah County identifiers
 multnomah_state_fips  <- 41
@@ -71,7 +82,8 @@ dirs_to_create <- c(
   file.path(data_demographic, "dol"),
   file.path(data_demographic, "bls"),
   results_sdid, results_did, results_flows, results_indiv,
-  results_tables, results_maps, logs_dir
+  results_tables, results_maps, logs_dir,
+  paper_figures, paper_tables
 )
 
 for (d in dirs_to_create) {
@@ -102,5 +114,53 @@ lb_agi <- c(
 
 # ---- ggplot2 theme defaults -------------------------------------------------
 if (requireNamespace("ggplot2", quietly = TRUE)) {
-  ggplot2::theme_set(ggplot2::theme_minimal(base_size = 12))
+
+  # Stata-matched color palettes
+  stata_navy         <- "#000080"
+  stata_maroon       <- "#800000"
+  stata_forest_green <- "#228B22"
+  stata_dkorange     <- "#FF8C00"
+  stata_purple       <- "#800080"
+  stata_gs10         <- "#A1A1A1"
+
+  # Age group colors and shapes
+  age_colors <- c("25-44" = stata_maroon, "45-64" = stata_forest_green, "65+" = stata_dkorange)
+  age_shapes <- c("25-44" = 16, "45-64" = 17, "65+" = 15)
+
+  # Migration type colors and shapes
+  migration_colors <- c(
+    "Out-migration from Multnomah"   = stata_navy,
+    "Out-of-state from Multnomah"    = stata_purple,
+    "In-migration (West Coast)"      = stata_maroon,
+    "In-migration (Lower 48 + DC)"   = stata_forest_green
+  )
+  migration_shapes <- c(
+    "Out-migration from Multnomah"   = 16,
+    "Out-of-state from Multnomah"    = 18,
+    "In-migration (West Coast)"      = 17,
+    "In-migration (Lower 48 + DC)"   = 15
+  )
+
+  # Flow analysis colors and shapes (with/without covariates)
+  flow_colors <- c("With Covariates" = stata_navy, "Without Covariates" = stata_maroon)
+  flow_shapes <- c("With Covariates" = 16, "Without Covariates" = 17)
+
+  # Stata-style theme
+
+  theme_stata <- function(base_size = 12) {
+    ggplot2::theme_minimal(base_size = base_size) %+replace%
+      ggplot2::theme(
+        panel.background  = ggplot2::element_rect(fill = "white", color = NA),
+        plot.background   = ggplot2::element_rect(fill = "white", color = NA),
+        legend.position   = "bottom",
+        legend.title      = ggplot2::element_blank()
+      )
+  }
+
+  # Figure export dimensions
+  fig_width  <- 10
+  fig_height <- 6
+  fig_dpi    <- 300
+
+  ggplot2::theme_set(theme_stata())
 }

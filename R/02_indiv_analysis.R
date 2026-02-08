@@ -21,8 +21,8 @@ suppressPackageStartupMessages({
   library(marginaleffects)
 })
 
-source(file.path(r_dir, "utils", "globals.R"))
-source(file.path(r_dir, "utils", "helpers.R"))
+source(here::here("R", "utils", "globals.R"))
+source(here::here("R", "utils", "helpers.R"))
 
 message("=== 02_indiv_analysis.R: Starting individual-level analysis ===")
 
@@ -102,29 +102,36 @@ hdfe_catyear_plot <- function(data, outcome, cat_var, year_var, absorb_vars,
   # Build ggplot
   p <- ggplot(plot_df, aes(x = year, y = estimate,
                             color = cat_level, shape = cat_level)) +
-    geom_hline(yintercept = 0, linetype = "dashed", color = "gray50")
+    geom_hline(yintercept = 0, linetype = "dashed", color = stata_gs10)
 
   if (show_ci) {
-    p <- p + geom_ribbon(aes(ymin = conf.low, ymax = conf.high,
-                              fill = cat_level),
-                          alpha = 0.1, color = NA)
+    p <- p + geom_errorbar(aes(ymin = conf.low, ymax = conf.high),
+                            width = 0.1, alpha = 0.5)
   }
 
   p <- p +
     geom_line(linewidth = 0.8) +
-    geom_point(size = 2) +
+    geom_point(size = 2)
+
+  # Apply standard age palettes when cat_var is cat_age
+  if (cat_var == "cat_age") {
+    p <- p +
+      scale_color_manual(values = age_colors) +
+      scale_shape_manual(values = age_shapes)
+  }
+
+  p <- p +
     scale_x_continuous(breaks = sort(unique(plot_df$year))) +
     labs(
       title = title,
       x = xtitle,
       y = ytitle,
-      color = NULL, shape = NULL, fill = NULL
+      color = NULL, shape = NULL
     ) +
     theme(
       legend.position = "bottom",
       axis.text.x = element_text(angle = 45, hjust = 1)
-    ) +
-    guides(fill = "none")
+    )
 
   # Export
   if (!is.null(save_path)) {
