@@ -27,8 +27,8 @@ suppressPackageStartupMessages({
 })
 
 # Source configuration
-source(file.path(r_dir, "utils", "globals.R"))
-source(file.path(r_dir, "utils", "helpers.R"))
+source(here::here("R", "utils", "globals.R"))
+source(here::here("R", "utils", "helpers.R"))
 
 message("=== 01_clean_data.R: Starting data cleaning ===")
 message("  Run date: ", run_date)
@@ -110,7 +110,11 @@ demo <- read_csv(
     population_margin = AV0AAM,
     median_income_margin = B79AAM
   ) |>
-  mutate(percent_urban = pop_urban / population)
+  mutate(
+    state_fips  = as.numeric(state_fips),
+    county_fips = as.numeric(county_fips),
+    percent_urban = pop_urban / population
+  )
 
 # (1) County and state IDs (from 2020 snapshot)
 ids <- demo |>
@@ -154,21 +158,22 @@ demographics_2020 <- acs_2015_2019 |>
 save_data(demographics_2020, file.path(data_working, "demographics_2020"))
 
 # ---- 2b: BEA economic data (CAINC1) ----
-bea_file <- list.files(bea_dir, pattern = "CAINC1__ALL_AREAS.*\\.csv$",
-                       full.names = TRUE)
+bea_file <- sort(list.files(bea_dir, pattern = "CAINC1__ALL_AREAS.*\\.csv$",
+                            full.names = TRUE), decreasing = TRUE)
 if (length(bea_file) == 0) {
-  bea_file <- list.files(bea_dir, pattern = "CAINC1__ALL_STATES.*\\.csv$",
-                         full.names = TRUE)
+  bea_file <- sort(list.files(bea_dir, pattern = "CAINC1__ALL_STATES.*\\.csv$",
+                               full.names = TRUE), decreasing = TRUE)
 }
 
 bea_raw <- read_csv(bea_file[1], show_col_types = FALSE) |>
-  select(-Region, -TableName, -IndustryClassification, -Unit, -GeoName) |>
+  select(-Region, -TableName, -IndustryClassification, -Description, -Unit, -GeoName) |>
   filter(!is.na(LineCode))
 
-# Clean GeoFips: remove quotes, convert to numeric
+# Clean GeoFIPS: remove quotes, convert to numeric; keep only county-level FIPS
 bea_raw <- bea_raw |>
-  mutate(fips = as.numeric(str_remove_all(GeoFips, '"'))) |>
-  select(-GeoFips)
+  mutate(fips = as.numeric(str_remove_all(GeoFIPS, '"'))) |>
+  select(-GeoFIPS) |>
+  filter(fips %% 1000 != 0, fips < 57000)  # county-level only
 
 # Keep population (LineCode 2) and per-capita income (LineCode 3)
 bea_raw <- bea_raw |> filter(LineCode != 1)
@@ -213,9 +218,10 @@ bea_wide <- bea_wide |>
   )
 
 # Keep only counties with all observations
+n_years_expected <- n_distinct(bea_wide$year)
 bea_wide <- bea_wide |>
   group_by(fips) |>
-  filter(n() == n_distinct(bea_wide$year[bea_wide$year <= 2023])) |>
+  filter(n() == n_years_expected) |>
   ungroup()
 
 # Extrapolate 2024 using linear trend
@@ -228,7 +234,9 @@ if (max(bea_wide$year) < end_year_acs) {
 
       new_years <- (max_yr + 1):end_year_acs
       for (v in c("population", "per_capita_income")) {
-        mod <- lm(reformulate("year", v), data = .x)
+        valid <- .x |> filter(!is.na(.data[[v]]))
+        if (nrow(valid) < 2) next
+        mod <- lm(reformulate("year", v), data = valid)
         new_vals <- predict(mod, newdata = data.frame(year = new_years))
         new_rows <- tibble(year = new_years, !!v := new_vals)
         if (v == "population") {
@@ -271,19 +279,19 @@ save_data(bls, file.path(data_working, "bls_unemployment"))
 # ---- 2d: County centroids ----
 centroids_file <- file.path(data_demographic, "PopCenterCounty_US.csv")
 if (file.exists(centroids_file)) {
-  pop_centers <- read_csv(centroids_file, show_col_types = FALSE) |>
-    filter(YEAR == 2010) |>
-    select(fips = GEOGRAPHICINDENTIFIER, lat = LATITUDE, lon = LONGITUDE) |>
-    filter(fips <= 60000)
+  pop_centers_raw <- read_csv(centroids_file, show_col_types = FALSE)
+  names(pop_centers_raw) <- tolower(names(pop_centers_raw))
 
-  # Handle alternate column names
-  if (!"fips" %in% names(pop_centers)) {
-    alt_names <- names(pop_centers)
-    geo_col <- alt_names[str_detect(tolower(alt_names), "geographic|geoid|fips")]
-    if (length(geo_col) > 0) {
-      pop_centers <- pop_centers |> rename(fips = !!geo_col[1])
-    }
-  }
+  # Standardize column names (handle spaces and variations)
+  geo_col <- names(pop_centers_raw)[str_detect(names(pop_centers_raw), "geographic")]
+  lat_col <- names(pop_centers_raw)[str_detect(names(pop_centers_raw), "latitude")]
+  lon_col <- names(pop_centers_raw)[str_detect(names(pop_centers_raw), "longitude")]
+
+  pop_centers <- pop_centers_raw |>
+    filter(year == 2010) |>
+    select(fips = !!geo_col[1], lat = !!lat_col[1], lon = !!lon_col[1]) |>
+    mutate(fips = as.numeric(fips)) |>
+    filter(fips <= 60000)
 
   save_data(pop_centers, file.path(data_working, "pop_centers"))
 }
@@ -297,6 +305,7 @@ covid_raw <- read_csv(covid_file, show_col_types = FALSE)
 
 covid <- covid_raw |>
   rename(state_name = state, county_name = county) |>
+  mutate(fips = as.numeric(fips)) |>
   filter(!is.na(fips)) |>
   filter(!state_name %in% c("Puerto Rico", "Virgin Islands",
                               "Northern Mariana Islands")) |>
@@ -399,9 +408,16 @@ for (y in start_year_acs:end_year_acs) {
 }
 
 acs_raw <- bind_rows(acs_list)
+rm(acs_list); gc()
 
 # Harmonize column names to lowercase
 names(acs_raw) <- tolower(names(acs_raw))
+
+# Debug mode: keep only Pacific Northwest states (OR=41, WA=53, CA=6)
+if (debug) {
+  message("  DEBUG MODE: subsetting ACS to OR/WA/CA states")
+  acs_raw <- acs_raw |> filter(statefip %in% c(6, 41, 53))
+}
 
 # Define household-level variables
 acs <- acs_raw |>
@@ -420,6 +436,8 @@ acs <- acs_raw |>
     hh_perwt = sum(perwt)
   ) |>
   ungroup()
+
+rm(acs_raw); gc()
 
 # Keep adults only (18+)
 acs <- acs |> filter(adult == 1)
@@ -515,6 +533,7 @@ acs_county_flow <- acs_county_flow |>
   )
 
 save_data(acs_county_flow, file.path(data_working, "acs_county_flow"))
+rm(acs_flow_data, acs_pi, acs_hh, acs_county_flow); gc()
 
 # ---- Build ACS gross migration files ----
 message("  Building ACS gross migration files...")
@@ -522,14 +541,17 @@ message("  Building ACS gross migration files...")
 acs_gross_25plus <- acs_make_gross_migration(acs, ids,
                                                sample_expr = "age >= 25")
 save_data(acs_gross_25plus, file.path(data_working, "acs_county_gross_25plus"))
+rm(acs_gross_25plus); gc()
 
 acs_gross_college <- acs_make_gross_migration(acs, ids,
                                                sample_expr = "hh_any_college == 1 & age >= 25")
 save_data(acs_gross_college, file.path(data_working, "acs_county_gross_college"))
+rm(acs_gross_college); gc()
 
 acs_gross_nokids <- acs_make_gross_migration(acs, ids,
                                               sample_expr = "hh_any_child == 0 & age >= 25")
 save_data(acs_gross_nokids, file.path(data_working, "acs_county_gross_nokids"))
+rm(acs_gross_nokids); gc()
 
 # =============================================================================
 # STEP 5: Import and clean IRS migration data
@@ -551,6 +573,12 @@ for (y in 16:22) {
     show_col_types = FALSE
   )
   names(out_raw) <- tolower(names(out_raw))
+
+  # Ensure consistent numeric types across all IRS year files
+  out_raw <- out_raw |>
+    mutate(across(any_of(c("y1_statefips", "y1_countyfips",
+                           "y2_statefips", "y2_countyfips",
+                           "n1", "n2", "agi")), as.numeric))
 
   out_raw <- out_raw |>
     mutate(year = tax_year) |>
@@ -625,6 +653,12 @@ for (y in 16:22) {
     show_col_types = FALSE
   )
   names(in_raw) <- tolower(names(in_raw))
+
+  # Ensure consistent numeric types across all IRS year files
+  in_raw <- in_raw |>
+    mutate(across(any_of(c("y1_statefips", "y1_countyfips",
+                           "y2_statefips", "y2_countyfips",
+                           "n1", "n2", "agi")), as.numeric))
 
   in_raw <- in_raw |>
     mutate(year = tax_year) |>
@@ -769,6 +803,13 @@ for (y in 15:22) {
   irs_inc <- read_csv(irs_inc_file, show_col_types = FALSE)
   names(irs_inc) <- tolower(names(irs_inc))
 
+  # Ensure consistent numeric types
+  irs_inc <- irs_inc |>
+    mutate(across(any_of(c("statefips", "countyfips", "agi_stub",
+                           "n1", "n2", "mars1", "mars2", "mars4",
+                           "elderly", "a00100", "n02650", "a02650",
+                           "n00200", "a00200")), as.numeric))
+
   irs_inc <- irs_inc |>
     mutate(year = 2000 + y) |>
     select(any_of(c("statefips", "state", "countyfips", "countyname",
@@ -827,7 +868,7 @@ dol <- dol |>
   group_by(fips) |>
   mutate(across(c(me, mcinfant, mctoddler, mcpreschool,
                    mfccinfant, mfcctoddler, mfccpreschool),
-                ~ approx(year[!is.na(.)], .[!is.na(.)], xout = year)$y)) |>
+                ~ if (sum(!is.na(.)) >= 2) approx(year[!is.na(.)], .[!is.na(.)], xout = year)$y else .)) |>
   ungroup()
 
 # Generate cost as percent of median earnings
@@ -957,7 +998,7 @@ save_data(prop_tax_overall, file.path(data_working, "property_tax_rates_overall"
 
 # ---- VERSION 2: Excluding allocated values ----
 prop_tax_excl <- acs_proptx |>
-  filter(qproptx99 != 4, qvalueh != 4) |>
+  filter(qprotx99 != 4, qvalueh != 4) |>
   group_by(year, fips) |>
   summarize(
     prop_rate_mean = weighted.mean(prop_rate, hhwt, na.rm = TRUE),

@@ -8,14 +8,7 @@ Purpose: 	Runs the analysis on the effect of tax changes on migration in
 
 Authors: John Iselin
 
-For more information, contact joiselin@gmail.com
-
-** TO-DO LIST 
-
-** 4) Simulating revenue: 
-** 		a) Create tax units for 2022. 
-** 		b) Come up with proposal 
-
+For more information, contact john.iselin@yale.edu
 
 *******************************************************************************/
 
@@ -122,13 +115,16 @@ do ${code}02_did_analysis.do
 
 ** Synthetic Difference-in-Difference Analysis
 *do ${code}02_sdid_analysis_parallel.do 
-*do ${code}02_sdid_analysis.do 
+do ${code}02_sdid_analysis.do 
 
 ** Individual-level Model
 do ${code}02_indiv_analysis.do 
 
 ** Multinomial Logit Model
-*do ${code}02_multi_analysis.do 
+*do ${code}02_multi_analysis.do
+
+** Revenue Effects of Tax-Induced Migration
+do "${code}02_revenue.do"
 
 ** End log file
 capture log close

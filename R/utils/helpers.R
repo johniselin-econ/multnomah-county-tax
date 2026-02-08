@@ -15,8 +15,7 @@
 #' @param county_fips Numeric county FIPS code
 #' @return Numeric 5-digit FIPS code
 make_fips <- function(state_fips, county_fips) {
-  as.numeric(sprintf("%02d", state_fips)) * 1000 +
-    as.numeric(sprintf("%03d", county_fips))
+  as.numeric(state_fips) * 1000 + as.numeric(county_fips)
 }
 
 #' Extract state FIPS from combined FIPS code

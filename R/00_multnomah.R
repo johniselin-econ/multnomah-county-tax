@@ -24,6 +24,7 @@
 #   Step 5: SDID analysis (02_sdid_analysis.R)
 #   Step 6: Individual-level analysis (02_indiv_analysis.R)
 #   Step 7: DiD analysis (02_did_analysis.R)
+#   Step 8: Paper output (03_paper_output.R)
 # =============================================================================
 
 cat("==============================================================\n")
@@ -36,14 +37,11 @@ cat("==============================================================\n\n")
 # STEP 0: LOAD GLOBALS AND HELPERS
 # =============================================================================
 
-# Set project root (adjust if running from a different location)
-r_dir <- "C:/Users/ji252/Documents/GitHub/multnomah-county-tax/R"
-
-source(file.path(r_dir, "utils", "globals.R"))
-source(file.path(r_dir, "utils", "helpers.R"))
+source(here::here("R", "utils", "globals.R"))
+source(here::here("R", "utils", "helpers.R"))
 
 # Debug mode: set TRUE to run all analysis on reduced samples
-debug <- FALSE
+debug <- TRUE
 
 message("Globals and helpers loaded.")
 message("  Project dir:  ", dir)
@@ -89,7 +87,7 @@ run_clean <- TRUE
 
 if (run_clean) {
   message("\n--- Step 2: Data cleaning ---")
-  source(file.path(r_dir, "01_clean_data.R"))
+  source(here::here("R", "01_clean_data.R"))
 } else {
   message("\nStep 2: Data cleaning skipped (run_clean = FALSE)")
 }
@@ -102,7 +100,7 @@ run_descriptives <- TRUE
 
 if (run_descriptives) {
   message("\n--- Step 3: Descriptive analysis ---")
-  source(file.path(r_dir, "02_descriptives.R"))
+  source(here::here("R", "02_descriptives.R"))
 } else {
   message("\nStep 3: Descriptives skipped (run_descriptives = FALSE)")
 }
@@ -115,7 +113,7 @@ run_flows <- TRUE
 
 if (run_flows) {
   message("\n--- Step 4: Flow-based analysis ---")
-  source(file.path(r_dir, "02_flow_analysis.R"))
+  source(here::here("R", "02_flow_analysis.R"))
 } else {
   message("\nStep 4: Flow analysis skipped (run_flows = FALSE)")
 }
@@ -128,7 +126,7 @@ run_sdid <- TRUE
 
 if (run_sdid) {
   message("\n--- Step 5: Synthetic Difference-in-Differences ---")
-  source(file.path(r_dir, "02_sdid_analysis.R"))
+  source(here::here("R", "02_sdid_analysis.R"))
 } else {
   message("\nStep 5: SDID analysis skipped (run_sdid = FALSE)")
 }
@@ -141,7 +139,7 @@ run_indiv <- TRUE
 
 if (run_indiv) {
   message("\n--- Step 6: Individual-level analysis ---")
-  source(file.path(r_dir, "02_indiv_analysis.R"))
+  source(here::here("R", "02_indiv_analysis.R"))
 } else {
   message("\nStep 6: Individual analysis skipped (run_indiv = FALSE)")
 }
@@ -154,9 +152,35 @@ run_did <- TRUE
 
 if (run_did) {
   message("\n--- Step 7: Difference-in-Differences analysis ---")
-  source(file.path(r_dir, "02_did_analysis.R"))
+  source(here::here("R", "02_did_analysis.R"))
 } else {
   message("\nStep 7: DiD analysis skipped (run_did = FALSE)")
+}
+
+# =============================================================================
+# STEP 8: PAPER OUTPUT
+# =============================================================================
+
+run_paper <- TRUE
+
+if (run_paper) {
+  message("\n--- Step 8: Paper output ---")
+  source(here::here("R", "03_paper_output.R"))
+} else {
+  message("\nStep 8: Paper output skipped (run_paper = FALSE)")
+}
+
+# =============================================================================
+# STEP 9: REVENUE ANALYSIS
+# =============================================================================
+
+run_revenue <- TRUE
+
+if (run_revenue) {
+  message("\n--- Step 9: Revenue analysis ---")
+  source(here::here("R", "02_revenue.R"))
+} else {
+  message("\nStep 9: Revenue analysis skipped (run_revenue = FALSE)")
 }
 
 # =============================================================================

@@ -914,3 +914,40 @@ file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/individual/fig
     PDF format
 (Created by command margins; also see char list)
 2016 2017 2018 2019 2020 2021 2022 2023 2024
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/individual/fig_cat_sex_2.pdf saved as
+    PDF format
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023 2024
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/individual/fig_cat_married_2.pdf saved
+    as PDF format
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023 2024
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/individual/fig_cat_age_2.pdf saved as
+    PDF format
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023 2024
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/individual/fig_cat_child_2.pdf saved as
+    PDF format
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023 2024
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/individual/fig_cat_educ_2.pdf saved as
+    PDF format
+(Created by command margins; also see char list)
+2016 2017 2018 2019 2020 2021 2022 2023 2024
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/individual/fig_cat_ftotinc_2.pdf saved
+    as PDF format
+
+. 
+. 
+. ** ---------------------------------------------------------------------------
+. ** Close log
+. ** ---------------------------------------------------------------------------
+. clear
+
+. log close log_02
+      name:  log_02
+       log:  C:/Users/ji252/Documents/GitHub/multnomah-county-tax/code/logs/02_log_individual_2026-02-06.lo
+> g
+  log type:  text
+ closed on:   6 Feb 2026, 20:37:11
+-----------------------------------------------------------------------------------------------------------

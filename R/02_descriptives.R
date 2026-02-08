@@ -20,8 +20,8 @@ suppressPackageStartupMessages({
   library(openxlsx)
 })
 
-source(file.path(r_dir, "utils", "globals.R"))
-source(file.path(r_dir, "utils", "helpers.R"))
+source(here::here("R", "utils", "globals.R"))
+source(here::here("R", "utils", "helpers.R"))
 
 message("=== 02_descriptives.R: Starting descriptive analysis ===")
 

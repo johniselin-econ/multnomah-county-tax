@@ -27,3 +27,14 @@ data/demographic/bls/*
 # Local configuration files
 profile.do
 api_codes.txt
+
+# Claude Code
+.claude/
+quality_reports/
+
+# SDID temp files
+results/sdid/temp_results/*
+results/sdid/temp_weights/*
+
+# Other
+other/
