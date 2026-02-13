@@ -24,7 +24,9 @@
 #   Step 5: SDID analysis (02_sdid_analysis.R)
 #   Step 6: Individual-level analysis (02_indiv_analysis.R)
 #   Step 7: DiD analysis (02_did_analysis.R)
-#   Step 8: Paper output (03_paper_output.R)
+#   Step 8: Map generation (02_maps.R)
+#   Step 9: Paper output (03_paper_output.R)
+#   Step 10: Revenue analysis (02_revenue.R)
 # =============================================================================
 
 cat("==============================================================\n")
@@ -42,6 +44,9 @@ source(here::here("R", "utils", "helpers.R"))
 
 # Debug mode: set TRUE to run all analysis on reduced samples
 debug <- TRUE
+
+# Parallel processing: set TRUE to use future/future.apply for SDID and flows
+use_parallel <- FALSE
 
 message("Globals and helpers loaded.")
 message("  Project dir:  ", dir)
@@ -158,29 +163,42 @@ if (run_did) {
 }
 
 # =============================================================================
-# STEP 8: PAPER OUTPUT
+# STEP 8: MAP GENERATION
+# =============================================================================
+
+run_maps <- TRUE
+
+if (run_maps) {
+  message("\n--- Step 8: Map generation ---")
+  source(here::here("R", "02_maps.R"))
+} else {
+  message("\nStep 8: Map generation skipped (run_maps = FALSE)")
+}
+
+# =============================================================================
+# STEP 9: PAPER OUTPUT
 # =============================================================================
 
 run_paper <- TRUE
 
 if (run_paper) {
-  message("\n--- Step 8: Paper output ---")
+  message("\n--- Step 9: Paper output ---")
   source(here::here("R", "03_paper_output.R"))
 } else {
-  message("\nStep 8: Paper output skipped (run_paper = FALSE)")
+  message("\nStep 9: Paper output skipped (run_paper = FALSE)")
 }
 
 # =============================================================================
-# STEP 9: REVENUE ANALYSIS
+# STEP 10: REVENUE ANALYSIS
 # =============================================================================
 
 run_revenue <- TRUE
 
 if (run_revenue) {
-  message("\n--- Step 9: Revenue analysis ---")
+  message("\n--- Step 10: Revenue analysis ---")
   source(here::here("R", "02_revenue.R"))
 } else {
-  message("\nStep 9: Revenue analysis skipped (run_revenue = FALSE)")
+  message("\nStep 10: Revenue analysis skipped (run_revenue = FALSE)")
 }
 
 # =============================================================================

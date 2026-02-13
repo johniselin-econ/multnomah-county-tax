@@ -265,7 +265,7 @@ foreach x in "n1" "n2" "agi" {
 
 } // END OUTCOME TYPE LOOP
 
-** Define outcome variables (IRS, interstate movers - type 5)
+** Define outcome variables (IRS, out-of-state movers - type 5)
 foreach x in "n1" "n2" "agi" {
 
 	if "`x'" == "n1" local xtxt "returns"
@@ -275,19 +275,19 @@ foreach x in "n1" "n2" "agi" {
 	** Loop over migration type
 	foreach y in "net" "in" "out" {
 
-			if "`y'" == "net" local ytxt "Net interstate migration"
-			else if "`y'" == "in" local ytxt "Interstate in-migration"
-			else if "`y'" == "out" local ytxt "Interstate out-migration"
+			if "`y'" == "net" local ytxt "Net out-of-state migration"
+			else if "`y'" == "in" local ytxt "Out-of-state in-migration"
+			else if "`y'" == "out" local ytxt "Out-of-state out-migration"
 
 			** Generate
-			gen `x'_`y'_rate_irs5 = 100 * (`x'_`y'_5 / (`x'_out_1 + `x'_out_2))
+			gen `x'_`y'_rate_irs_outstate = 100 * (`x'_`y'_5 / (`x'_out_1 + `x'_out_2))
 
 			** Label var
-			label var `x'_`y'_rate_irs5	"`ytxt' rate, `xtxt' (%)"
+			label var `x'_`y'_rate_irs_outstate	"`ytxt' rate, `xtxt' (%)"
 
 	} // END MIGRATION TYPE LOOP
 
-} // END OUTCOME TYPE LOOP (IRS5)
+} // END OUTCOME TYPE LOOP (IRS OUTSTATE)
 
 ** Define outcome variables (ACS)
 
@@ -332,6 +332,37 @@ forvalues i = 1/2{
 
 } // END SAMPLE LOOP
 
+** Define outcome variables (ACS, out-of-state - type 5)
+forvalues i = 1/2 {
+
+	if `i' == 1 local itxt ""
+	else if `i' == 2 local itxt " (College)"
+
+	foreach x in "n1" "n2" "agi" {
+
+		if "`x'" == "n1" local xtxt "HHs"
+		else if "`x'" == "n2" local xtxt "persons"
+		else if "`x'" == "agi" local xtxt "total income"
+
+		** Loop over migration type
+		foreach y in "net" "in" "out" {
+
+				if "`y'" == "net" local ytxt "Net out-of-state migration"
+				else if "`y'" == "in" local ytxt "Out-of-state in-migration"
+				else if "`y'" == "out" local ytxt "Out-of-state out-migration"
+
+				** Generate
+				gen `x'_`y'_rate_acs`i'_outstate = 100 * (acs`i'_`x'_`y'_5 / (acs`i'_`x'_out_1 + acs`i'_`x'_out_2))
+
+				** Label var
+				label var `x'_`y'_rate_acs`i'_outstate "`ytxt' rate, `xtxt'`itxt' (%)"
+
+		} // END MIGRATION TYPE LOOP
+
+	} // END OUTCOME TYPE LOOP
+
+} // END SAMPLE LOOP (ACS OUTSTATE)
+
 ** Declare panel
 xtset fips year
 
@@ -342,14 +373,14 @@ tab year unique
 ** Label var
 label var year "Year (destination)"
 
+save "${data}working/sdid_analysis_data.dta", replace
+
+
 ** =============================================================================
 ** PARALLEL MODE: DEFINE PROGRAMS AND SETUP
 ** =============================================================================
 
 if ${use_parallel} == 1 {
-
-	** Save main analysis data for parallel workers
-	save "${data}working/sdid_analysis_data.dta", replace
 
 	** Create table-level specification grid
 	preserve
@@ -381,23 +412,27 @@ if ${use_parallel} == 1 {
 
 		** Different sets of outcome variable types
 		if "`data'" == "irs_sample_1" | "`data'" == "irs_sample_2" {
-			local out_types "irs irs5"
+			local out_types "irs irs_outstate"
 		}
 		else {
-			local out_types "acs1 acs2"
+			local out_types "acs1 acs2 acs1_outstate acs2_outstate"
 		}
 
 		foreach type of local out_types {
 
 			** Labels
 			if "`data'" == "irs_sample_1" & "`type'" == "irs" local out_txt "irs_full_16_22"
-			else if "`data'" == "irs_sample_1" & "`type'" == "irs5" local out_txt "irs5_full_16_22"
+			else if "`data'" == "irs_sample_1" & "`type'" == "irs_outstate" local out_txt "irs_outstate_full_16_22"
 			else if "`data'" == "irs_sample_2" & "`type'" == "irs" local out_txt "irs_389_16_22"
-			else if "`data'" == "irs_sample_2" & "`type'" == "irs5" local out_txt "irs5_389_16_22"
+			else if "`data'" == "irs_sample_2" & "`type'" == "irs_outstate" local out_txt "irs_outstate_389_16_22"
 			else if "`data'" == "acs_period_1" & "`type'" == "acs1" local out_txt "acs_16_22_all"
 			else if "`data'" == "acs_period_1" & "`type'" == "acs2" local out_txt "acs_16_22_col"
+			else if "`data'" == "acs_period_1" & "`type'" == "acs1_outstate" local out_txt "acs_outstate_16_22_all"
+			else if "`data'" == "acs_period_1" & "`type'" == "acs2_outstate" local out_txt "acs_outstate_16_22_col"
 			else if "`data'" == "acs_period_2" & "`type'" == "acs1" local out_txt "acs_16_24_all"
 			else if "`data'" == "acs_period_2" & "`type'" == "acs2" local out_txt "acs_16_24_col"
+			else if "`data'" == "acs_period_2" & "`type'" == "acs1_outstate" local out_txt "acs_outstate_16_24_all"
+			else if "`data'" == "acs_period_2" & "`type'" == "acs2_outstate" local out_txt "acs_outstate_16_24_col"
 
 			foreach samp in "sample_all" "sample_urban95" "sample_urban95_covid" {
 				forvalues exl = 0/1 {
@@ -682,6 +717,13 @@ if ${use_parallel} == 1 {
 			}
 		}
 
+		** Copy table to Overleaf
+		if ${overleaf} == 1 {
+			if `exl' == 0 local ol_tabname "tab_sdid_`out_txt'_`migr'_`samp_var'.tex"
+			if `exl' == 1 local ol_tabname "tab_sdid_`out_txt'_`migr'_`samp_var'_excl2020.tex"
+			capture copy "`tabpath'" "${ol_tab}`ol_tabname'", replace
+		}
+
 		dis "Completed table `table_id': `out_txt' / `migr' / `samp_var' / excl=`exl'"
 
 	end
@@ -719,7 +761,7 @@ if ${use_parallel} == 1 {
 	capture mkdir "${results}sdid/temp_weights"
 
 	** Create subfolders for each output type
-	foreach out_txt in "irs_full_16_22" "irs5_full_16_22" "irs_389_16_22" "irs5_389_16_22" "acs_16_22_all" "acs_16_22_col" "acs_16_24_all" "acs_16_24_col" {
+	foreach out_txt in "irs_full_16_22" "irs_outstate_full_16_22" "irs_389_16_22" "irs_outstate_389_16_22" "acs_16_22_all" "acs_16_22_col" "acs_16_24_all" "acs_16_24_col" "acs_outstate_16_22_all" "acs_outstate_16_22_col" "acs_outstate_16_24_all" "acs_outstate_16_24_col" {
 		capture mkdir "${results}sdid/`out_txt'"
 	}
 
@@ -858,26 +900,26 @@ else {
 		else local covariates "population per_capita_income prop_tax_rate"
 
 		** Different sets of outcome variables
-		if "`data'" == "irs_sample_1" local out_type "irs irs5"
-		else if "`data'" == "irs_sample_2" local out_type "irs irs5"
-		else local out_type "acs1 acs2"
+		if "`data'" == "irs_sample_1" local out_type "irs irs_outstate"
+		else if "`data'" == "irs_sample_2" local out_type "irs irs_outstate"
+		else local out_type "acs1 acs2 acs1_outstate acs2_outstate"
 
 		** Loop over Outcome var type
 		foreach type of local out_type {
 
 			** Labels
 			if "`data'" == "irs_sample_1" & "`type'" == "irs" local out_txt "irs_full_16_22"
-			else if "`data'" == "irs_sample_1" & "`type'" == "irs5" local out_txt "irs5_full_16_22"
+			else if "`data'" == "irs_sample_1" & "`type'" == "irs_outstate" local out_txt "irs_outstate_full_16_22"
 			else if "`data'" == "irs_sample_2" & "`type'" == "irs" local out_txt "irs_389_16_22"
-			else if "`data'" == "irs_sample_2" & "`type'" == "irs5" local out_txt "irs5_389_16_22"
+			else if "`data'" == "irs_sample_2" & "`type'" == "irs_outstate" local out_txt "irs_outstate_389_16_22"
 			else if "`data'" == "acs_period_1" & "`type'" == "acs1" local out_txt "acs_16_22_all"
 			else if "`data'" == "acs_period_1" & "`type'" == "acs2" local out_txt "acs_16_22_col"
-			else if "`data'" == "acs_period_1" & "`type'" == "acs3" local out_txt "acs_16_22_noc"
-			else if "`data'" == "acs_period_1" & "`type'" == "acs4" local out_txt "acs_16_22_3D"
+			else if "`data'" == "acs_period_1" & "`type'" == "acs1_outstate" local out_txt "acs_outstate_16_22_all"
+			else if "`data'" == "acs_period_1" & "`type'" == "acs2_outstate" local out_txt "acs_outstate_16_22_col"
 			else if "`data'" == "acs_period_2" & "`type'" == "acs1" local out_txt "acs_16_24_all"
 			else if "`data'" == "acs_period_2" & "`type'" == "acs2" local out_txt "acs_16_24_col"
-			else if "`data'" == "acs_period_2" & "`type'" == "acs3" local out_txt "acs_16_24_noc"
-			else if "`data'" == "acs_period_2" & "`type'" == "acs4" local out_txt "acs_16_24_3D"
+			else if "`data'" == "acs_period_2" & "`type'" == "acs1_outstate" local out_txt "acs_outstate_16_24_all"
+			else if "`data'" == "acs_period_2" & "`type'" == "acs2_outstate" local out_txt "acs_outstate_16_24_col"
 
 			** Check if subfolder exists, create if not
 			capture mkdir "${results}sdid/`out_txt'"
@@ -1100,6 +1142,12 @@ else {
 
 						}
 
+						** Copy table to Overleaf
+						if ${overleaf} == 1 {
+							if `exl' == 0 local ol_fname "tab_sdid_`out_txt'_`migr'_`samp'.tex"
+							if `exl' == 1 local ol_fname "tab_sdid_`out_txt'_`migr'_`samp'_excl2020.tex"
+							capture copy "`path'" "${ol_tab}`ol_fname'", replace
+						}
 
 					} // END MIGRATION TYPE LOOP
 
@@ -1157,12 +1205,14 @@ replace migration = "in" if strpos(outcome, "_in_") > 0
 replace migration = "out" if strpos(outcome, "_out_") > 0
 
 gen data_type = ""
-replace data_type = "IRS" if strpos(outcome, "_irs") > 0 & strpos(outcome, "_irs5") == 0
-replace data_type = "IRS (Interstate)" if strpos(outcome, "_irs5") > 0
-replace data_type = "IRS (389)" if strpos(sample_data, "irs_389") > 0 & strpos(outcome, "_irs5") == 0
-replace data_type = "IRS (389, Interstate)" if strpos(sample_data, "irs_389") > 0 & strpos(outcome, "_irs5") > 0
-replace data_type = "ACS All" if strpos(outcome, "_acs1") > 0
-replace data_type = "ACS College" if strpos(outcome, "_acs2") > 0
+replace data_type = "IRS" if strpos(outcome, "_irs") > 0 & strpos(outcome, "_irs_outstate") == 0
+replace data_type = "IRS (Out-of-State)" if strpos(outcome, "_irs_outstate") > 0
+replace data_type = "IRS (389)" if strpos(sample_data, "irs_389") > 0 & strpos(outcome, "_irs_outstate") == 0
+replace data_type = "IRS (389, Out-of-State)" if strpos(sample_data, "irs_389") > 0 & strpos(outcome, "_irs_outstate") > 0
+replace data_type = "ACS All (Out-of-State)" if strpos(outcome, "_acs1_outstate") > 0
+replace data_type = "ACS College (Out-of-State)" if strpos(outcome, "_acs2_outstate") > 0
+replace data_type = "ACS All" if strpos(outcome, "_acs1") > 0 & strpos(outcome, "_acs1_outstate") == 0
+replace data_type = "ACS College" if strpos(outcome, "_acs2") > 0 & strpos(outcome, "_acs2_outstate") == 0
 
 gen period_type = ""
 replace period_type = "16-22" if strpos(outcome, "_irs") > 0
@@ -1178,11 +1228,13 @@ gen spec_16_24 = period_type == "16-24"
 gen spec_covars = controls == 1
 gen spec_excl2020 = exclusion == 1
 gen spec_irs = data_type == "IRS"
-gen spec_irs5 = data_type == "IRS (Interstate)"
+gen spec_irs_outstate = data_type == "IRS (Out-of-State)"
 gen spec_irs_389 = data_type == "IRS (389)"
-gen spec_irs5_389 = data_type == "IRS (389, Interstate)"
+gen spec_irs_outstate_389 = data_type == "IRS (389, Out-of-State)"
 gen spec_acs_all = data_type == "ACS All"
 gen spec_acs_col = data_type == "ACS College"
+gen spec_acs_all_outstate = data_type == "ACS All (Out-of-State)"
+gen spec_acs_col_outstate = data_type == "ACS College (Out-of-State)"
 
 ** Calculate statistical significance (p < 0.05)
 replace significant = pval < 0.05 if missing(significant)
@@ -1219,6 +1271,14 @@ replace preferred = 1 if 									///
 	controls == 1 &											///
 	exclusion == 1 											//
 
+** ACS COLLEGE OUT-OF-STATE SAMPLE
+replace preferred = 1 if 									///
+	data_type == "ACS College (Out-of-State)" & 			///
+	spec_16_24 == 1	& 										///
+	inlist(sample, "sample_all", "sample_urban95_covid") &	///
+	controls == 1 &											///
+	exclusion == 1 											//
+
 ** Display count of preferred specifications
 dis "Number of preferred specifications: "
 count if preferred == 1
@@ -1230,7 +1290,7 @@ count if preferred == 1
 ** Loop over outcome types, migration directions, and plot sets
 foreach otype in "n1" "n2" "agi" {
 	foreach migr in "net" "in" "out" {
-		foreach pset in "main" "irs5" {
+		foreach pset in "main" "outstate" {
 
 		** Preserve full data
 		preserve
@@ -1240,10 +1300,12 @@ foreach otype in "n1" "n2" "agi" {
 
 		** Filter by plot set
 		if "`pset'" == "main" {
-			drop if inlist(data_type, "IRS (Interstate)", "IRS (389, Interstate)")
+			drop if inlist(data_type, "IRS (Out-of-State)", "IRS (389, Out-of-State)", ///
+								     "ACS All (Out-of-State)", "ACS College (Out-of-State)")
 		}
-		else if "`pset'" == "irs5" {
-			keep if inlist(data_type, "IRS (Interstate)", "IRS (389, Interstate)")
+		else if "`pset'" == "outstate" {
+			keep if inlist(data_type, "IRS (Out-of-State)", "IRS (389, Out-of-State)", ///
+								     "ACS All (Out-of-State)", "ACS College (Out-of-State)")
 		}
 
 		** Check if we have data
@@ -1269,7 +1331,7 @@ foreach otype in "n1" "n2" "agi" {
 		else if "`migr'" == "out" local migr_label "Out-Migration"
 
 		** Title suffix for IRS5 plots
-		if "`pset'" == "irs5" local pset_title " (Interstate)"
+		if "`pset'" == "outstate" local pset_title " (Out-of-State)"
 		else local pset_title ""
 
 		** ---------------------------------------------------------------------
@@ -1334,16 +1396,19 @@ foreach otype in "n1" "n2" "agi" {
 			legend(order(5 "Sig. (p<0.05)" 6 "Insig." 						///
 						 7 "Sig., Preferred" 8 "Insig., Preferred") 		///
 				   rows(1) pos(6) size(vsmall)) 							///
-			ytitle("Treatment Effect (pp)") 								///
+			ytitle("Treatment Effect (pp)", size(vsmall)) 					///
+			ylabel(, labsize(vsmall))										///
 			xtitle("") 														///
 			title("`otype_label': `migr_label'`pset_title'", size(medium)) 	///
 			yline(0, lc(red) lp(dash)) 										///
 			xlabel(none) 													///
+			xscale(range(0.5 `=`n_specs'+0.5'))						///
+			plotregion(margin(l+12))										///
 			name(coef_`otype'_`migr', replace)
 
 		** ---------------------------------------------------------------------
 		** Create lower panel: Specification indicators
-		** (different indicators depending on main vs irs5 plot set)
+		** (different indicators depending on main vs outstate plot set)
 		** ---------------------------------------------------------------------
 
 		if "`pset'" == "main" {
@@ -1387,27 +1452,32 @@ foreach otype in "n1" "n2" "agi" {
 					-11 "16-24",											///
 				angle(0) labsize(vsmall))									///
 			xlabel(none)													///
+			xscale(range(0.5 `=`n_specs'+0.5'))						///
 			name(spec_`otype'_`migr', replace)
 
 		} // END main lower panel
 
-		else if "`pset'" == "irs5" {
+		else if "`pset'" == "outstate" {
 
 		gen y_all = -1 if spec_all == 1
 		gen y_urban = -2 if spec_urban95 == 1
 		gen y_covid = -3 if spec_covid == 1
 		gen y_covars = -4 if spec_covars == 1
 		gen y_excl = -5 if spec_excl2020 == 1
-		gen y_irs5 = -6 if spec_irs5 == 1
-		gen y_irs5_389 = -7 if spec_irs5_389 == 1
+		gen y_irs_outstate = -6 if spec_irs_outstate == 1
+		gen y_irs_outstate_389 = -7 if spec_irs_outstate_389 == 1
+		gen y_acs_all_outstate = -8 if spec_acs_all_outstate == 1
+		gen y_acs_col_outstate = -9 if spec_acs_col_outstate == 1
 
 		twoway 	(scatter y_all spec_rank, mc(navy) ms(O) msize(vsmall))		///
 				(scatter y_urban spec_rank, mc(navy) ms(O) msize(vsmall))	///
 				(scatter y_covid spec_rank, mc(navy) ms(O) msize(vsmall))	///
 				(scatter y_covars spec_rank, mc(navy) ms(O) msize(vsmall))	///
 				(scatter y_excl spec_rank, mc(navy) ms(O) msize(vsmall))	///
-				(scatter y_irs5 spec_rank, mc(navy) ms(O) msize(vsmall))	///
-				(scatter y_irs5_389 spec_rank, mc(navy) ms(O) msize(vsmall)), ///
+				(scatter y_irs_outstate spec_rank, mc(navy) ms(O) msize(vsmall))	///
+				(scatter y_irs_outstate_389 spec_rank, mc(navy) ms(O) msize(vsmall))	///
+				(scatter y_acs_all_outstate spec_rank, mc(navy) ms(O) msize(vsmall))	///
+				(scatter y_acs_col_outstate spec_rank, mc(navy) ms(O) msize(vsmall)), ///
 			legend(off)														///
 			ytitle("")														///
 			xtitle("Specification (ranked by effect size)")					///
@@ -1416,27 +1486,34 @@ foreach otype in "n1" "n2" "agi" {
 					-3 "COVID Match"										///
 					-4 "Covariates"											///
 					-5 "Excl. 2020"											///
-					-6 "IRS Interstate (all counties)"						///
-					-7 "IRS Interstate (ACS counties)",						///
+					-6 "IRS Out-of-State (all counties)"					///
+					-7 "IRS Out-of-State (ACS counties)"					///
+					-8 "ACS All (Out-of-State)"								///
+					-9 "ACS College (Out-of-State)",						///
 				angle(0) labsize(vsmall))									///
 			xlabel(none)													///
+			xscale(range(0.5 `=`n_specs'+0.5'))						///
 			name(spec_`otype'_`migr', replace)
 
-		} // END irs5 lower panel
+		} // END outstate lower panel
 
 		** Combine panels
 		graph combine coef_`otype'_`migr' spec_`otype'_`migr',				///
 			cols(1)															///
-			xcommon															///
+			xcommon					///
 			imargin(zero)
-
-		** File suffix for IRS5 plots
-		if "`pset'" == "irs5" local fsuffix "_irs5"
+			
+			
+		** File suffix for out-of-state plots
+		if "`pset'" == "outstate" local fsuffix "_outstate"
 		else local fsuffix ""
 
 		** Export combined figure
 		graph export "${results}sdid/fig_speccurve_`otype'_`migr'`fsuffix'.pdf", replace
 		graph export "${results}sdid/fig_speccurve_`otype'_`migr'`fsuffix'.jpg", as(jpg) quality(100) replace
+		if ${overleaf} == 1 {
+			graph export "${ol_fig}fig_speccurve_`otype'_`migr'`fsuffix'.pdf", replace
+		}
 
 		** Clean up
 		graph drop coef_`otype'_`migr' spec_`otype'_`migr'

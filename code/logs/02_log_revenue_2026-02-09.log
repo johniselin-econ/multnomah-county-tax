@@ -1,0 +1,1761 @@
+----------------------------------------------------------------------------------------------------------------
+      name:  log_02rev
+       log:  C:/Users/ji252/Documents/GitHub/multnomah-county-tax/code/logs/02_log_revenue_2026-02-09.log
+  log type:  text
+ opened on:  10 Feb 2026, 09:14:08
+
+. 
+. ** Parameters
+. scalar effect_agi = 0.02                        // estimated net out-migration effect on AGI
+
+. scalar effect_agi_oregon = 0.02         // Oregon-level effect
+
+. local  cpi_2019_to_2022 = 1.136 // CPI-U inflation factor 2019→2022
+
+. 
+. ** PFA tax brackets (2022)
+. local pfa_thresh1_single = 125000
+
+. local pfa_thresh2_single = 250000
+
+. local pfa_thresh1_joint  = 200000
+
+. local pfa_thresh2_joint  = 400000
+
+. local pfa_rate = 0.015
+
+. 
+. ** Create output directory
+. capture mkdir "${results}revenue"
+
+. 
+. ********************************************************************************
+. ** SECTION 0B: SDID Estimation of Migration Effects
+. ********************************************************************************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 0B: SDID estimation of migration effects"
+Section 0B: SDID estimation of migration effects
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** Check if SDID panel data exists
+. capture confirm file "${data}working/sdid_analysis_data.dta"
+
+. if _rc == 0 {
+. 
+.         ** Save current data state
+.         preserve
+. 
+.         ** Load SDID panel data
+.         use "${data}working/sdid_analysis_data.dta", clear
+. 
+.         ** Keep required variables 
+.         keep fips year Treated irs_sample_1 sample_all population per_capita_income agi_net_rate_irs agi_net_r
+> ate_irs5 
+.         
+.         ** ---- Run 1: effect_agi (county-level, domestic type 3) ----
+.         dis "Running SDID for effect_agi (agi_net_rate_irs)..."
+Running SDID for effect_agi (agi_net_rate_irs)...
+.         capture noisily sdid agi_net_rate_irs fips year Treated ///
+>                 if irs_sample_1 == 1 & sample_all == 1 & year != 2020, ///
+>                 vce(noinference)  ///
+>                 covariates(population per_capita_income, projected)
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------------------
+agi_net_ra~s |     ATT     Std. Err.     t      P>|t|    [95% Conf. Interval]
+-------------+---------------------------------------------------------------
+     Treated |  -3.68397          .        .        .           .           .
+-----------------------------------------------------------------------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+. 
+.         if _rc == 0 {
+.                 ** Extract ATT from e(ATT) — tau is in percentage points
+.                 scalar tau_agi = e(ATT)
+.                 scalar effect_agi = abs(tau_agi) / 100
+.                 dis "  SDID effect_agi: tau = " %8.4f tau_agi " pp -> effect = " %8.4f effect_agi
+  SDID effect_agi: tau =  -3.6840 pp -> effect =   0.0368
+.         }
+.         else {
+.                 dis "  SDID for effect_agi failed, using default: " %8.4f effect_agi
+.         }
+. 
+.         ** ---- Run 2: effect_agi_oregon (state-level, interstate type 5) ----
+.         dis "Running SDID for effect_agi_oregon (agi_net_rate_irs5)..."
+Running SDID for effect_agi_oregon (agi_net_rate_irs5)...
+.         capture noisily sdid agi_net_rate_irs5 fips year Treated ///
+>                 if irs_sample_1 == 1 & sample_all == 1 & year != 2020, ///
+>                 vce(noinference)  ///
+>                 covariates(population per_capita_income, projected)
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------------------
+agi_net_ra~5 |     ATT     Std. Err.     t      P>|t|    [95% Conf. Interval]
+-------------+---------------------------------------------------------------
+     Treated |  -2.31123          .        .        .           .           .
+-----------------------------------------------------------------------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+. 
+.         if _rc == 0 {
+.                 scalar tau_agi_oregon = e(ATT)
+.                 scalar effect_agi_oregon = abs(tau_agi_oregon) / 100
+.                 dis "  SDID effect_agi_oregon: tau = " %8.4f tau_agi_oregon " pp -> effect = " %8.4f effect_ag
+> i_oregon
+  SDID effect_agi_oregon: tau =  -2.3112 pp -> effect =   0.0231
+.         }
+.         else {
+.                 dis "  SDID for effect_agi_oregon failed, using default: " %8.4f effect_agi_oregon
+.         }
+. 
+.         ** Restore original data state
+.         restore
+. }
+
+. else {
+.         dis "  SDID panel data not found. Using default effects."
+. }
+
+. 
+. dis "  Final parameters:"
+  Final parameters:
+
+. dis "    effect_agi         = " %8.4f effect_agi
+    effect_agi         =   0.0368
+
+. dis "    effect_agi_oregon  = " %8.4f effect_agi_oregon
+    effect_agi_oregon  =   0.0231
+
+. 
+. ********************************************************************************
+. ** SECTION 1: Load 2019 ACS Microdata for Multnomah County
+. ********************************************************************************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 1: Load ACS 2019 microdata"
+Section 1: Load ACS 2019 microdata
+
+. dis "=============================================="
+==============================================
+
+. 
+. import delimited "${data}acs/acs_2019.csv", clear
+(encoding automatically selected: ISO-8859-1)
+(68 vars, 3,087,291 obs)
+
+. 
+. ** Filter to Multnomah County, Oregon
+. keep if statefip == 41 & countyfip == 51
+(3,079,935 observations deleted)
+
+. 
+. ** Drop group quarters
+. drop if gq > 2
+(0 observations deleted)
+
+. 
+. ** Keep ages 18+ (tax-filing-relevant population)
+. keep if age >= 18
+(1,283 observations deleted)
+
+. 
+. ** Handle top-coded / missing income
+. foreach v of varlist inctot incwage incbus00 incinvst incearn {
+  2.         replace `v' = . if `v' == 9999999
+  3. }
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+
+. 
+. ** Create household ID
+. gen double hh_id = serial
+
+. 
+. ** Summarize
+. dis "ACS 2019 Multnomah County observations (18+, non-GQ): " _N
+ACS 2019 Multnomah County observations (18+, non-GQ): 6073
+
+. 
+. ********************************************************************************
+. ** SECTION 2: Create Tax Units
+. ********************************************************************************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 2: Create tax units"
+Section 2: Create tax units
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (a) Link married couples via SPLOC
+. ** -------------------------------------------------------------------------
+. 
+. gen unit_id = pernum
+
+. replace unit_id = sploc if marst == 1 & sploc != 0 & pernum > sploc
+(1,463 real changes made)
+
+. label var unit_id "Unique ID for tax units"
+
+. 
+. ** Count of individuals per tax unit
+. bysort hh_id unit_id: gen byte unit_ct = _N
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (b) Filing status
+. ** -------------------------------------------------------------------------
+. 
+. gen byte married = inlist(marst, 1, 2)          // married, spouse present or absent
+
+. gen byte mfs = (marst == 3 & sploc == 0)        // married filing separately
+
+. 
+. gen byte filing_status = 1                                      // single (default)
+
+. replace filing_status = 2 if married == 1       // MFJ
+(3,002 real changes made)
+
+. replace filing_status = 6 if mfs == 1           // MFS
+(58 real changes made)
+
+. label var filing_status "Filing status (1=single, 2=MFJ, 6=MFS)"
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (c) Dependents (simplified — use NCHILD, capped at 3)
+. ** -------------------------------------------------------------------------
+. 
+. gen byte depx = min(nchild, 3)
+
+. label var depx "Dependent exemptions (capped at 3)"
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (d) Income variable construction (at tax-unit level)
+. ** -------------------------------------------------------------------------
+. 
+. ** Nominal income variables
+. gen double incwage_nom = max(incwage, 0)
+
+. gen double incse_nom = incearn - incwage                        // self-employment
+
+. gen double incinvst_nom = incinvst                                      // investment (can be negative)
+
+. gen double inctot_nom = inctot
+
+. gen double incwel_nom = 0
+
+. replace incwel_nom = incwelfr if !missing(incwelfr) & incwelfr != 999999
+(105 real changes made)
+
+. 
+. ** Subtract untaxed welfare income from total income (floor at 0)
+. replace inctot_nom = max(inctot_nom - incwel_nom, 0)
+(112 real changes made)
+
+. 
+. ** Tax-unit aggregation
+. foreach v in inctot incwage incse incinvst {
+  2.         replace `v'_nom = 0 if `v'_nom == .  
+  3.         bysort hh_id unit_id: egen double `v'_tax = total(`v'_nom)
+  4. }
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (e) Primary filer flag
+. ** -------------------------------------------------------------------------
+. 
+. gen byte primary_filer = (unit_id == pernum)
+
+. label var primary_filer "Primary filer in tax unit"
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (f) Compute tax-unit AGI proxy
+. ** -------------------------------------------------------------------------
+. 
+. gen double agi_proxy = inctot_tax
+
+. label var agi_proxy "Tax-unit AGI proxy (total income)"
+
+. 
+. ** Summary
+. dis "Number of tax units: "
+Number of tax units: 
+
+. count if primary_filer == 1
+  4,610
+
+. 
+. ********************************************************************************
+. ** SECTION 3: Load IRS County Data for Raking Targets
+. ********************************************************************************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 3: Load IRS county data for raking"
+Section 3: Load IRS county data for raking
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** Save ACS data
+. tempfile acs_data
+
+. save `acs_data'
+file C:\Users\ji252\AppData\Local\Temp\ST_5ca0_000002.tmp saved as .dta format
+
+. 
+. ** Import 2019 IRS county data
+. import delimited "${data}irs/19incyallagi.csv", clear
+(encoding automatically selected: ISO-8859-1)
+(153 vars, 25,544 obs)
+
+. 
+. ** Keep Multnomah County
+. keep if statefips == 41 & countyfips == 51
+(25,536 observations deleted)
+
+. 
+. ** Rename variables (following 01_clean_data.do pattern)
+. rename n1 irs_n1
+
+. rename mars2 irs_mars2
+
+. rename a00100 irs_agi
+
+. rename a00200 irs_wages
+
+. rename n04470 irs_n_itemizers
+
+. rename a04470 irs_itemded
+
+. 
+. ** Rescale (IRS reports in thousands)
+. replace irs_agi = irs_agi * 1000
+variable irs_agi was long now double
+(8 real changes made)
+
+. replace irs_wages = irs_wages * 1000
+variable irs_wages was long now double
+(8 real changes made)
+
+. replace irs_itemded = irs_itemded * 1000
+(7 real changes made)
+
+. 
+. ** Keep relevant variables
+. keep agi_stub irs_n1 irs_mars2 irs_agi irs_wages irs_n_itemizers irs_itemded
+
+. 
+. ** Drop the "all" stub (agi_stub == 0) for bracket-level calibration
+. drop if agi_stub == 0
+(0 observations deleted)
+
+. 
+. ** Label AGI stubs
+. label define lb_agi_stub 1 "Under $1" 2 "$1-$10k" 3 "$10k-$25k" ///
+>         4 "$25k-$50k" 5 "$50k-$75k" 6 "$75k-$100k" 7 "$100k-$200k" 8 "$200k+"
+
+. label values agi_stub lb_agi_stub
+
+. 
+. ** Display IRS targets
+. list agi_stub irs_n1 irs_mars2 irs_agi irs_wages, sep(0)
+
+     +------------------------------------------------------------+
+     |    agi_stub   irs_n1   irs_ma~2       irs_agi    irs_wages |
+     |------------------------------------------------------------|
+  1. |    Under $1     5720       1010    -372789000     40370000 |
+  2. |     $1-$10k    43390       2400     222375000    184827000 |
+  3. |   $10k-$25k    70700       6270    1236475000    964786000 |
+  4. |   $25k-$50k   108430      14630    3958982000   3375398000 |
+  5. |   $50k-$75k    63220      17090    3883894000   3134364000 |
+  6. |  $75k-$100k    40180      17640    3478623000   2681153000 |
+  7. | $100k-$200k    61240      40820    8391132000   6224996000 |
+  8. |      $200k+    26910      21730   1.24020e+10   6929984000 |
+     +------------------------------------------------------------+
+
+. 
+. ** Total Multnomah County AGI (sum across brackets)
+. qui summ irs_agi
+
+. scalar total_irs_agi_2019 = r(sum)
+
+. dis "Total Multnomah County AGI (2019): $" %15.0fc total_irs_agi_2019
+Total Multnomah County AGI (2019): $ 33,200,690,000
+
+. 
+. ** Save as tempfile
+. tempfile irs_targets
+
+. save `irs_targets'
+file C:\Users\ji252\AppData\Local\Temp\ST_5ca0_000003.tmp saved as .dta format
+
+. 
+. ********************************************************************************
+. ** SECTION 4: Raking / Calibration
+. ********************************************************************************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 4: Raking / calibration"
+Section 4: Raking / calibration
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** Reload ACS data
+. use `acs_data', clear
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (a) Create AGI brackets matching IRS stubs
+. ** -------------------------------------------------------------------------
+. 
+. gen byte agi_stub = .
+(6,073 missing values generated)
+
+. replace agi_stub = 1 if agi_proxy < 1
+(186 real changes made)
+
+. replace agi_stub = 2 if agi_proxy >= 1     & agi_proxy < 10000
+(449 real changes made)
+
+. replace agi_stub = 3 if agi_proxy >= 10000 & agi_proxy < 25000
+(764 real changes made)
+
+. replace agi_stub = 4 if agi_proxy >= 25000 & agi_proxy < 50000
+(1,185 real changes made)
+
+. replace agi_stub = 5 if agi_proxy >= 50000 & agi_proxy < 75000
+(895 real changes made)
+
+. replace agi_stub = 6 if agi_proxy >= 75000 & agi_proxy < 100000
+(633 real changes made)
+
+. replace agi_stub = 7 if agi_proxy >= 100000 & agi_proxy < 200000
+(1,350 real changes made)
+
+. replace agi_stub = 8 if agi_proxy >= 200000
+(611 real changes made)
+
+. 
+. label values agi_stub lb_agi_stub
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (b) GREG calibration (weights match IRS counts + AGI + wages by bracket)
+. ** -------------------------------------------------------------------------
+. 
+. ** Keep only primary filers for calibration
+. keep if primary_filer == 1
+(1,463 observations deleted)
+
+. 
+. ** Merge IRS targets
+. merge m:1 agi_stub using `irs_targets', keep(master match) nogen
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                             4,610  
+    -----------------------------------------
+
+. 
+. gen byte is_mfj = (filing_status == 2)
+
+. 
+. ** Create explicit auxiliary variables for calibration (32 constraints)
+. forvalues s = 1/8 {
+  2.         gen byte d_stub_`s' = (agi_stub == `s')
+  3.         gen byte d_mfj_`s' = (agi_stub == `s') * is_mfj
+  4.         gen double agi_stub_`s' = agi_proxy * (agi_stub == `s')
+  5.         gen double wages_stub_`s' = incwage_tax * (agi_stub == `s')
+  6. }
+
+. 
+. ** Build population totals matrix (1 × 32)
+. matrix pop_totals = J(1, 32, .)
+
+. local cnames ""
+
+. forvalues s = 1/8 {
+  2.         qui sum irs_n1 if agi_stub == `s', meanonly
+  3.         matrix pop_totals[1, `s'] = r(mean)
+  4.         local cnames "`cnames' d_stub_`s'"
+  5. }
+
+. forvalues s = 1/8 {
+  2.         qui sum irs_mars2 if agi_stub == `s', meanonly
+  3.         matrix pop_totals[1, `=8+`s''] = r(mean)
+  4.         local cnames "`cnames' d_mfj_`s'"
+  5. }
+
+. forvalues s = 1/8 {
+  2.         qui sum irs_agi if agi_stub == `s', meanonly
+  3.         matrix pop_totals[1, `=16+`s''] = r(mean)
+  4.         local cnames "`cnames' agi_stub_`s'"
+  5. }
+
+. forvalues s = 1/8 {
+  2.         qui sum irs_wages if agi_stub == `s', meanonly
+  3.         matrix pop_totals[1, `=24+`s''] = r(mean)
+  4.         local cnames "`cnames' wages_stub_`s'"
+  5. }
+
+. matrix colnames pop_totals = `cnames'
+
+. 
+. ** GREG calibration (Stata 15+ svycal)
+. svycal regress d_stub_1-d_stub_8 d_mfj_1-d_mfj_8 ///
+>         agi_stub_1-agi_stub_8 wages_stub_1-wages_stub_8 ///
+>         [pw = perwt], generate(cal_wt) totals(pop_totals) ll(0)
+note: agi_stub_1 omitted because of collinearity.
+note: wages_stub_1 omitted because of collinearity.
+note: d_mfj_1 omitted because of collinearity.
+note: agi_stub_1 omitted because of collinearity.
+note: wages_stub_1 omitted because of collinearity.
+note: d_stub_2 omitted because of collinearity.
+note: d_mfj_2 omitted because of collinearity.
+note: agi_stub_2 omitted because of collinearity.
+note: wages_stub_2 omitted because of collinearity.
+note: d_stub_3 omitted because of collinearity.
+note: d_mfj_3 omitted because of collinearity.
+note: agi_stub_3 omitted because of collinearity.
+note: wages_stub_3 omitted because of collinearity.
+note: d_stub_4 omitted because of collinearity.
+note: d_mfj_4 omitted because of collinearity.
+note: agi_stub_4 omitted because of collinearity.
+note: wages_stub_4 omitted because of collinearity.
+note: d_stub_5 omitted because of collinearity.
+note: d_mfj_5 omitted because of collinearity.
+note: agi_stub_5 omitted because of collinearity.
+note: wages_stub_5 omitted because of collinearity.
+note: d_stub_6 omitted because of collinearity.
+note: d_mfj_6 omitted because of collinearity.
+note: agi_stub_6 omitted because of collinearity.
+note: wages_stub_6 omitted because of collinearity.
+note: d_stub_7 omitted because of collinearity.
+note: d_mfj_7 omitted because of collinearity.
+note: agi_stub_7 omitted because of collinearity.
+note: wages_stub_7 omitted because of collinearity.
+note: d_stub_8 omitted because of collinearity.
+note: agi_stub_1 omitted because of collinearity.
+note: wages_stub_1 omitted because of collinearity.
+note: d_stub_2 omitted because of collinearity.
+note: d_mfj_2 omitted because of collinearity.
+note: agi_stub_2 omitted because of collinearity.
+note: wages_stub_2 omitted because of collinearity.
+note: d_stub_3 omitted because of collinearity.
+note: d_mfj_3 omitted because of collinearity.
+note: agi_stub_3 omitted because of collinearity.
+note: wages_stub_3 omitted because of collinearity.
+note: d_stub_4 omitted because of collinearity.
+note: d_mfj_4 omitted because of collinearity.
+note: agi_stub_4 omitted because of collinearity.
+note: wages_stub_4 omitted because of collinearity.
+note: d_stub_5 omitted because of collinearity.
+note: d_mfj_5 omitted because of collinearity.
+note: agi_stub_5 omitted because of collinearity.
+note: wages_stub_5 omitted because of collinearity.
+note: d_stub_6 omitted because of collinearity.
+note: d_mfj_6 omitted because of collinearity.
+note: agi_stub_6 omitted because of collinearity.
+note: wages_stub_6 omitted because of collinearity.
+note: d_stub_7 omitted because of collinearity.
+note: d_mfj_7 omitted because of collinearity.
+note: agi_stub_7 omitted because of collinearity.
+note: wages_stub_7 omitted because of collinearity.
+note: d_stub_8 omitted because of collinearity.
+note: d_mfj_8 omitted because of collinearity.
+note: wages_stub_1 omitted because of collinearity.
+note: d_stub_2 omitted because of collinearity.
+note: d_mfj_2 omitted because of collinearity.
+note: agi_stub_2 omitted because of collinearity.
+note: wages_stub_2 omitted because of collinearity.
+note: d_stub_3 omitted because of collinearity.
+note: d_mfj_3 omitted because of collinearity.
+note: agi_stub_3 omitted because of collinearity.
+note: wages_stub_3 omitted because of collinearity.
+note: d_stub_4 omitted because of collinearity.
+note: d_mfj_4 omitted because of collinearity.
+note: agi_stub_4 omitted because of collinearity.
+note: wages_stub_4 omitted because of collinearity.
+note: d_stub_5 omitted because of collinearity.
+note: d_mfj_5 omitted because of collinearity.
+note: agi_stub_5 omitted because of collinearity.
+note: wages_stub_5 omitted because of collinearity.
+note: d_stub_6 omitted because of collinearity.
+note: d_mfj_6 omitted because of collinearity.
+note: agi_stub_6 omitted because of collinearity.
+note: wages_stub_6 omitted because of collinearity.
+note: d_stub_7 omitted because of collinearity.
+note: d_mfj_7 omitted because of collinearity.
+note: agi_stub_7 omitted because of collinearity.
+note: wages_stub_7 omitted because of collinearity.
+note: d_stub_8 omitted because of collinearity.
+note: d_mfj_8 omitted because of collinearity.
+note: agi_stub_8 omitted because of collinearity.
+
+. label var cal_wt "Calibrated weight (GREG: IRS counts + AGI + wages)"
+
+. 
+. ** Clean up auxiliary variables
+. drop d_stub_* d_mfj_* agi_stub_* wages_stub_*
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (c) Itemizer assignment
+. ** -------------------------------------------------------------------------
+. 
+. ** Within each AGI bracket, randomly assign itemizer status
+. gen double u_item = runiform()
+
+. bysort agi_stub (u_item): gen double cumshare = _n / _N
+
+. 
+. ** Compute itemizer share
+. gen double item_share = irs_n_itemizers / irs_n1
+
+. replace item_share = min(item_share, 1)         // cap at 100%
+(0 real changes made)
+
+. 
+. ** Assign itemizer status (top fraction within bracket)
+. gen byte itemizer = (cumshare > (1 - item_share))
+
+. 
+. ** Assign average itemized deduction amount
+. gen double itemded_amt = 0
+
+. replace itemded_amt = (irs_itemded / irs_n_itemizers) if itemizer == 1 & irs_n_itemizers > 0
+(785 real changes made)
+
+. label var itemizer "Assigned as itemizer (matched to IRS)"
+
+. label var itemded_amt "Itemized deduction amount"
+
+. 
+. drop u_item cumshare
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (d) Verification: compare calibrated totals to IRS
+. ** -------------------------------------------------------------------------
+. 
+. dis ""
+
+
+. dis "GREG calibration verification: ACS calibrated vs IRS targets"
+GREG calibration verification: ACS calibrated vs IRS targets
+
+. dis "-------------------------------------------------------------"
+-------------------------------------------------------------
+
+. 
+. gen byte _mfj_temp = (filing_status == 2)
+
+. forvalues s = 1/8 {
+  2.         qui summ cal_wt if agi_stub == `s'
+  3.         local acs_n = r(sum)
+  4.         qui summ irs_n1 if agi_stub == `s', meanonly
+  5.         local irs_n = r(mean)
+  6. 
+.         ** MFJ check
+.         qui summ _mfj_temp [aw=cal_wt] if agi_stub == `s'
+  7.         local acs_mfj = r(sum_w) * r(mean)
+  8.         qui summ irs_mars2 if agi_stub == `s', meanonly
+  9.         local irs_mfj = r(mean)
+ 10. 
+.         ** AGI check (calibrated)
+.         qui summ agi_proxy [aw=cal_wt] if agi_stub == `s'
+ 11.         local acs_agi_sum = r(sum_w) * r(mean)
+ 12.         qui summ irs_agi if agi_stub == `s', meanonly
+ 13.         local irs_agi_val = r(mean)
+ 14. 
+.         ** Wages check (calibrated)
+.         qui summ incwage_tax [aw=cal_wt] if agi_stub == `s'
+ 15.         local acs_wages_sum = r(sum_w) * r(mean)
+ 16.         qui summ irs_wages if agi_stub == `s', meanonly
+ 17.         local irs_wages_val = r(mean)
+ 18. 
+.         dis "Stub `s': N=" %10.0f `acs_n' " vs " %10.0f `irs_n' ///
+>                 "  |  MFJ=" %8.0f `acs_mfj' " vs " %8.0f `irs_mfj' ///
+>                 "  |  AGI=" %14.0f `acs_agi_sum' " (IRS " %14.0f `irs_agi_val' ")" ///
+>                 "  |  Wages=" %14.0f `acs_wages_sum' " (IRS " %14.0f `irs_wages_val' ")"
+ 19. }
+Stub 1: N=      5720 vs       5720  |  MFJ=    1010 vs     1010  |  AGI=             0 (IRS     -372789000)  |  
+> Wages=             0 (IRS       40370000)
+Stub 2: N=     43390 vs      43390  |  MFJ=    2400 vs     2400  |  AGI=     222375000 (IRS      222375000)  |  
+> Wages=     184827000 (IRS      184827000)
+Stub 3: N=     70700 vs      70700  |  MFJ=    6270 vs     6270  |  AGI=    1236475000 (IRS     1236475000)  |  
+> Wages=     964786000 (IRS      964786000)
+Stub 4: N=    108430 vs     108430  |  MFJ=   14630 vs    14630  |  AGI=    3958982000 (IRS     3958982000)  |  
+> Wages=    3375398000 (IRS     3375398000)
+Stub 5: N=     63220 vs      63220  |  MFJ=   17090 vs    17090  |  AGI=    3883894000 (IRS     3883894000)  |  
+> Wages=    3134364000 (IRS     3134364000)
+Stub 6: N=     40180 vs      40180  |  MFJ=   17640 vs    17640  |  AGI=    3478623000 (IRS     3478623000)  |  
+> Wages=    2681153000 (IRS     2681153000)
+Stub 7: N=     61240 vs      61240  |  MFJ=   40820 vs    40820  |  AGI=    8391132000 (IRS     8391132000)  |  
+> Wages=    6224996000 (IRS     6224996000)
+Stub 8: N=     26910 vs      26910  |  MFJ=   21730 vs    21730  |  AGI=   12401998000 (IRS    12401998000)  |  
+> Wages=    6929984000 (IRS     6929984000)
+
+. drop _mfj_temp
+
+. 
+. ********************************************************************************
+. ** SECTION 5: Inflate to 2022
+. ********************************************************************************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 5: Inflate incomes to 2022 dollars"
+Section 5: Inflate incomes to 2022 dollars
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** Apply CPI inflation factor to all dollar amounts
+. foreach v of varlist incwage_nom incwage_tax incse_nom incse_tax ///
+>         incinvst_nom incinvst_tax inctot_nom inctot_tax agi_proxy ///
+>         itemded_amt incwel_nom {
+  2.         replace `v' = `v' * `cpi_2019_to_2022'
+  3. }
+(3,220 real changes made)
+(3,391 real changes made)
+(423 real changes made)
+(537 real changes made)
+(913 real changes made)
+(1,002 real changes made)
+(4,370 real changes made)
+(4,428 real changes made)
+(4,428 real changes made)
+(785 real changes made)
+(100 real changes made)
+
+. 
+. ** Set year to 2022
+. replace year = 2022
+(4,610 real changes made)
+
+. 
+. dis "Income inflated from 2019 to 2022 using CPI factor: `cpi_2019_to_2022'"
+Income inflated from 2019 to 2022 using CPI factor: 1.136
+
+. 
+. ********************************************************************************
+. ** SECTION 6: TAXSIM Calculation
+. ********************************************************************************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 6: TAXSIM calculation"
+Section 6: TAXSIM calculation
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (a) Prepare TAXSIM input variables
+. ** -------------------------------------------------------------------------
+. 
+. ** State: Oregon FIPS 41 → SOI 38
+. gen state = 38
+
+. 
+. ** Unique tax unit ID
+. sort hh_id unit_id pernum
+
+. gen double taxsimid = _n
+
+. label var taxsimid "TAXSIM tax unit ID"
+
+. 
+. ** Marital status
+. gen byte mstat = filing_status
+
+. label var mstat "TAXSIM marital status"
+
+. 
+. ** Primary taxpayer age
+. gen page = age
+
+. label var page "TAXSIM primary taxpayer age"
+
+. 
+. ** Spouse age
+. gen sage = 0
+
+. bysort hh_id unit_id (pernum): gen tmp_max_age = age[_N]
+
+. bysort hh_id unit_id (pernum): gen tmp_min_age = age[1]
+
+. replace sage = tmp_max_age if age == tmp_min_age & married == 1 & unit_ct > 1
+(1,463 real changes made)
+
+. replace sage = tmp_min_age if age == tmp_max_age & married == 1 & unit_ct > 1
+(0 real changes made)
+
+. drop tmp_max_age tmp_min_age
+
+. label var sage "TAXSIM spouse age"
+
+. 
+. ** Primary wages (own wage income, non-negative)
+. gen double pwages = max(incwage_nom, 0)
+
+. label var pwages "TAXSIM primary wages"
+
+. 
+. ** Spousal wages (tax unit wages minus own wages, non-negative)
+. gen double swages = max(incwage_tax - incwage_nom, 0)
+
+. label var swages "TAXSIM spouse wages"
+
+. 
+. ** Primary self-employment income
+. gen double psemp = incse_nom
+
+. label var psemp "TAXSIM primary self-employment"
+
+. 
+. ** Spousal self-employment income
+. gen double ssemp = incse_tax - incse_nom
+
+. label var ssemp "TAXSIM spouse self-employment"
+
+. 
+. ** Interest/dividend income (investment income, non-negative)
+. gen double intrec = max(incinvst_tax, 0)
+
+. label var intrec "TAXSIM interest/dividend income"
+
+. 
+. ** Other property income (residual)
+. gen double otherprop = inctot_tax
+
+. replace otherprop = otherprop - max(incwage_tax, 0)     // wages
+(3,391 real changes made)
+
+. replace otherprop = otherprop - incse_tax                               // SE income
+(537 real changes made)
+
+. replace otherprop = otherprop - incinvst_tax                    // investment
+(1,002 real changes made)
+
+. replace otherprop = otherprop - incwel_nom                              // welfare (non-taxable)
+(100 real changes made)
+
+. replace otherprop = max(otherprop, 0)                                   // floor at zero
+(261 real changes made)
+
+. label var otherprop "TAXSIM other property income"
+
+. 
+. ** Itemization control
+. gen byte idtl = 0                                       // default: use larger of standard/itemized
+
+. label var idtl "TAXSIM itemization control"
+
+. 
+. ** Other itemized deductions for TAXSIM
+. gen double otheritem = itemded_amt
+
+. label var otheritem "TAXSIM other itemized deductions"
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (b) Run TAXSIM
+. ** -------------------------------------------------------------------------
+. 
+. ** Save full data before TAXSIM
+. tempfile pre_taxsim
+
+. save `pre_taxsim'
+file C:\Users\ji252\AppData\Local\Temp\ST_5ca0_000004.tmp saved as .dta format
+
+. 
+. ** Keep TAXSIM input variables
+. keep taxsimid year state mstat depx page sage pwages swages ///
+>         psemp ssemp intrec otherprop idtl otheritem
+
+. 
+. ** Order for TAXSIM
+. order taxsimid year state mstat depx page sage pwages swages ///
+>         psemp ssemp intrec otherprop idtl otheritem
+
+. 
+. ** Run TAXSIM locally
+. cd "${data}working"
+C:\Users\ji252\Documents\GitHub\multnomah-county-tax\data\working
+
+. taxsimlocal35, full replace
+begin taxsim35.ado on 10 Feb 2026 (version 35.9)
+Intermediate files:
+txpydata.raw 
+results.raw 
+ 
+ftp.txt
+(4,610 real changes made)
+Full Intermediate Calculations Requested
+dep13 dep17 dep18 dividends stcg ltcg nonprop pensions gssi ui transfers rentpaid proptax childcare mortgage pbu
+> sinc sbusinc pprofinc sprofinc scorp sui pui dep6 dep19 age1 age2 age3 opt1 opt1v opt2 opt2v are not found, an
+> d default to zero.
+(1 real change made)
+Write 4610 obs to txpydata.raw
+(file txpydata.raw not found)
+C:\Users\ji252\ado\plus/t/taxsim35.exe
+C:\Users\ji252\ado\plus/t/taxsim35.exe
+ C:\Users\ji252\ado\plus\t\taxsim35.exe >"results.raw" <"txpydata.raw" 
+(48 vars, 4,610 obs)
+4610 obs received
+file taxsim_out.dta saved
+
+. 
+. if _rc != 0 {
+.         di as error "TAXSIM failed — check installation"
+.         cd "${dir}"
+.         use `pre_taxsim', clear
+. 
+.         ** Fallback: estimate taxes without TAXSIM
+.         dis "Using simplified tax calculator as fallback"
+. 
+.         ** Approximate Oregon state income tax (simplified progressive schedule)
+.         ** 2022 Oregon brackets (single): 5% up to $3,750, 7% $3,750-$9,450,
+.         ** 9% $9,450-$125k, 9.9% above $125k
+.         gen double taxable_income = max(agi_proxy - cond(mstat == 2, 25900, 12950), 0)
+.         gen double siitax = 0.05 * min(taxable_income, 3750) ///
+>                 + 0.07 * max(min(taxable_income, 9450) - 3750, 0) ///
+>                 + 0.09 * max(min(taxable_income, 125000) - 9450, 0) ///
+>                 + 0.099 * max(taxable_income - 125000, 0)
+.         gen double fiitax = 0   // placeholder
+. }
+
+. else {
+.         ** Load TAXSIM results
+.         clear
+.         import delimited results.raw, clear
+(encoding automatically selected: ISO-8859-2)
+(48 vars, 4,610 obs)
+. 
+.         cd "${dir}"
+C:\Users\ji252\Documents\GitHub\multnomah-county-tax
+. 
+.         ** Clean results
+.         destring taxsimid, replace force
+taxsimid already numeric; no replace
+.         drop if missing(taxsimid)
+(0 observations deleted)
+. 
+.         ** Get State taxable income 
+.         rename v36 taxable_income
+. 
+.         keep taxsimid fiitax siitax taxable_income
+. 
+.         ** Save TAXSIM results
+.         tempfile taxsim_results
+.         save `taxsim_results'
+file C:\Users\ji252\AppData\Local\Temp\ST_5ca0_000005.tmp saved as .dta format
+. 
+.         ** Reload pre-TAXSIM data and merge
+.         use `pre_taxsim', clear
+.         merge 1:1 taxsimid using `taxsim_results', keep(master match) nogen
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                             4,610  
+    -----------------------------------------
+. }
+
+. 
+. ** Label tax variables
+. label var fiitax "Federal income tax (TAXSIM)"
+
+. label var siitax "Oregon state income tax (TAXSIM)"
+
+. label var taxable_income "Oregon taxable income (TAXSIM)"
+
+. 
+. ** Verification
+. dis ""
+
+
+. dis "TAXSIM sanity checks:"
+TAXSIM sanity checks:
+
+. summ siitax [aw=cal_wt], detail
+
+              Oregon state income tax (TAXSIM)
+-------------------------------------------------------------
+      Percentiles      Smallest
+ 1%      -335.97        -624.15
+ 5%       -25.81        -624.15
+10%            0        -624.15       Obs               4,464
+25%      1194.96        -624.15       Sum of wgt.     419,790
+
+50%      3141.19                      Mean           6870.921
+                        Largest       Std. dev.      12037.71
+75%      6965.03        77107.5
+90%     13876.61       82044.67       Variance       1.45e+08
+95%     34959.31       89259.36       Skewness       3.599359
+99%     62811.94       96569.52       Kurtosis       17.35706
+
+. summ fiitax [aw=cal_wt], detail
+
+                 Federal income tax (TAXSIM)
+-------------------------------------------------------------
+      Percentiles      Smallest
+ 1%     -9070.38      -10369.32
+ 5%      -3128.6      -10300.47
+10%      -521.42      -10003.43       Obs               4,464
+25%       251.32       -9983.94       Sum of wgt.     419,790
+
+50%      3556.98                      Mean           13603.28
+                        Largest       Std. dev.      34186.01
+75%     10762.24       248367.5
+90%      26170.7       258904.2       Variance       1.17e+09
+95%     86235.86         273454       Skewness       4.247438
+99%     174294.4       303553.1       Kurtosis       23.31337
+
+. summ taxable_income [aw=cal_wt], detail
+
+               Oregon taxable income (TAXSIM)
+-------------------------------------------------------------
+      Percentiles      Smallest
+ 1%            0              0
+ 5%       959.93              0
+10%      6468.46              0       Obs               4,464
+25%     19360.64              0       Sum of wgt.     419,790
+
+50%     42349.94                      Mean           81002.39
+                        Largest       Std. dev.      124059.8
+75%     86510.55       789583.4
+90%     159981.1       837948.3       Variance       1.54e+10
+95%     376696.5         908624       Skewness       3.430927
+99%     649543.1       980234.9       Kurtosis       16.15171
+
+. 
+. ********************************************************************************
+. ** SECTION 7: Multnomah PFA Tax Calculator
+. ********************************************************************************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 7: PFA tax calculation"
+Section 7: PFA tax calculation
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** Thresholds depend on filing status
+. gen double pfa_thresh1 = cond(mstat == 2, `pfa_thresh1_joint', `pfa_thresh1_single')
+
+. gen double pfa_thresh2 = cond(mstat == 2, `pfa_thresh2_joint', `pfa_thresh2_single')
+
+. 
+. ** PFA tax = 1.5% on (taxinc - thresh1) + additional 1.5% on (taxinc - thresh2)
+. gen double pfa_tax = `pfa_rate' * max(taxable_income - pfa_thresh1, 0) ///
+>         + `pfa_rate' * max(taxable_income - pfa_thresh2, 0)
+
+. label var pfa_tax "PFA tax liability"
+
+. 
+. ** Summary
+. dis "PFA tax distribution:"
+PFA tax distribution:
+
+. summ pfa_tax [aw=cal_wt], detail
+
+                      PFA tax liability
+-------------------------------------------------------------
+      Percentiles      Smallest
+ 1%            0              0
+ 5%            0              0
+10%            0              0       Obs               4,464
+25%            0              0       Sum of wgt.     419,790
+
+50%            0                      Mean           449.7184
+                        Largest       Std. dev.      1973.174
+75%            0       16138.45
+90%            0       17215.61       Variance        3893417
+95%     2977.631       18258.72       Skewness       5.439748
+99%     10486.29       20407.05       Kurtosis       36.41157
+
+. summ pfa_tax [aw=cal_wt] if pfa_tax > 0, detail
+
+                      PFA tax liability
+-------------------------------------------------------------
+      Percentiles      Smallest
+ 1%     9.759023       9.759023
+ 5%     88.52555       9.759023
+10%     146.7741       9.759023       Obs                 334
+25%     633.7235       9.759023       Sum of wgt.  39,504.076
+
+50%     3774.409                      Mean           4778.931
+                        Largest       Std. dev.      4553.812
+75%     7987.835       16138.45
+90%     10486.29       17215.61       Variance       2.07e+07
+95%     12507.81       18258.72       Skewness       1.012145
+99%     18258.72       20407.05       Kurtosis       3.598792
+
+. 
+. ********************************************************************************
+. ** SECTION 8: Baseline Revenue
+. ********************************************************************************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 8: Baseline revenue"
+Section 8: Baseline revenue
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** Baseline PFA revenue
+. gen double wtd_pfa = pfa_tax * cal_wt
+
+. qui summ wtd_pfa
+
+. scalar baseline_pfa_revenue = r(sum)
+
+. dis "Baseline PFA revenue: $" %15.0fc baseline_pfa_revenue
+Baseline PFA revenue: $    188,787,267
+
+. 
+. ** Baseline Oregon state income tax
+. gen double wtd_siitax = siitax * cal_wt
+
+. qui summ wtd_siitax
+
+. scalar baseline_state_revenue = r(sum)
+
+. dis "Baseline Oregon state income tax revenue: $" %15.0fc baseline_state_revenue
+Baseline Oregon state income tax revenue: $  2,884,343,816
+
+. 
+. ** Flag impacted (subject to PFA tax)
+. gen byte impacted = (taxable_income > pfa_thresh1)
+
+. label var impacted "Subject to PFA tax"
+
+. 
+. ** Count impacted
+. qui count if impacted == 1
+
+. dis "Number of impacted tax units: " r(N)
+Number of impacted tax units: 480
+
+. qui summ cal_wt if impacted == 1
+
+. dis "Weighted number of impacted filers: " %10.0fc r(sum)
+Weighted number of impacted filers:     39,504
+
+. 
+. ** Save working data
+. tempfile revenue_data
+
+. save `revenue_data'
+file C:\Users\ji252\AppData\Local\Temp\ST_5ca0_000006.tmp saved as .dta format
+
+. clear 
+
+. 
+. ********************************************************************************
+. ** SECTION 9: Migration Revenue Effect 
+. ********************************************************************************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 9: Migration Revenue Effects"
+Section 9: Migration Revenue Effects
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (a) Compute X (AGI loss from migration effect)
+. ** -------------------------------------------------------------------------
+. 
+. ** Load IRS gross migration files for Multnomah County
+. ** Average net out-migration AGI across pre-treatment years (2017-2020)
+. 
+. tempfile flow_data
+
+. local first_flow = 1
+
+. 
+. foreach yr in 1718 1819 1920 {
+  2. 
+.         ** Outflow: Multnomah = origin (state 41, county 51)
+.         import delimited "${data}irs/countyoutflow`yr'.csv", clear
+  3.         keep if y1_statefips == 41 & y1_countyfips == 51
+  4.         keep if y2_statefips == 97 & inlist(y2_countyfips, 0, 3) 
+  5.         
+.         gen double out_agi = agi * 1000         // IRS reports in thousands
+  6.         gen str5 flow_year = "`yr'"
+  7.         keep y2_countyfips flow_year out_agi
+  8.         rename y2_countyfips state
+  9.         tempfile out_`yr'
+ 10.         save `out_`yr''
+ 11. 
+.         ** Inflow: Multnomah = destination (state 41, county 51)
+.         import delimited "${data}irs/countyinflow`yr'.csv", clear
+ 12.         keep if y2_statefips == 41 & y2_countyfips == 51
+ 13.         keep if y1_statefips == 97 & inlist(y1_countyfips, 0, 3) 
+ 14. 
+.         gen double in_agi = agi * 1000
+ 15.         gen str5 flow_year = "`yr'"
+ 16.         keep y1_countyfips flow_year in_agi
+ 17.         rename y1_countyfips state
+ 18.         
+.         ** Merge with outflow
+.         merge 1:1 flow_year state using `out_`yr'', nogen
+ 19. 
+.         if `first_flow' == 1 {
+ 20.                 save `flow_data'
+ 21.                 local first_flow = 0
+ 22.         }
+ 23.         else {
+ 24.                 append using `flow_data'
+ 25.                 save `flow_data', replace
+ 26.         }
+ 27. }
+(encoding automatically selected: ISO-8859-1)
+(9 vars, 87,820 obs)
+(87,664 observations deleted)
+(154 observations deleted)
+file C:\Users\ji252\AppData\Local\Temp\ST_5ca0_000008.tmp saved as .dta format
+(encoding automatically selected: ISO-8859-1)
+(9 vars, 87,932 obs)
+(87,741 observations deleted)
+(189 observations deleted)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                                 2  
+    -----------------------------------------
+file C:\Users\ji252\AppData\Local\Temp\ST_5ca0_000007.tmp saved as .dta format
+(encoding automatically selected: ISO-8859-1)
+(9 vars, 83,878 obs)
+(83,719 observations deleted)
+(157 observations deleted)
+file C:\Users\ji252\AppData\Local\Temp\ST_5ca0_000009.tmp saved as .dta format
+(encoding automatically selected: ISO-8859-1)
+(9 vars, 83,762 obs)
+(83,572 observations deleted)
+(188 observations deleted)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                                 2  
+    -----------------------------------------
+file C:\Users\ji252\AppData\Local\Temp\ST_5ca0_000007.tmp saved as .dta format
+(encoding automatically selected: ISO-8859-1)
+(9 vars, 87,325 obs)
+(87,139 observations deleted)
+(184 observations deleted)
+file C:\Users\ji252\AppData\Local\Temp\ST_5ca0_00000a.tmp saved as .dta format
+(encoding automatically selected: ISO-8859-1)
+(9 vars, 87,552 obs)
+(87,371 observations deleted)
+(179 observations deleted)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                                 2  
+    -----------------------------------------
+file C:\Users\ji252\AppData\Local\Temp\ST_5ca0_000007.tmp saved as .dta format
+
+. 
+. ** Compute net out-migration AGI
+. gen double net_outmig_agi = out_agi - in_agi
+
+. 
+. replace state = 1 if state == 0 
+(3 real changes made)
+
+. replace state = 2 if state == 3
+(3 real changes made)
+
+. 
+. dis ""
+
+
+. dis "IRS gross migration flows for Multnomah County (pre-treatment):"
+IRS gross migration flows for Multnomah County (pre-treatment):
+
+. list flow_year state out_agi in_agi net_outmig_agi, sep(0)
+
+     +-------------------------------------------------------+
+     | flow_y~r   state     out_agi      in_agi   net_outm~i |
+     |-------------------------------------------------------|
+  1. |     1920       1   2.470e+09   2.077e+09    3.929e+08 |
+  2. |     1920       2   1.247e+09   1.357e+09   -1.100e+08 |
+  3. |     1819       1   2.059e+09   1.949e+09    1.092e+08 |
+  4. |     1819       2   1.108e+09   1.253e+09   -1.449e+08 |
+  5. |     1718       1   1.984e+09   1.850e+09    1.340e+08 |
+  6. |     1718       2   1.048e+09   1.191e+09   -1.427e+08 |
+     +-------------------------------------------------------+
+
+. 
+. ** Compute X using AGI stock (not flows)
+. ** SDID coefficient = change in (net_AGI_migration / total_AGI),
+. ** so AGI loss = coefficient * total_AGI_stock
+. scalar total_agi_2022 = total_irs_agi_2019 * `cpi_2019_to_2022'
+
+. dis ""
+
+
+. dis "Total Multnomah County AGI (2019): $" %15.0fc total_irs_agi_2019
+Total Multnomah County AGI (2019): $ 33,200,690,000
+
+. dis "Total Multnomah County AGI (2022 $): $" %15.0fc total_agi_2022
+Total Multnomah County AGI (2022 $): $ 37,715,983,840
+
+. 
+. scalar X_1 = effect_agi * total_agi_2022
+
+. dis "AGI loss from overall migration effect (X_1): $" %15.0fc X_1
+AGI loss from overall migration effect (X_1): $  1,389,444,776
+
+. 
+. scalar X_2 = effect_agi_oregon * total_agi_2022
+
+. dis "AGI loss from out-of-state migration effect (X_2): $" %15.0fc X_2
+AGI loss from out-of-state migration effect (X_2): $    871,703,510
+
+. 
+. 
+. ** -------------------------------------------------------------------------
+. ** (b) Compute out-migration probability
+. ** -------------------------------------------------------------------------
+. 
+. ** Reload revenue data
+. use `revenue_data', clear
+
+. 
+. drop if cal_wt == 0 
+(146 observations deleted)
+
+. 
+. ** Total AGI of impacted tax units
+. qui summ agi_proxy [aw=cal_wt] if impacted == 1
+
+. scalar agi_impacted = r(sum_w) * r(mean)
+
+. dis "Total AGI of impacted filers: $" %15.0fc agi_impacted
+Total AGI of impacted filers: $ 16,283,810,799
+
+. 
+. ** p = probability of out-migration for impacted units
+. scalar p_migrate = X_1 / agi_impacted
+
+. dis "Migration probability (p): " %8.6f p_migrate
+Migration probability (p): 0.085327
+
+. 
+. ** p = probability of out-of-state-migration for impacted units
+. scalar p_migrate_state = X_2 / agi_impacted
+
+. dis "Out-of-State Migration probability (p): " %8.6f p_migrate_state
+Out-of-State Migration probability (p): 0.053532
+
+. 
+. ********************************************************************************
+. ** SECTION 10: Oregon and Multnomah State Revenue Effect
+. ********************************************************************************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 10: Oregon state revenue effect"
+Section 10: Oregon state revenue effect
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** Average state tax rate on impacted residents
+. qui summ siitax [aw=cal_wt] if impacted == 1
+
+. scalar total_state_tax_impacted = r(sum_w) * r(mean)
+
+. 
+. qui summ agi_proxy [aw=cal_wt] if impacted == 1
+
+. scalar total_agi_impacted = r(sum_w) * r(mean)
+
+. 
+. scalar avg_state_rate = total_state_tax_impacted / total_agi_impacted
+
+. dis "Average effective state tax rate on impacted: " %6.4f avg_state_rate
+Average effective state tax rate on impacted: 0.0902
+
+. 
+. ** Oregon revenue loss from departing AGI
+. scalar oregon_revenue_loss = avg_state_rate * X_2
+
+. dis "Oregon revenue loss from migration effect: $" %15.0fc oregon_revenue_loss
+Oregon revenue loss from migration effect: $     78,605,767
+
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 10: Multnomah state revenue effect"
+Section 10: Multnomah state revenue effect
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** Average state tax rate on impacted residents
+. qui summ pfa_tax [aw=cal_wt] if impacted == 1
+
+. scalar total_mt_tax_impacted = r(sum_w) * r(mean)
+
+. 
+. qui summ agi_proxy [aw=cal_wt] if impacted == 1
+
+. scalar total_agi_impacted = r(sum_w) * r(mean)
+
+. 
+. scalar avg_mt_rate = total_mt_tax_impacted / total_agi_impacted
+
+. dis "Average effective MT tax rate on impacted: " %6.4f avg_mt_rate
+Average effective MT tax rate on impacted: 0.0116
+
+. 
+. ** Oregon revenue loss from departing AGI
+. scalar mt_revenue_loss = avg_mt_rate * X_1
+
+. dis "Multnomah county revenue loss from migration effect: $" %15.0fc mt_revenue_loss
+Multnomah county revenue loss from migration effect: $     16,108,605
+
+. 
+. ********************************************************************************
+. ** SECTION 11: Output — Tables & Figures
+. ********************************************************************************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 11: Output tables and figures"
+Section 11: Output tables and figures
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (a) Summary table
+. ** -------------------------------------------------------------------------
+. 
+. ** Display summary
+. dis ""
+
+
+. dis "=================================================================="
+==================================================================
+
+. dis "REVENUE IMPACT SUMMARY"
+REVENUE IMPACT SUMMARY
+
+. dis "=================================================================="
+==================================================================
+
+. dis ""
+
+
+. dis "Baseline PFA revenue:                    $" %15.0fc baseline_pfa_revenue
+Baseline PFA revenue:                    $    188,787,267
+
+. dis "Baseline Oregon state revenue:           $" %15.0fc baseline_state_revenue
+Baseline Oregon state revenue:           $  2,884,343,816
+
+. dis ""
+
+
+. dis "Multnomah PFA revenue loss (analytical): $" %15.0fc mt_revenue_loss
+Multnomah PFA revenue loss (analytical): $     16,108,605
+
+. dis "Oregon state revenue loss (analytical):  $" %15.0fc oregon_revenue_loss
+Oregon state revenue loss (analytical):  $     78,605,767
+
+. dis "=================================================================="
+==================================================================
+
+. 
+. ** Export summary table to Excel
+. preserve
+
+. clear
+
+. set obs 4
+Number of observations (_N) was 0, now 4.
+
+. 
+. gen str50 metric = ""
+(4 missing values generated)
+
+. gen double value = .
+(4 missing values generated)
+
+. 
+. replace metric = "Baseline PFA revenue"                    in 1
+(1 real change made)
+
+. replace value = baseline_pfa_revenue                       in 1
+(1 real change made)
+
+. replace metric = "Baseline Oregon state revenue"           in 2
+(1 real change made)
+
+. replace value = baseline_state_revenue                     in 2
+(1 real change made)
+
+. replace metric = "Multnomah PFA revenue loss (analytical)" in 3
+(1 real change made)
+
+. replace value = mt_revenue_loss                            in 3
+(1 real change made)
+
+. replace metric = "Oregon state revenue loss (analytical)"  in 4
+(1 real change made)
+
+. replace value = oregon_revenue_loss                        in 4
+(1 real change made)
+
+. 
+. export excel "${results}revenue/tbl_revenue_summary.xlsx", ///
+>         firstrow(variables) replace
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/revenue/tbl_revenue_summary.xlsx saved
+
+. restore
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (b) Table of tax-unit-level statistics by AGI bracket
+. ** -------------------------------------------------------------------------
+. 
+. ** Collapse by AGI bracket
+. preserve
+
+. 
+. ** Number of impacted filers
+. gen double wt_impacted = cal_wt if impacted == 1
+(4,130 missing values generated)
+
+. gen double wt_pfa_tax = pfa_tax * cal_wt
+
+. gen double wt_agi = agi_proxy * cal_wt
+
+. 
+. collapse (sum) n_filers=cal_wt n_impacted=wt_impacted ///
+>         total_pfa=wt_pfa_tax total_agi=wt_agi, by(agi_stub)
+
+. 
+. ** Average PFA tax
+. gen double avg_pfa = total_pfa / n_impacted if n_impacted > 0
+(6 missing values generated)
+
+. replace avg_pfa = 0 if missing(avg_pfa)
+(6 real changes made)
+
+. 
+. ** Revenue share
+. egen double total_pfa_all = total(total_pfa)
+
+. gen double pfa_share = total_pfa / total_pfa_all * 100
+
+. 
+. ** Labels
+. label var n_filers "Weighted filers"
+
+. label var n_impacted "Weighted impacted filers"
+
+. label var avg_pfa "Average PFA tax ($)"
+
+. label var pfa_share "Share of PFA revenue (%)"
+
+. 
+. ** Display
+. list agi_stub n_filers n_impacted avg_pfa total_pfa pfa_share, sep(0)
+
+     +---------------------------------------------------------------------+
+     | agi_stub   n_filers   n_impac~d     avg_pfa   total_pfa   pfa_share |
+     |---------------------------------------------------------------------|
+  1. | Under $1       5720           0           0           0           0 |
+  2. |  $1-$10k      43390           0           0           0           0 |
+  3. | $10k-$25      70700           0           0           0           0 |
+  4. | $25k-$50     108430           0           0           0           0 |
+  5. | $50k-$75      63220           0           0           0           0 |
+  6. | $75k-$10      40180           0           0           0           0 |
+  7. | $100k-$2      61240   12594.076   432.30039   5444424.1   2.8838937 |
+  8. |   $200k+      26910       26910   6813.1863   1.833e+08   97.116106 |
+     +---------------------------------------------------------------------+
+
+. 
+. ** Export
+. export excel "${results}revenue/tbl_pfa_by_bracket.xlsx", ///
+>         firstrow(variables) replace
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/revenue/tbl_pfa_by_bracket.xlsx saved
+
+. 
+. restore
+
+. 
+. ** -------------------------------------------------------------------------
+. ** (d) Summary by filing status
+. ** -------------------------------------------------------------------------
+. 
+. preserve
+
+. 
+. gen double wt_impacted = cal_wt if impacted == 1
+(4,130 missing values generated)
+
+. gen double wt_pfa_tax = pfa_tax * cal_wt
+
+. 
+. collapse (sum) n_filers=cal_wt n_impacted=wt_impacted ///
+>         total_pfa=wt_pfa_tax, by(mstat)
+
+. 
+. ** Label filing status
+. label define lb_mstat 1 "Single" 2 "MFJ" 6 "MFS"
+
+. label values mstat lb_mstat
+
+. 
+. list mstat n_filers n_impacted total_pfa, sep(0)
+
+     +--------------------------------------------+
+     |  mstat    n_filers   n_impac~d   total_pfa |
+     |--------------------------------------------|
+  1. | Single   292063.71   15750.192    40842749 |
+  2. |    MFJ      121590   23195.513   1.448e+08 |
+  3. |    MFS   6136.2912   558.37185   3116195.9 |
+     +--------------------------------------------+
+
+. 
+. restore
+
+. 
+. ** =========================================================================
+. ** Save final dataset
+. ** =========================================================================
+. 
+. save "${data}working/revenue_microsim.dta", replace
+file C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/working/revenue_microsim.dta saved
+
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "02_revenue.do complete."
+02_revenue.do complete.
+
+. dis "Output files:"
+Output files:
+
+. dis "  ${results}revenue/tbl_revenue_summary.xlsx"
+  C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/revenue/tbl_revenue_summary.xlsx
+
+. dis "  ${results}revenue/tbl_pfa_by_bracket.xlsx"
+  C:/Users/ji252/Documents/GitHub/multnomah-county-tax/results/revenue/tbl_pfa_by_bracket.xlsx
+
+. dis "  ${data}working/revenue_microsim.dta"
+  C:/Users/ji252/Documents/GitHub/multnomah-county-tax/data/working/revenue_microsim.dta
+
+. dis "=============================================="
+==============================================
+
+. 
+. capture log close log_02rev

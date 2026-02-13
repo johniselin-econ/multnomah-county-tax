@@ -8,30 +8,26 @@
 #
 # Purpose: Builds a microsimulation tax model using 2019 ACS microdata,
 #          calibrates to IRS administrative totals, computes baseline PFA and
-#          Oregon income tax revenue, and simulates revenue loss from
-#          tax-induced out-migration via Monte Carlo.
+#          Oregon income tax revenue, and estimates revenue loss from
+#          tax-induced out-migration.
 #
 # Key changes from Stata version:
 #   - Income adjustment: subtract incwel_nom from inctot before AGI proxy
-#   - Proper raking: survey::postStratify() instead of manual ratio adjustment
+#   - GREG calibration: survey::calibrate(calfun="linear") to match N, MFJ, AGI, wages
 #   - SDID runs: estimate effect_agi and effect_agi_oregon from panel data
 #
 # Outputs:
 #   - results/revenue/tbl_revenue_summary.xlsx
 #   - results/revenue/tbl_pfa_by_bracket.xlsx
-#   - results/revenue/fig_pfa_revenue_distribution.pdf
-#   - results/revenue/fig_pfa_revenue_distribution.png
 #   - data/working/revenue_microsim.rds
-#   - data/working/revenue_simulations.rds
 #
 # Requirements:
-#   - survey, synthdid, dplyr, readr, ggplot2, openxlsx
+#   - survey, synthdid, dplyr, readr, openxlsx
 # =============================================================================
 
 suppressPackageStartupMessages({
   library(dplyr)
   library(readr)
-  library(ggplot2)
   library(survey)
   library(openxlsx)
 })
@@ -50,7 +46,6 @@ message("  Run date: ", run_date)
 ## Default migration effects (will be overwritten by SDID if data available)
 effect_agi         <- 0.02  # 2% net out-migration effect on AGI
 effect_agi_oregon  <- 0.02  # Oregon-level effect
-n_sims             <- 1000  # Monte Carlo iterations
 cpi_2019_to_2022   <- 1.136 # CPI-U inflation factor 2019 -> 2022
 
 ## PFA tax brackets (2022)
@@ -350,59 +345,56 @@ filers <- acs |>
     )
   )
 
-## ---- (b) Proper raking via survey::postStratify() ----
+## ---- (b) GREG calibration (weights match IRS counts + AGI + wages by bracket) ----
 
 ## Merge IRS targets
 filers <- filers |>
   left_join(irs_targets, by = "agi_stub")
 
+## Create auxiliary variables for GREG calibration (32 constraints)
+filers <- filers |>
+  mutate(
+    is_mfj   = as.integer(filing_status == 2),
+    agi_stub = as.integer(agi_stub)
+  )
+
+for (s in 1:8) {
+  filers[[paste0("d_stub_", s)]]    <- as.integer(filers$agi_stub == s)
+  filers[[paste0("d_mfj_", s)]]     <- as.integer(filers$agi_stub == s) * filers$is_mfj
+  filers[[paste0("agi_stub_", s)]]  <- filers$agi_proxy * as.integer(filers$agi_stub == s)
+  filers[[paste0("wages_stub_", s)]] <- filers$incwage_tax * as.integer(filers$agi_stub == s)
+}
+
 ## Build survey design
 des <- svydesign(id = ~1, weights = ~perwt, data = filers)
 
-## Population totals for postStratification
-pop_agi <- irs_targets |>
-  select(agi_stub, Freq = irs_n1) |>
-  mutate(agi_stub = factor(agi_stub))
+## Population totals (length 32)
+pop_totals <- c(
+  setNames(irs_targets$irs_n1,    paste0("d_stub_", 1:8)),
+  setNames(irs_targets$irs_mars2, paste0("d_mfj_", 1:8)),
+  setNames(irs_targets$irs_agi,   paste0("agi_stub_", 1:8)),
+  setNames(irs_targets$irs_wages, paste0("wages_stub_", 1:8))
+)
 
-## Ensure agi_stub is a factor in the design data
-des$variables$agi_stub <- factor(des$variables$agi_stub)
-
-## PostStratify
-des_ps <- postStratify(des, ~agi_stub, pop_agi)
+## GREG calibration (linear distance function)
+cal_formula <- as.formula(
+  paste0("~ ", paste(names(pop_totals), collapse = " + "), " - 1")
+)
+des_cal <- calibrate(des, cal_formula, population = pop_totals,
+                     calfun = "linear", bounds = c(0.3, 5),
+                     maxit = 100, epsilon = 1e-6)
 
 ## Extract calibrated weights
-filers$cal_wt <- weights(des_ps)
+filers$cal_wt <- weights(des_cal)
+
+## Clean up auxiliary columns
+aux_cols <- c(paste0("d_stub_", 1:8), paste0("d_mfj_", 1:8),
+              paste0("agi_stub_", 1:8), paste0("wages_stub_", 1:8))
+filers <- filers |> select(-all_of(aux_cols))
 
 message("  Calibrated weight sum: ", round(sum(filers$cal_wt), 0))
-
-## ---- Scale incomes within bracket to match IRS totals ----
-
-filers <- filers |>
-  group_by(agi_stub) |>
-  mutate(
-    ## AGI scaling (guard division by zero for stub 1 where ACS AGI = 0)
-    acs_agi_sum  = sum(agi_proxy * cal_wt),
-    agi_scale    = ifelse(acs_agi_sum == 0, 1, irs_agi / acs_agi_sum),
-    agi_proxy    = agi_proxy * agi_scale,
-
-    ## Wage scaling
-    acs_wages_sum = sum(incwage_tax * cal_wt),
-    wage_scale    = ifelse(acs_wages_sum == 0, 1, irs_wages / acs_wages_sum),
-    incwage_nom   = incwage_nom * wage_scale,
-    incwage_tax   = incwage_tax * wage_scale,
-
-    ## Scale other income components proportionally to AGI scaling
-    inctot_tax   = inctot_tax * agi_scale,
-    incse_tax    = incse_tax * agi_scale,
-    incinvst_tax = incinvst_tax * agi_scale,
-    incse_nom    = incse_nom * agi_scale,
-    inctot_nom   = inctot_nom * agi_scale
-  ) |>
-  ungroup()
-
-## Drop temporary columns
-filers <- filers |>
-  select(-acs_agi_sum, -agi_scale, -acs_wages_sum, -wage_scale)
+message("  Weight ratio summary (cal_wt / perwt):")
+message("    ", paste(capture.output(summary(filers$cal_wt / filers$perwt)), collapse = "\n    "))
 
 ## ---- (c) Itemizer assignment ----
 set.seed(56403)  # reproducibility
@@ -422,17 +414,18 @@ filers <- filers |>
 
 ## ---- (d) Verification ----
 message("")
-message("Raking verification: ACS calibrated vs IRS targets")
-message("---------------------------------------------------")
+message("GREG calibration verification: ACS calibrated vs IRS targets")
+message("-------------------------------------------------------------")
 
 for (s in 1:8) {
-  sub <- filers |> filter(agi_stub == s)
-  acs_n <- sum(sub$cal_wt)
-  irs_n <- sub$irs_n1[1]
-  acs_agi_sum <- sum(sub$agi_proxy * sub$cal_wt)
-  irs_agi_val <- sub$irs_agi[1]
-  message(sprintf("Stub %d: ACS N=%10.0f vs IRS N=%10.0f  |  ACS AGI=%14.0f vs IRS AGI=%14.0f",
-                  s, acs_n, irs_n, acs_agi_sum, irs_agi_val))
+  sub <- filers |> filter(as.integer(agi_stub) == s)
+  message(sprintf("Stub %d: N=%10.0f vs %10.0f | MFJ=%8.0f vs %8.0f | AGI=%14.0f (IRS %14.0f) | Wages=%14.0f (IRS %14.0f)",
+    s,
+    sum(sub$cal_wt), sub$irs_n1[1],
+    sum(sub$cal_wt * sub$is_mfj), sub$irs_mars2[1],
+    sum(sub$cal_wt * sub$agi_proxy), sub$irs_agi[1],
+    sum(sub$cal_wt * sub$incwage_tax), sub$irs_wages[1]
+  ))
 }
 
 # =============================================================================
@@ -548,120 +541,58 @@ message(sprintf("Weighted number of impacted filers: %s",
 save_data(filers, file.path(data_working, "revenue_microsim"))
 
 # =============================================================================
-# SECTION 9: Migration Revenue Effect -- Monte Carlo
+# SECTION 9: Migration Revenue Effect
 # =============================================================================
 
 message("")
 message("==============================================")
-message("Section 9: Monte Carlo revenue simulation")
+message("Section 9: Migration Revenue Effects")
 message("==============================================")
 
-## ---- (a) Compute X (AGI loss from migration effect) ----
+## ---- (a) Total AGI stock for Multnomah County ----
 
-message("  Loading IRS gross migration flows...")
+## The SDID coefficient represents the treatment effect on
+## net AGI migration as a share of total AGI:
+##   outcome = (AGI_out - AGI_in) / AGI_total
+## So: additional_AGI_loss = coefficient * total_AGI_stock
+## We use IRS-reported total AGI (2019) inflated to 2022.
 
-flow_years <- c("1516", "1617", "1718", "1819", "1920")
-flow_results <- list()
+total_agi_multnomah <- sum(irs_targets$irs_agi)
+total_agi_multnomah_2022 <- total_agi_multnomah * cpi_2019_to_2022
 
-for (yr in flow_years) {
-  ## Outflow: Multnomah = origin
-  out_path <- file.path(data_irs, paste0("countyoutflow", yr, ".csv"))
-  out_df <- read_csv(out_path, show_col_types = FALSE) |> rename_with(tolower)
-  out_df <- out_df |>
-    mutate(across(any_of(c("y1_statefips", "y1_countyfips",
-                           "y2_statefips", "y2_countyfips",
-                           "n1", "n2", "agi")), as.numeric))
-  out_row <- out_df |>
-    filter(y1_statefips == 41, y1_countyfips == 51,
-           y2_statefips == 97, y2_countyfips == 0)
-  out_agi <- out_row$agi[1] * 1000
+message(sprintf("Total Multnomah County AGI (2019 IRS): $%s",
+                formatC(total_agi_multnomah, format = "f", big.mark = ",", digits = 0)))
+message(sprintf("Total Multnomah County AGI (2022 $):   $%s",
+                formatC(total_agi_multnomah_2022, format = "f", big.mark = ",", digits = 0)))
 
-  ## Inflow: Multnomah = destination
-  in_path <- file.path(data_irs, paste0("countyinflow", yr, ".csv"))
-  in_df <- read_csv(in_path, show_col_types = FALSE) |> rename_with(tolower)
-  in_df <- in_df |>
-    mutate(across(any_of(c("y1_statefips", "y1_countyfips",
-                           "y2_statefips", "y2_countyfips",
-                           "n1", "n2", "agi")), as.numeric))
-  in_row <- in_df |>
-    filter(y2_statefips == 41, y2_countyfips == 51,
-           y1_statefips == 97, y1_countyfips == 0)
-  in_agi <- in_row$agi[1] * 1000
+## ---- (b) AGI loss from migration effect ----
 
-  flow_results[[yr]] <- tibble(
-    flow_year       = yr,
-    out_agi         = out_agi,
-    in_agi          = in_agi,
-    net_outmig_agi  = out_agi - in_agi
-  )
-}
+## X_1: overall domestic migration (IRS type 3, effect_agi)
+## X_2: out-of-state migration (IRS type 5, effect_agi_oregon)
+X_1 <- effect_agi * total_agi_multnomah_2022
+X_2 <- effect_agi_oregon * total_agi_multnomah_2022
 
-flows <- bind_rows(flow_results)
-
-message("IRS gross migration flows for Multnomah County (pre-treatment):")
-print(flows)
-
-avg_net_outmig_agi <- mean(flows$net_outmig_agi)
-message(sprintf("Average net out-migration AGI (nominal): $%s",
-                formatC(avg_net_outmig_agi, format = "f", big.mark = ",", digits = 0)))
-
-## Inflate to 2022
-net_outmig_agi_2022 <- avg_net_outmig_agi * cpi_2019_to_2022
-message(sprintf("Net out-migration AGI (2022 $): $%s",
-                formatC(net_outmig_agi_2022, format = "f", big.mark = ",", digits = 0)))
-
-## X = AGI loss from migration effect
-X <- effect_agi * net_outmig_agi_2022
-message(sprintf("AGI loss from %.1f%% migration effect (X): $%s",
+message(sprintf("AGI loss from %.2f pp overall migration effect (X_1): $%s",
                 effect_agi * 100,
-                formatC(X, format = "f", big.mark = ",", digits = 0)))
+                formatC(X_1, format = "f", big.mark = ",", digits = 0)))
+message(sprintf("AGI loss from %.2f pp out-of-state effect (X_2): $%s",
+                effect_agi_oregon * 100,
+                formatC(X_2, format = "f", big.mark = ",", digits = 0)))
 
-## ---- (b) Compute out-migration probability ----
+## ---- (c) Out-migration probability ----
 
 agi_impacted <- sum(filers$agi_proxy[filers$impacted == 1] *
                     filers$cal_wt[filers$impacted == 1])
 message(sprintf("Total AGI of impacted filers: $%s",
                 formatC(agi_impacted, format = "f", big.mark = ",", digits = 0)))
 
-p_migrate <- X / agi_impacted
+p_migrate <- X_1 / agi_impacted
+p_migrate_state <- X_2 / agi_impacted
 message(sprintf("Migration probability (p): %.6f", p_migrate))
-
-## ---- (c) Monte Carlo simulation ----
-
-message("")
-message(sprintf("Running %d Monte Carlo simulations...", n_sims))
-
-set.seed(56403)  # reproducibility
-
-sim_results <- tibble(
-  sim_id        = integer(n_sims),
-  pfa_revenue   = double(n_sims),
-  state_revenue = double(n_sims)
-)
-
-for (s in seq_len(n_sims)) {
-  if (s %% 100 == 0) message("  Simulation ", s, " of ", n_sims)
-
-  ## Random draw: each impacted unit stays with prob (1-p)
-  u_sim <- runif(nrow(filers))
-  stays <- ifelse(filers$impacted == 1, as.integer(u_sim > p_migrate), 1L)
-
-  ## Recompute revenues
-  sim_pfa   <- sum(filers$pfa_tax[stays == 1] * filers$cal_wt[stays == 1])
-  sim_state <- sum(filers$siitax[stays == 1] * filers$cal_wt[stays == 1])
-
-  sim_results$sim_id[s]        <- s
-  sim_results$pfa_revenue[s]   <- sim_pfa
-  sim_results$state_revenue[s] <- sim_state
-}
-
-message("Monte Carlo simulation complete.")
-
-## Save simulation results
-save_data(sim_results, file.path(data_working, "revenue_simulations"))
+message(sprintf("Out-of-state migration probability (p_state): %.6f", p_migrate_state))
 
 # =============================================================================
-# SECTION 10: Oregon State Revenue Effect
+# SECTION 10: Oregon and Multnomah Revenue Effects
 # =============================================================================
 
 message("")
@@ -676,35 +607,37 @@ avg_state_rate <- total_state_tax_impacted / total_agi_impacted
 
 message(sprintf("Average effective state tax rate on impacted: %.4f", avg_state_rate))
 
-oregon_revenue_loss <- avg_state_rate * X
+## Oregon loses revenue only from interstate departures (X_2)
+oregon_revenue_loss <- avg_state_rate * X_2
 message(sprintf("Oregon revenue loss from migration effect: $%s",
                 formatC(oregon_revenue_loss, format = "f", big.mark = ",", digits = 0)))
 
+message("")
+message("==============================================")
+message("Section 10: Multnomah county revenue effect")
+message("==============================================")
+
+## Multnomah loses PFA revenue from all domestic departures (X_1)
+total_mt_tax_impacted <- sum(filers$pfa_tax[filers$impacted == 1] *
+                             filers$cal_wt[filers$impacted == 1])
+avg_mt_rate <- total_mt_tax_impacted / total_agi_impacted
+
+message(sprintf("Average effective PFA tax rate on impacted: %.4f", avg_mt_rate))
+
+mt_revenue_loss <- avg_mt_rate * X_1
+message(sprintf("Multnomah county revenue loss from migration effect: $%s",
+                formatC(mt_revenue_loss, format = "f", big.mark = ",", digits = 0)))
+
 # =============================================================================
-# SECTION 11: Output -- Tables & Figures
+# SECTION 11: Output -- Tables
 # =============================================================================
 
 message("")
 message("==============================================")
-message("Section 11: Output tables and figures")
+message("Section 11: Output tables")
 message("==============================================")
 
-## ---- (a) Summary statistics ----
-
-sim_results <- sim_results |>
-  mutate(
-    pfa_loss   = baseline_pfa_revenue - pfa_revenue,
-    state_loss = baseline_state_revenue - state_revenue
-  )
-
-mean_pfa_loss     <- mean(sim_results$pfa_loss, na.rm = TRUE)
-med_pfa_loss      <- median(sim_results$pfa_loss, na.rm = TRUE)
-p5_pfa_loss       <- quantile(sim_results$pfa_loss, 0.05, na.rm = TRUE)
-p95_pfa_loss      <- quantile(sim_results$pfa_loss, 0.95, na.rm = TRUE)
-sd_pfa_loss       <- sd(sim_results$pfa_loss, na.rm = TRUE)
-mean_state_loss   <- mean(sim_results$state_loss, na.rm = TRUE)
-mean_pfa_rev_post <- mean(sim_results$pfa_revenue, na.rm = TRUE)
-mean_state_rev_post <- mean(sim_results$state_revenue, na.rm = TRUE)
+## ---- (a) Summary ----
 
 message("")
 message("==================================================================")
@@ -712,40 +645,25 @@ message("REVENUE IMPACT SUMMARY")
 message("==================================================================")
 message("")
 message(sprintf("Baseline PFA revenue:                    $%15s", formatC(baseline_pfa_revenue, format = "f", big.mark = ",", digits = 0)))
-message(sprintf("Mean simulated PFA revenue (post-mig):   $%15s", formatC(mean_pfa_rev_post, format = "f", big.mark = ",", digits = 0)))
-message(sprintf("Mean PFA revenue loss:                   $%15s", formatC(mean_pfa_loss, format = "f", big.mark = ",", digits = 0)))
-message(sprintf("Median PFA revenue loss:                 $%15s", formatC(med_pfa_loss, format = "f", big.mark = ",", digits = 0)))
-message(sprintf("5th percentile PFA loss:                 $%15s", formatC(p5_pfa_loss, format = "f", big.mark = ",", digits = 0)))
-message(sprintf("95th percentile PFA loss:                $%15s", formatC(p95_pfa_loss, format = "f", big.mark = ",", digits = 0)))
-message(sprintf("Std. dev. of PFA loss:                   $%15s", formatC(sd_pfa_loss, format = "f", big.mark = ",", digits = 0)))
-message("")
 message(sprintf("Baseline Oregon state revenue:           $%15s", formatC(baseline_state_revenue, format = "f", big.mark = ",", digits = 0)))
-message(sprintf("Mean simulated state revenue (post-mig): $%15s", formatC(mean_state_rev_post, format = "f", big.mark = ",", digits = 0)))
-message(sprintf("Mean Oregon state revenue loss:          $%15s", formatC(mean_state_loss, format = "f", big.mark = ",", digits = 0)))
-message(sprintf("Oregon revenue loss (analytical):        $%15s", formatC(oregon_revenue_loss, format = "f", big.mark = ",", digits = 0)))
+message("")
+message(sprintf("Multnomah PFA revenue loss (analytical): $%15s", formatC(mt_revenue_loss, format = "f", big.mark = ",", digits = 0)))
+message(sprintf("Oregon state revenue loss (analytical):  $%15s", formatC(oregon_revenue_loss, format = "f", big.mark = ",", digits = 0)))
 message("==================================================================")
 
 ## Export summary table to Excel
 summary_tbl <- tibble(
   metric = c(
     "Baseline PFA revenue",
-    "Mean simulated PFA revenue (post-mig)",
-    "Mean PFA revenue loss",
-    "Median PFA revenue loss",
-    "5th percentile PFA loss",
-    "95th percentile PFA loss",
-    "Oregon state revenue loss (analytical)",
-    "Mean Oregon state revenue loss (MC)"
+    "Baseline Oregon state revenue",
+    "Multnomah PFA revenue loss (analytical)",
+    "Oregon state revenue loss (analytical)"
   ),
   value = c(
     baseline_pfa_revenue,
-    mean_pfa_rev_post,
-    mean_pfa_loss,
-    med_pfa_loss,
-    p5_pfa_loss,
-    p95_pfa_loss,
-    oregon_revenue_loss,
-    mean_state_loss
+    baseline_state_revenue,
+    mt_revenue_loss,
+    oregon_revenue_loss
   )
 )
 
@@ -756,27 +674,7 @@ tryCatch({
   warning("Failed to write summary table: ", conditionMessage(e))
 })
 
-## ---- (b) Histogram of simulated PFA revenue losses ----
-
-p_hist <- ggplot(sim_results, aes(x = pfa_loss)) +
-  geom_histogram(fill = alpha("navy", 0.7), color = "navy", bins = 30) +
-  labs(
-    title = "Distribution of Simulated PFA Revenue Losses",
-    subtitle = sprintf("%s Monte Carlo draws, %.1f%% migration effect",
-                       formatC(n_sims, big.mark = ","), effect_agi * 100),
-    x = "PFA Revenue Loss ($)",
-    y = "Frequency"
-  ) +
-  theme_minimal()
-
-ggsave(file.path(results_revenue, "fig_pfa_revenue_distribution.pdf"),
-       p_hist, width = 8, height = 5)
-ggsave(file.path(results_revenue, "fig_pfa_revenue_distribution.png"),
-       p_hist, width = 8, height = 5, dpi = 300)
-
-message("  Histogram saved: fig_pfa_revenue_distribution.pdf/png")
-
-## ---- (c) Table by AGI bracket ----
+## ---- (b) Table by AGI bracket ----
 
 bracket_tbl <- filers |>
   group_by(agi_stub) |>
@@ -803,7 +701,7 @@ tryCatch({
   warning("Failed to write bracket table: ", conditionMessage(e))
 })
 
-## ---- (d) Summary by filing status ----
+## ---- (c) Summary by filing status ----
 
 filing_tbl <- filers |>
   group_by(mstat) |>
@@ -834,8 +732,6 @@ message("==============================================")
 message("02_revenue.R complete.")
 message("Output files:")
 message("  ", file.path(results_revenue, "tbl_revenue_summary.xlsx"))
-message("  ", file.path(results_revenue, "fig_pfa_revenue_distribution.pdf"))
 message("  ", file.path(results_revenue, "tbl_pfa_by_bracket.xlsx"))
 message("  ", file.path(data_working, "revenue_microsim.rds"))
-message("  ", file.path(data_working, "revenue_simulations.rds"))
 message("==============================================")

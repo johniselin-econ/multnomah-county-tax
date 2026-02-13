@@ -23,6 +23,7 @@ For more information, contact john.iselin@yale.edu
 * ssc install estout 
 * ssc install sdid_event
 * ssc install geodist
+* ssc install ipfraking 
 ** net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
 ** mata mata mlib index
 
@@ -48,11 +49,11 @@ global logs 	"${code}logs/"				// LOG FILE SUB-FILEPATH
 ** Set WD 
 cd ${dir}
 
-** OVERLEAF FILE PATH 
-/*
-global oth_path		///
-	"/Users/johniselin/Library/CloudStorage/Dropbox/Apps/Overleaf/Multnomah County/"	
-*/
+** OVERLEAF FILE PATH
+global oth_path "C:/Users/ji252/Dropbox/Apps/Overleaf/Multnomah County/"
+global ol_fig   "${oth_path}figures/"
+global ol_tab   "${oth_path}tables/"
+global overleaf = 1
 	
 ** Start log file 
 log using "${logs}00_log_${pr_name}_${date}", replace text 
@@ -105,10 +106,10 @@ do ${code}01_clean_data.do
 do ${code}02_descriptives.do 
 
 ** Create maps 
-*rcall script "${code}R/map_code.R", vanilla
+rcall script "${code}R/map_code.R", vanilla
 
 ** Flow-based models (IRS)
-*do ${code}02_flow_analysis.do
+do ${code}02_flow_analysis.do
 
 ** Difference-in-Difference (ACS)
 do ${code}02_did_analysis.do

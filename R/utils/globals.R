@@ -6,6 +6,9 @@
 # Author: John Iselin
 # =============================================================================
 
+# ---- Timezone fix (for WSL / misconfigured systems) -------------------------
+if (Sys.getenv("TZ") == "") Sys.setenv(TZ = "America/New_York")
+
 # ---- Project paths ----------------------------------------------------------
 dir <- here::here()
 code_dir    <- file.path(dir, "code")
@@ -42,17 +45,11 @@ end_year_acs   <- 2024
 # SDID bootstrap replications
 sdid_reps <- 100
 
-# Parallel processing flag (1 = parallel, 0 = sequential)
-use_parallel <- FALSE
-
-# Debug mode: set TRUE to run all analysis on reduced samples for faster iteration
-debug <- TRUE
-
 # ---- Paper output flag -------------------------------------------------------
 # If TRUE, copy paper figures/tables to Overleaf Dropbox directory
 # If FALSE, store in results/paper/ within the project
-overleaf <- TRUE
 overleaf_dir <- "C:/Users/ji252/Dropbox/Apps/Overleaf/Multnomah County"
+overleaf <- dir.exists(overleaf_dir)
 
 # Paper output directory (figures + tables for the paper)
 results_paper <- if (overleaf) overleaf_dir else file.path(results_dir, "paper")
@@ -148,7 +145,7 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
   # Stata-style theme
 
   theme_stata <- function(base_size = 12) {
-    ggplot2::theme_minimal(base_size = base_size) %+replace%
+    ggplot2::theme_minimal(base_size = base_size) +
       ggplot2::theme(
         panel.background  = ggplot2::element_rect(fill = "white", color = NA),
         plot.background   = ggplot2::element_rect(fill = "white", color = NA),

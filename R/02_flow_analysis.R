@@ -419,7 +419,10 @@ for (sample_type in c("acs", "all")) {
   }
 
   # Prepare filtered data for the county loop (movers only, sample condition)
-  df_movers <- df |> filter(mover == 1)
+  # Select only the columns needed by run_county_ppml to keep the object small
+  # for parallel dispatch (~97 MiB full -> ~10 MiB trimmed)
+  ppml_cols <- c("fips_o", "fips_d", "post", "agi", "year", "flow_id", covar_names)
+  df_movers <- df |> filter(mover == 1) |> select(all_of(ppml_cols))
 
   # Per-county PPML regression function
   run_county_ppml <- function(f, df_movers, covar_names) {
@@ -462,7 +465,8 @@ for (sample_type in c("acs", "all")) {
     results_list <- future_lapply(fips_list, run_county_ppml,
                                   df_movers = df_movers,
                                   covar_names = covar_names,
-                                  future.seed = TRUE)
+                                  future.seed = TRUE,
+                                  future.packages = c("dplyr", "fixest", "tibble"))
   } else {
     results_list <- lapply(fips_list, function(f) {
       idx <- which(fips_list == f)

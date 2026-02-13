@@ -32,9 +32,8 @@ api_codes.txt
 .claude/
 quality_reports/
 
-# SDID temp files
-results/sdid/temp_results/*
-results/sdid/temp_weights/*
+# SDID output subdirectories (PDFs, JPGs, temp files, etc.)
+results/sdid/*/*
 
 # Other
 other/

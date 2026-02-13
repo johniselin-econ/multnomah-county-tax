@@ -1,0 +1,1009 @@
+-----------------------------------------------------------------
+      name:  log_02rev
+       log:  C:/Users/ji252/Documents/GitHub/multnomah-county-tax
+> /code/logs/02_log_revenue_2026-02-07.log
+  log type:  text
+ opened on:   7 Feb 2026, 21:58:23
+
+. 
+. ** Parameters
+. scalar effect_agi = 0.02                        // 2% net out-m
+> igration effect on AGI
+
+. scalar effect_agi_oregon = 0.02         // Oregon-level effect
+
+. local  n_sims = 1000                            // Monte Carlo 
+> iterations
+
+. local  cpi_2019_to_2022 = 1.136 // CPI-U inflation factor 2019→
+> 2022
+
+. 
+. ** PFA tax brackets (2022)
+. local pfa_thresh1_single = 125000
+
+. local pfa_thresh2_single = 250000
+
+. local pfa_thresh1_joint  = 200000
+
+. local pfa_thresh2_joint  = 400000
+
+. local pfa_rate = 0.015
+
+. 
+. ** Create output directory
+. capture mkdir "${results}revenue"
+
+. 
+. ***************************************************************
+> *****************
+. ** SECTION 0B: SDID Estimation of Migration Effects
+. ***************************************************************
+> *****************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 0B: SDID estimation of migration effects"
+Section 0B: SDID estimation of migration effects
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** Check if SDID panel data exists
+. capture confirm file "${data}working/sdid_analysis_data.dta"
+
+. if _rc == 0 {
+. 
+.         ** Save current data state
+.         preserve
+. 
+.         ** Load SDID panel data
+.         use "${data}working/sdid_analysis_data.dta", clear
+. 
+.         ** ---- Run 1: effect_agi (county-level, domestic type 
+> 3) ----
+.         dis "Running SDID for effect_agi (agi_net_rate_irs)..."
+Running SDID for effect_agi (agi_net_rate_irs)...
+.         capture noisily sdid agi_net_rate_irs fips year Treated
+>  ///
+>                 if irs_sample_1 == 1 & sample_all == 1 & year !
+> = 2020, ///
+>                 vce(noinference)  ///
+>                 covariates(population per_capita_income, projec
+> ted)
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------
+> ------------
+agi_net_ra~s |     ATT     Std. Err.     t      P>|t|    [95% Con
+> f. Interval]
+-------------+---------------------------------------------------
+> ------------
+     Treated |  -3.68397          .        .        .           .
+>            .
+-----------------------------------------------------------------
+> ------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+. 
+.         if _rc == 0 {
+.                 ** Extract ATT from e(ATT) — tau is in percenta
+> ge points
+.                 scalar tau_agi = e(ATT)
+.                 scalar effect_agi = abs(tau_agi) / 100
+.                 dis "  SDID effect_agi: tau = " %8.4f tau_agi "
+>  pp -> effect = " %8.4f effect_agi
+  SDID effect_agi: tau =  -3.6840 pp -> effect =   0.0368
+.         }
+.         else {
+.                 dis "  SDID for effect_agi failed, using defaul
+> t: " %8.4f effect_agi
+.         }
+. 
+.         ** ---- Run 2: effect_agi_oregon (state-level, intersta
+> te type 5) ----
+.         dis "Running SDID for effect_agi_oregon (agi_net_rate_i
+> rs5)..."
+Running SDID for effect_agi_oregon (agi_net_rate_irs5)...
+.         capture noisily sdid agi_net_rate_irs5 fips year Treate
+> d ///
+>                 if irs_sample_1 == 1 & sample_all == 1 & year !
+> = 2020, ///
+>                 vce(noinference)  ///
+>                 covariates(population per_capita_income, projec
+> ted)
+
+
+Synthetic Difference-in-Differences Estimator
+
+-----------------------------------------------------------------
+> ------------
+agi_net_ra~5 |     ATT     Std. Err.     t      P>|t|    [95% Con
+> f. Interval]
+-------------+---------------------------------------------------
+> ------------
+     Treated |  -2.31123          .        .        .           .
+>            .
+-----------------------------------------------------------------
+> ------------
+95% CIs and p-values are based on large-sample approximations.
+Refer to Arkhangelsky et al., (2021) for theoretical derivations.
+. 
+.         if _rc == 0 {
+.                 scalar tau_agi_oregon = e(ATT)
+.                 scalar effect_agi_oregon = abs(tau_agi_oregon) 
+> / 100
+.                 dis "  SDID effect_agi_oregon: tau = " %8.4f ta
+> u_agi_oregon " pp -> effect = " %8.4f effect_agi_oregon
+  SDID effect_agi_oregon: tau =  -2.3112 pp -> effect =   0.0231
+.         }
+.         else {
+.                 dis "  SDID for effect_agi_oregon failed, using
+>  default: " %8.4f effect_agi_oregon
+.         }
+. 
+.         ** Restore original data state
+.         restore
+. }
+
+. else {
+.         dis "  SDID panel data not found. Using default effects
+> ."
+. }
+
+. 
+. dis "  Final parameters:"
+  Final parameters:
+
+. dis "    effect_agi         = " %8.4f effect_agi
+    effect_agi         =   0.0368
+
+. dis "    effect_agi_oregon  = " %8.4f effect_agi_oregon
+    effect_agi_oregon  =   0.0231
+
+. 
+. ***************************************************************
+> *****************
+. ** SECTION 1: Load 2019 ACS Microdata for Multnomah County
+. ***************************************************************
+> *****************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 1: Load ACS 2019 microdata"
+Section 1: Load ACS 2019 microdata
+
+. dis "=============================================="
+==============================================
+
+. 
+. import delimited "${data}acs/acs_2019.csv", clear
+(encoding automatically selected: ISO-8859-1)
+(68 vars, 3,087,291 obs)
+
+. 
+. ** Filter to Multnomah County, Oregon
+. keep if statefip == 41 & countyfip == 51
+(3,079,935 observations deleted)
+
+. 
+. ** Drop group quarters
+. drop if gq > 2
+(0 observations deleted)
+
+. 
+. ** Keep ages 18+ (tax-filing-relevant population)
+. keep if age >= 18
+(1,283 observations deleted)
+
+. 
+. ** Handle top-coded / missing income
+. foreach v of varlist inctot incwage incbus00 incinvst incearn {
+  2.         replace `v' = . if `v' == 9999999
+  3. }
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+
+. 
+. ** Create household ID
+. gen double hh_id = serial
+
+. 
+. ** Summarize
+. dis "ACS 2019 Multnomah County observations (18+, non-GQ): " _N
+ACS 2019 Multnomah County observations (18+, non-GQ): 6073
+
+. 
+. ***************************************************************
+> *****************
+. ** SECTION 2: Create Tax Units
+. ***************************************************************
+> *****************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 2: Create tax units"
+Section 2: Create tax units
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** ------------------------------------------------------------
+> -------------
+. ** (a) Link married couples via SPLOC
+. ** ------------------------------------------------------------
+> -------------
+. 
+. gen unit_id = pernum
+
+. replace unit_id = sploc if marst == 1 & sploc != 0 & pernum > s
+> ploc
+(1,463 real changes made)
+
+. label var unit_id "Unique ID for tax units"
+
+. 
+. ** Count of individuals per tax unit
+. bysort hh_id unit_id: gen byte unit_ct = _N
+
+. 
+. ** ------------------------------------------------------------
+> -------------
+. ** (b) Filing status
+. ** ------------------------------------------------------------
+> -------------
+. 
+. gen byte married = inlist(marst, 1, 2)          // married, spo
+> use present or absent
+
+. gen byte mfs = (marst == 3 & sploc == 0)        // married fili
+> ng separately
+
+. 
+. gen byte filing_status = 1                                     
+>  // single (default)
+
+. replace filing_status = 2 if married == 1       // MFJ
+(3,002 real changes made)
+
+. replace filing_status = 6 if mfs == 1           // MFS
+(58 real changes made)
+
+. label var filing_status "Filing status (1=single, 2=MFJ, 6=MFS)
+> "
+
+. 
+. ** ------------------------------------------------------------
+> -------------
+. ** (c) Dependents (simplified — use NCHILD, capped at 3)
+. ** ------------------------------------------------------------
+> -------------
+. 
+. gen byte depx = min(nchild, 3)
+
+. label var depx "Dependent exemptions (capped at 3)"
+
+. 
+. ** ------------------------------------------------------------
+> -------------
+. ** (d) Income variable construction (at tax-unit level)
+. ** ------------------------------------------------------------
+> -------------
+. 
+. ** Nominal income variables
+. gen double incwage_nom = max(incwage, 0)
+
+. gen double incse_nom = incearn - incwage                       
+>  // self-employment
+
+. gen double incinvst_nom = incinvst                             
+>          // investment (can be negative)
+
+. gen double inctot_nom = inctot
+
+. gen double incwel_nom = 0
+
+. replace incwel_nom = incwelfr if !missing(incwelfr) & incwelfr 
+> != 999999
+(105 real changes made)
+
+. 
+. ** Subtract untaxed welfare income from total income (floor at 
+> 0)
+. replace inctot_nom = max(inctot_nom - incwel_nom, 0)
+(112 real changes made)
+
+. 
+. ** Tax-unit aggregation
+. foreach v in inctot incwage incse incinvst {
+  2.         replace `v'_nom = 0 if `v'_nom == .  
+  3.         bysort hh_id unit_id: egen double `v'_tax = total(`v
+> '_nom)
+  4. }
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+(0 real changes made)
+
+. 
+. ** ------------------------------------------------------------
+> -------------
+. ** (e) Primary filer flag
+. ** ------------------------------------------------------------
+> -------------
+. 
+. gen byte primary_filer = (unit_id == pernum)
+
+. label var primary_filer "Primary filer in tax unit"
+
+. 
+. ** ------------------------------------------------------------
+> -------------
+. ** (f) Compute tax-unit AGI proxy
+. ** ------------------------------------------------------------
+> -------------
+. 
+. gen double agi_proxy = inctot_tax
+
+. label var agi_proxy "Tax-unit AGI proxy (total income)"
+
+. 
+. ** Summary
+. dis "Number of tax units: "
+Number of tax units: 
+
+. count if primary_filer == 1
+  4,610
+
+. 
+. ***************************************************************
+> *****************
+. ** SECTION 3: Load IRS County Data for Raking Targets
+. ***************************************************************
+> *****************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 3: Load IRS county data for raking"
+Section 3: Load IRS county data for raking
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** Save ACS data
+. tempfile acs_data
+
+. save `acs_data'
+file C:\Users\ji252\AppData\Local\Temp\ST_3b5c_000002.tmp saved
+    as .dta format
+
+. 
+. ** Import 2019 IRS county data
+. import delimited "${data}irs/19incyallagi.csv", clear
+(encoding automatically selected: ISO-8859-1)
+(153 vars, 25,544 obs)
+
+. 
+. ** Keep Multnomah County
+. keep if statefips == 41 & countyfips == 51
+(25,536 observations deleted)
+
+. 
+. ** Rename variables (following 01_clean_data.do pattern)
+. rename n1 irs_n1
+
+. rename mars2 irs_mars2
+
+. rename a00100 irs_agi
+
+. rename a00200 irs_wages
+
+. rename n04470 irs_n_itemizers
+
+. rename a04470 irs_itemded
+
+. 
+. ** Rescale (IRS reports in thousands)
+. replace irs_agi = irs_agi * 1000
+variable irs_agi was long now double
+(8 real changes made)
+
+. replace irs_wages = irs_wages * 1000
+variable irs_wages was long now double
+(8 real changes made)
+
+. replace irs_itemded = irs_itemded * 1000
+(7 real changes made)
+
+. 
+. ** Keep relevant variables
+. keep agi_stub irs_n1 irs_mars2 irs_agi irs_wages irs_n_itemizer
+> s irs_itemded
+
+. 
+. ** Drop the "all" stub (agi_stub == 0) for bracket-level calibr
+> ation
+. drop if agi_stub == 0
+(0 observations deleted)
+
+. 
+. ** Label AGI stubs
+. label define lb_agi_stub 1 "Under $1" 2 "$1-$10k" 3 "$10k-$25k"
+>  ///
+>         4 "$25k-$50k" 5 "$50k-$75k" 6 "$75k-$100k" 7 "$100k-$20
+> 0k" 8 "$200k+"
+
+. label values agi_stub lb_agi_stub
+
+. 
+. ** Display IRS targets
+. list agi_stub irs_n1 irs_mars2 irs_agi irs_wages, sep(0)
+
+     +-----------------------------------------------+
+  1. |    agi_stub | irs_n1 | irs_ma~2 |     irs_agi |
+     |    Under $1 |   5720 |     1010 |  -372789000 |
+     |-----------------------------------------------|
+     |                   irs_wages                   |
+     |                    40370000                   |
+     +-----------------------------------------------+
+
+     +-----------------------------------------------+
+  2. |    agi_stub | irs_n1 | irs_ma~2 |     irs_agi |
+     |     $1-$10k |  43390 |     2400 |   222375000 |
+     |-----------------------------------------------|
+     |                   irs_wages                   |
+     |                   184827000                   |
+     +-----------------------------------------------+
+
+     +-----------------------------------------------+
+  3. |    agi_stub | irs_n1 | irs_ma~2 |     irs_agi |
+     |   $10k-$25k |  70700 |     6270 |  1236475000 |
+     |-----------------------------------------------|
+     |                   irs_wages                   |
+     |                   964786000                   |
+     +-----------------------------------------------+
+
+     +-----------------------------------------------+
+  4. |    agi_stub | irs_n1 | irs_ma~2 |     irs_agi |
+     |   $25k-$50k | 108430 |    14630 |  3958982000 |
+     |-----------------------------------------------|
+     |                   irs_wages                   |
+     |                  3375398000                   |
+     +-----------------------------------------------+
+
+     +-----------------------------------------------+
+  5. |    agi_stub | irs_n1 | irs_ma~2 |     irs_agi |
+     |   $50k-$75k |  63220 |    17090 |  3883894000 |
+     |-----------------------------------------------|
+     |                   irs_wages                   |
+     |                  3134364000                   |
+     +-----------------------------------------------+
+
+     +-----------------------------------------------+
+  6. |    agi_stub | irs_n1 | irs_ma~2 |     irs_agi |
+     |  $75k-$100k |  40180 |    17640 |  3478623000 |
+     |-----------------------------------------------|
+     |                   irs_wages                   |
+     |                  2681153000                   |
+     +-----------------------------------------------+
+
+     +-----------------------------------------------+
+  7. |    agi_stub | irs_n1 | irs_ma~2 |     irs_agi |
+     | $100k-$200k |  61240 |    40820 |  8391132000 |
+     |-----------------------------------------------|
+     |                   irs_wages                   |
+     |                  6224996000                   |
+     +-----------------------------------------------+
+
+     +-----------------------------------------------+
+  8. |    agi_stub | irs_n1 | irs_ma~2 |     irs_agi |
+     |      $200k+ |  26910 |    21730 | 1.24020e+10 |
+     |-----------------------------------------------|
+     |                   irs_wages                   |
+     |                  6929984000                   |
+     +-----------------------------------------------+
+
+. 
+. ** Save as tempfile
+. tempfile irs_targets
+
+. save `irs_targets'
+file C:\Users\ji252\AppData\Local\Temp\ST_3b5c_000003.tmp saved
+    as .dta format
+
+. 
+. ***************************************************************
+> *****************
+. ** SECTION 4: Raking / Calibration
+. ***************************************************************
+> *****************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 4: Raking / calibration"
+Section 4: Raking / calibration
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** Reload ACS data
+. use `acs_data', clear
+
+. 
+. ** ------------------------------------------------------------
+> -------------
+. ** (a) Create AGI brackets matching IRS stubs
+. ** ------------------------------------------------------------
+> -------------
+. 
+. gen byte agi_stub = .
+(6,073 missing values generated)
+
+. replace agi_stub = 1 if agi_proxy < 1
+(186 real changes made)
+
+. replace agi_stub = 2 if agi_proxy >= 1     & agi_proxy < 10000
+(449 real changes made)
+
+. replace agi_stub = 3 if agi_proxy >= 10000 & agi_proxy < 25000
+(764 real changes made)
+
+. replace agi_stub = 4 if agi_proxy >= 25000 & agi_proxy < 50000
+(1,185 real changes made)
+
+. replace agi_stub = 5 if agi_proxy >= 50000 & agi_proxy < 75000
+(895 real changes made)
+
+. replace agi_stub = 6 if agi_proxy >= 75000 & agi_proxy < 100000
+(633 real changes made)
+
+. replace agi_stub = 7 if agi_proxy >= 100000 & agi_proxy < 20000
+> 0
+(1,350 real changes made)
+
+. replace agi_stub = 8 if agi_proxy >= 200000
+(611 real changes made)
+
+. 
+. label values agi_stub lb_agi_stub
+
+. 
+. ** ------------------------------------------------------------
+> -------------
+. ** (b) Cell-level calibration (AGI bracket)
+. ** ------------------------------------------------------------
+> -------------
+. 
+. ** Keep only primary filers for calibration
+. keep if primary_filer == 1
+(1,463 observations deleted)
+
+. 
+. ** Merge IRS targets
+. merge m:1 agi_stub using `irs_targets', keep(master match) noge
+> n
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                             4,610  
+    -----------------------------------------
+
+. 
+. ** Step 1: Post-stratify weights to match IRS return counts by 
+> AGI bracket
+. ** (equivalent to survey::postStratify() in R)
+. bysort agi_stub: egen double acs_n1 = total(perwt)
+
+. gen double cal_wt = perwt * (irs_n1 / acs_n1)
+
+. label var cal_wt "Calibrated weight (post-stratified to IRS)"
+
+. 
+. ** Step 2: Scale incomes within bracket so weighted AGI ≈ IRS A
+> GI
+. bysort agi_stub: egen double acs_agi = total(agi_proxy * cal_wt
+> )
+
+. gen double agi_scale = irs_agi / acs_agi
+(182 missing values generated)
+
+. replace agi_proxy = agi_proxy * agi_scale
+(4,610 real changes made, 182 to missing)
+
+. 
+. ** Also scale wages
+. bysort agi_stub: egen double acs_wages = total(incwage_tax * ca
+> l_wt)
+
+. gen double wage_scale = irs_wages / acs_wages
+(182 missing values generated)
+
+. ** Avoid division by zero for brackets with no wages
+. replace wage_scale = 1 if acs_wages == 0
+(182 real changes made)
+
+. 
+. ** Scale wage components
+. replace incwage_nom = incwage_nom * wage_scale
+(3,220 real changes made)
+
+. replace incwage_tax = incwage_tax * wage_scale
+(3,391 real changes made)
+
+. 
+. ** Scale other income components proportionally to AGI scaling
+. foreach v in inctot_tax incse_tax incinvst_tax {
+  2.         replace `v' = `v' * agi_scale
+  3. }
+(4,610 real changes made, 182 to missing)
+(716 real changes made, 182 to missing)
+(1,182 real changes made, 182 to missing)
+
+. replace incse_nom = incse_nom * agi_scale
+(602 real changes made, 182 to missing)
+
+. replace inctot_nom = inctot_nom * agi_scale
+(4,552 real changes made, 182 to missing)
+
+. 
+. ** ------------------------------------------------------------
+> -------------
+. ** (c) Itemizer assignment
+. ** ------------------------------------------------------------
+> -------------
+. 
+. ** Within each AGI bracket, randomly assign itemizer status
+. gen double u_item = runiform()
+
+. bysort agi_stub (u_item): gen double cumshare = _n / _N
+
+. 
+. ** Compute itemizer share
+. gen double item_share = irs_n_itemizers / irs_n1
+
+. replace item_share = min(item_share, 1)         // cap at 100%
+(0 real changes made)
+
+. 
+. ** Assign itemizer status (top fraction within bracket)
+. gen byte itemizer = (cumshare > (1 - item_share))
+
+. 
+. ** Assign average itemized deduction amount
+. gen double itemded_amt = 0
+
+. replace itemded_amt = (irs_itemded / irs_n_itemizers) if itemiz
+> er == 1 & irs_n_itemizers > 0
+(785 real changes made)
+
+. label var itemizer "Assigned as itemizer (matched to IRS)"
+
+. label var itemded_amt "Itemized deduction amount"
+
+. 
+. drop u_item cumshare
+
+. 
+. ** ------------------------------------------------------------
+> -------------
+. ** (d) Verification: compare calibrated totals to IRS
+. ** ------------------------------------------------------------
+> -------------
+. 
+. dis ""
+
+
+. dis "Raking verification: ACS calibrated vs IRS targets"
+Raking verification: ACS calibrated vs IRS targets
+
+. dis "---------------------------------------------------"
+---------------------------------------------------
+
+. 
+. forvalues s = 1/8 {
+  2.         qui summ cal_wt if agi_stub == `s'
+  3.         local acs_n = r(sum)
+  4.         qui summ irs_n1 if agi_stub == `s'
+  5.         local irs_n = r(mean)
+  6. 
+.         qui summ agi_proxy [aw=cal_wt] if agi_stub == `s'
+  7.         local acs_agi_sum = r(sum_w) * r(mean)
+  8.         qui summ irs_agi if agi_stub == `s'
+  9.         local irs_agi_val = r(mean)
+ 10. 
+.         dis "Stub `s': ACS N=" %10.0f `acs_n' " vs IRS N=" %10.
+> 0f `irs_n' ///
+>                 "  |  ACS AGI=" %14.0f `acs_agi_sum' " vs IRS A
+> GI=" %14.0f `irs_agi_val'
+ 11. }
+Stub 1: ACS N=      5720 vs IRS N=      5720  |  ACS AGI=        
+>      . vs IRS AGI=    -372789000
+Stub 2: ACS N=     43390 vs IRS N=     43390  |  ACS AGI=     222
+> 375000 vs IRS AGI=     222375000
+Stub 3: ACS N=     70700 vs IRS N=     70700  |  ACS AGI=    1236
+> 475000 vs IRS AGI=    1236475000
+Stub 4: ACS N=    108430 vs IRS N=    108430  |  ACS AGI=    3958
+> 982000 vs IRS AGI=    3958982000
+Stub 5: ACS N=     63220 vs IRS N=     63220  |  ACS AGI=    3883
+> 894000 vs IRS AGI=    3883894000
+Stub 6: ACS N=     40180 vs IRS N=     40180  |  ACS AGI=    3478
+> 623000 vs IRS AGI=    3478623000
+Stub 7: ACS N=     61240 vs IRS N=     61240  |  ACS AGI=    8391
+> 132000 vs IRS AGI=    8391132000
+Stub 8: ACS N=     26910 vs IRS N=     26910  |  ACS AGI=   12401
+> 998000 vs IRS AGI=   12401998000
+
+. 
+. ***************************************************************
+> *****************
+. ** SECTION 5: Inflate to 2022
+. ***************************************************************
+> *****************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 5: Inflate incomes to 2022 dollars"
+Section 5: Inflate incomes to 2022 dollars
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** Apply CPI inflation factor to all dollar amounts
+. foreach v of varlist incwage_nom incwage_tax incse_nom incse_ta
+> x ///
+>         incinvst_nom incinvst_tax inctot_nom inctot_tax agi_pro
+> xy ///
+>         itemded_amt incwel_nom {
+  2.         replace `v' = `v' * `cpi_2019_to_2022'
+  3. }
+(3,220 real changes made)
+(3,391 real changes made)
+(420 real changes made)
+(534 real changes made)
+(913 real changes made)
+(1,000 real changes made)
+(4,370 real changes made)
+(4,428 real changes made)
+(4,428 real changes made)
+(785 real changes made)
+(100 real changes made)
+
+. 
+. ** Set year to 2022
+. replace year = 2022
+(4,610 real changes made)
+
+. 
+. dis "Income inflated from 2019 to 2022 using CPI factor: `cpi_2
+> 019_to_2022'"
+Income inflated from 2019 to 2022 using CPI factor: 1.136
+
+. 
+. ***************************************************************
+> *****************
+. ** SECTION 6: TAXSIM Calculation
+. ***************************************************************
+> *****************
+. 
+. dis ""
+
+
+. dis "=============================================="
+==============================================
+
+. dis "Section 6: TAXSIM calculation"
+Section 6: TAXSIM calculation
+
+. dis "=============================================="
+==============================================
+
+. 
+. ** ------------------------------------------------------------
+> -------------
+. ** (a) Prepare TAXSIM input variables
+. ** ------------------------------------------------------------
+> -------------
+. 
+. ** State: Oregon FIPS 41 → SOI 38
+. gen state = 38
+
+. 
+. ** Unique tax unit ID
+. sort hh_id unit_id pernum
+
+. gen double taxsimid = _n
+
+. label var taxsimid "TAXSIM tax unit ID"
+
+. 
+. ** Marital status
+. gen byte mstat = filing_status
+
+. label var mstat "TAXSIM marital status"
+
+. 
+. ** Primary taxpayer age
+. gen page = age
+
+. label var page "TAXSIM primary taxpayer age"
+
+. 
+. ** Spouse age
+. gen sage = 0
+
+. bysort hh_id unit_id (pernum): gen tmp_max_age = age[_N]
+
+. bysort hh_id unit_id (pernum): gen tmp_min_age = age[1]
+
+. replace sage = tmp_max_age if age == tmp_min_age & married == 1
+>  & unit_ct > 1
+(1,463 real changes made)
+
+. replace sage = tmp_min_age if age == tmp_max_age & married == 1
+>  & unit_ct > 1
+(0 real changes made)
+
+. drop tmp_max_age tmp_min_age
+
+. label var sage "TAXSIM spouse age"
+
+. 
+. ** Primary wages (own wage income, non-negative)
+. gen double pwages = max(incwage_nom, 0)
+
+. label var pwages "TAXSIM primary wages"
+
+. 
+. ** Spousal wages (tax unit wages minus own wages, non-negative)
+. gen double swages = max(incwage_tax - incwage_nom, 0)
+
+. label var swages "TAXSIM spouse wages"
+
+. 
+. ** Primary self-employment income
+. gen double psemp = incse_nom
+(182 missing values generated)
+
+. label var psemp "TAXSIM primary self-employment"
+
+. 
+. ** Spousal self-employment income
+. gen double ssemp = incse_tax - incse_nom
+(182 missing values generated)
+
+. label var ssemp "TAXSIM spouse self-employment"
+
+. 
+. ** Interest/dividend income (investment income, non-negative)
+. gen double intrec = max(incinvst_tax, 0)
+
+. label var intrec "TAXSIM interest/dividend income"
+
+. 
+. ** Other property income (residual)
+. gen double otherprop = inctot_tax
+(182 missing values generated)
+
+. replace otherprop = otherprop - max(incwage_tax, 0)     // wage
+> s
+(3,391 real changes made)
+
+. replace otherprop = otherprop - incse_tax                      
+>          // SE income
+(534 real changes made)
+
+. replace otherprop = otherprop - incinvst_tax                   
+>  // investment
+(1,000 real changes made)
+
+. replace otherprop = otherprop - incwel_nom                     
+>          // welfare (non-taxable)
+(96 real changes made)
+
+. replace otherprop = max(otherprop, 0)                          
+>          // floor at zero
+(1,989 real changes made)
+
+. label var otherprop "TAXSIM other property income"
+
+. 
+. ** Itemization control
+. gen byte idtl = 0                                       // defa
+> ult: use larger of standard/itemized
+
+. replace idtl = 2 if itemizer == 1       // force itemized for a
+> ssigned itemizers
+(785 real changes made)
+
+. label var idtl "TAXSIM itemization control"
+
+. 
+. ** Other itemized deductions for TAXSIM
+. gen double otheritem = itemded_amt
+
+. label var otheritem "TAXSIM other itemized deductions"
+
+. 
+. ** ------------------------------------------------------------
+> -------------
+. ** (b) Run TAXSIM
+. ** ------------------------------------------------------------
+> -------------
+. 
+. ** Save full data before TAXSIM
+. tempfile pre_taxsim
+
+. save `pre_taxsim'
+file C:\Users\ji252\AppData\Local\Temp\ST_3b5c_000004.tmp saved
+    as .dta format
+
+. 
+. ** Keep TAXSIM input variables
+. keep taxsimid year state mstat depx page sage pwages swages ///
+>         psemp ssemp intrec otherprop idtl otheritem
+
+. 
+. ** Order for TAXSIM
+. order taxsimid year state mstat depx page sage pwages swages //
+> /
+>         psemp ssemp intrec otherprop idtl otheritem
+
+. 
+. ** Run TAXSIM locally
+. cd "${data}working"
+C:\Users\ji252\Documents\GitHub\multnomah-county-tax\data\working
+
+. taxsimlocal35, full replace
+begin taxsim35.ado on  7 Feb 2026 (version 35.9)
+Intermediate files:
+txpydata.raw 
+results.raw 
+ 
+ftp.txt
+(3,825 real changes made)
+Full Intermediate Calculations Requested
+dep13 dep17 dep18 dividends stcg ltcg nonprop pensions gssi ui tr
+> ansfers rentpaid proptax childcare mortgage pbusinc sbusinc ppr
+> ofinc sprofinc scorp psemp has one or more missing values.
+r(416);
+
+end of do-file
+
+r(416);
+
+. exit, clear

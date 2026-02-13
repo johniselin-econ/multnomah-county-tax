@@ -303,6 +303,9 @@ preserve
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_out_migration.png", replace
+	if ${overleaf} == 1 {
+		graph export "${ol_fig}fig_es_out_migration.png", replace
+	}
 
 	** Plot 2: In-migration event study (West Coast)
 	twoway 	(rcap in_west_ci_lo in_west_ci_hi year, lc(maroon)) 	///
@@ -319,6 +322,9 @@ preserve
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_in_migration_west.png", replace
+	if ${overleaf} == 1 {
+		graph export "${ol_fig}fig_es_in_migration_west.png", replace
+	}
 
 	** Plot 3: In-migration event study (Lower 48 + DC)
 	twoway 	(rcap in_48_ci_lo in_48_ci_hi year, lc(forest_green)) 	///
@@ -335,6 +341,9 @@ preserve
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_in_migration_48.png", replace
+	if ${overleaf} == 1 {
+		graph export "${ol_fig}fig_es_in_migration_48.png", replace
+	}
 
 	** Plot 4: Out-of-state migration event study
 	twoway 	(rcap out_state_ci_lo out_state_ci_hi year, lc(purple)) 		///
@@ -351,6 +360,9 @@ preserve
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_out_state_migration.png", replace
+	if ${overleaf} == 1 {
+		graph export "${ol_fig}fig_es_out_state_migration.png", replace
+	}
 
 	** Plot 5: Combined event study
 	twoway 	(rcap out_ci_lo out_ci_hi year_out, lc(navy)) 					///
@@ -375,6 +387,9 @@ preserve
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_combined.png", replace
+	if ${overleaf} == 1 {
+		graph export "${ol_fig}fig_es_combined.png", replace
+	}
 
 restore
 
@@ -562,6 +577,9 @@ estimates store es_age_out_state
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_age_out_migration.png", replace
+	if ${overleaf} == 1 {
+		graph export "${ol_fig}fig_es_age_out_migration.png", replace
+	}
 
 	** Plot 2: In-migration (West Coast) event study by age
 	twoway 	(rcap in_west_ci_lo_age1 in_west_ci_hi_age1 year_age1, lc(maroon)) 		///
@@ -582,6 +600,9 @@ estimates store es_age_out_state
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_age_in_migration_west.png", replace
+	if ${overleaf} == 1 {
+		graph export "${ol_fig}fig_es_age_in_migration_west.png", replace
+	}
 
 	** Plot 3: In-migration (Lower 48 + DC) event study by age
 	twoway 	(rcap in_48_ci_lo_age1 in_48_ci_hi_age1 year_age1, lc(maroon)) 			///
@@ -602,6 +623,9 @@ estimates store es_age_out_state
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_age_in_migration_48.png", replace
+	if ${overleaf} == 1 {
+		graph export "${ol_fig}fig_es_age_in_migration_48.png", replace
+	}
 
 	** Plot 4: Out-of-state migration event study by age
 	twoway 	(rcap out_state_ci_lo_age1 out_state_ci_hi_age1 year_age1, lc(maroon)) 			///
@@ -622,6 +646,9 @@ estimates store es_age_out_state
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_age_out_state_migration.png", replace
+	if ${overleaf} == 1 {
+		graph export "${ol_fig}fig_es_age_out_state_migration.png", replace
+	}
 
 
 ********************************************************************************
@@ -872,6 +899,9 @@ preserve
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_out_migration.png", replace
+	if ${overleaf} == 1 {
+		graph export "${ol_fig}fig_es_agepost_out_migration.png", replace
+	}
 
 	** Plot 2: In-migration (West Coast) event study by age (no education)
 	twoway 	(rcap in_west_ci_lo_age1 in_west_ci_hi_age1 year_age1, lc(maroon)) 		///
@@ -890,6 +920,9 @@ preserve
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_in_migration_west.png", replace
+	if ${overleaf} == 1 {
+		graph export "${ol_fig}fig_es_agepost_in_migration_west.png", replace
+	}
 
 	** Plot 3: In-migration (Lower 48 + DC) event study by age (no education)
 	twoway 	(rcap in_48_ci_lo_age1 in_48_ci_hi_age1 year_age1, lc(maroon)) 			///
@@ -908,6 +941,9 @@ preserve
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_in_migration_48.png", replace
+	if ${overleaf} == 1 {
+		graph export "${ol_fig}fig_es_agepost_in_migration_48.png", replace
+	}
 
 	** Plot 4: Out-of-state migration event study by age (no education)
 	twoway 	(rcap out_state_ci_lo_age1 out_state_ci_hi_age1 year_age1, lc(maroon)) 	///
@@ -926,6 +962,9 @@ preserve
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_out_state_migration.png", replace
+	if ${overleaf} == 1 {
+		graph export "${ol_fig}fig_es_agepost_out_state_migration.png", replace
+	}
 
 restore
 

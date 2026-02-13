@@ -387,7 +387,7 @@ for (x in c("n1", "n2", "agi")) {
     num_col <- paste0(x, "_", y, "_5")
     denom_col1 <- paste0(x, "_out_1")
     denom_col2 <- paste0(x, "_out_2")
-    out_col <- paste0(x, "_", y, "_rate_irs5")
+    out_col <- paste0(x, "_", y, "_rate_irs_outstate")
 
     if (all(c(num_col, denom_col1, denom_col2) %in% names(df))) {
       df[[out_col]] <- 100 * (df[[num_col]] / (df[[denom_col1]] + df[[denom_col2]]))
@@ -429,6 +429,24 @@ for (i in 1:2) {
   }
 }
 
+## Define outcome variables (ACS, out-of-state - type 5)
+for (i in 1:2) {
+  prefix <- paste0("acs", i, "_")
+  acs_suffix <- paste0("acs", i)
+  for (x in c("n1", "n2", "agi")) {
+    for (y_dir in c("net", "in", "out")) {
+      num_col <- paste0(prefix, x, "_", y_dir, "_5")
+      denom_col1 <- paste0(prefix, x, "_out_1")
+      denom_col2 <- paste0(prefix, x, "_out_2")
+      out_col <- paste0(x, "_", y_dir, "_rate_", acs_suffix, "_outstate")
+
+      if (all(c(num_col, denom_col1, denom_col2) %in% names(df))) {
+        df[[out_col]] <- 100 * (df[[num_col]] / (df[[denom_col1]] + df[[denom_col2]]))
+      }
+    }
+  }
+}
+
 ## Tag unique fips (for diagnostics)
 df <- df |>
   group_by(fips) |>
@@ -451,10 +469,12 @@ message("STEP 2: Running SDID estimation...")
 
 ## Create output directories
 dir.create(results_sdid, recursive = TRUE, showWarnings = FALSE)
-out_txt_labels <- c("irs_full_16_22", "irs5_full_16_22",
-                     "irs_389_16_22", "irs5_389_16_22",
+out_txt_labels <- c("irs_full_16_22", "irs_outstate_full_16_22",
+                     "irs_389_16_22", "irs_outstate_389_16_22",
                      "acs_16_22_all", "acs_16_22_col",
-                     "acs_16_24_all", "acs_16_24_col")
+                     "acs_16_24_all", "acs_16_24_col",
+                     "acs_outstate_16_22_all", "acs_outstate_16_22_col",
+                     "acs_outstate_16_24_all", "acs_outstate_16_24_col")
 for (lbl in out_txt_labels) {
   dir.create(file.path(results_sdid, lbl), recursive = TRUE, showWarnings = FALSE)
 }
@@ -488,26 +508,30 @@ all_weights <- tibble(
 
 ## Define the data/outcome type mapping
 data_specs <- list(
-  list(data_var = "irs_sample_1", out_types = c("irs", "irs5"),
+  list(data_var = "irs_sample_1", out_types = c("irs", "irs_outstate"),
        covariates = c("population", "per_capita_income")),
-  list(data_var = "irs_sample_2", out_types = c("irs", "irs5"),
+  list(data_var = "irs_sample_2", out_types = c("irs", "irs_outstate"),
        covariates = c("population", "per_capita_income", "prop_tax_rate")),
-  list(data_var = "acs_period_1", out_types = c("acs1", "acs2"),
+  list(data_var = "acs_period_1", out_types = c("acs1", "acs2", "acs1_outstate", "acs2_outstate"),
        covariates = c("population", "per_capita_income", "prop_tax_rate")),
-  list(data_var = "acs_period_2", out_types = c("acs1", "acs2"),
+  list(data_var = "acs_period_2", out_types = c("acs1", "acs2", "acs1_outstate", "acs2_outstate"),
        covariates = c("population", "per_capita_income", "prop_tax_rate"))
 )
 
 ## Helper: determine output text label
 get_out_txt <- function(data_var, type) {
   if (data_var == "irs_sample_1" && type == "irs") return("irs_full_16_22")
-  if (data_var == "irs_sample_1" && type == "irs5") return("irs5_full_16_22")
+  if (data_var == "irs_sample_1" && type == "irs_outstate") return("irs_outstate_full_16_22")
   if (data_var == "irs_sample_2" && type == "irs") return("irs_389_16_22")
-  if (data_var == "irs_sample_2" && type == "irs5") return("irs5_389_16_22")
+  if (data_var == "irs_sample_2" && type == "irs_outstate") return("irs_outstate_389_16_22")
   if (data_var == "acs_period_1" && type == "acs1") return("acs_16_22_all")
   if (data_var == "acs_period_1" && type == "acs2") return("acs_16_22_col")
   if (data_var == "acs_period_2" && type == "acs1") return("acs_16_24_all")
   if (data_var == "acs_period_2" && type == "acs2") return("acs_16_24_col")
+  if (data_var == "acs_period_1" && type == "acs1_outstate") return("acs_outstate_16_22_all")
+  if (data_var == "acs_period_1" && type == "acs2_outstate") return("acs_outstate_16_22_col")
+  if (data_var == "acs_period_2" && type == "acs1_outstate") return("acs_outstate_16_24_all")
+  if (data_var == "acs_period_2" && type == "acs2_outstate") return("acs_outstate_16_24_col")
   return("unknown")
 }
 
@@ -1207,19 +1231,21 @@ spec_results <- spec_results |>
       TRUE ~ NA_character_
     ),
     data_type = case_when(
-      str_detect(sample_data, "irs_389") & str_detect(outcome, "_irs5$") ~ "IRS (389, Interstate)",
-      str_detect(sample_data, "irs_389") & !str_detect(outcome, "_irs5$") ~ "IRS (389)",
-      str_detect(outcome, "_irs5$") ~ "IRS (Interstate)",
+      str_detect(outcome, "_acs1_outstate$") ~ "ACS All (Out-of-State)",
+      str_detect(outcome, "_acs2_outstate$") ~ "ACS College (Out-of-State)",
+      str_detect(sample_data, "irs_389") & str_detect(outcome, "_irs_outstate$") ~ "IRS (389, Out-of-State)",
+      str_detect(sample_data, "irs_389") & !str_detect(outcome, "_irs_outstate$") ~ "IRS (389)",
+      str_detect(outcome, "_irs_outstate$") ~ "IRS (Out-of-State)",
       str_detect(outcome, "_irs$") ~ "IRS",
       str_detect(outcome, "_acs1$") ~ "ACS All",
       str_detect(outcome, "_acs2$") ~ "ACS College",
       TRUE ~ NA_character_
     ),
     period_type = case_when(
-      str_detect(outcome, "_irs5?$") ~ "16-22",
+      str_detect(outcome, "_irs(_outstate)?$") ~ "16-22",
       str_detect(sample_data, "16_22") ~ "16-22",
       str_detect(sample_data, "16_24") ~ "16-24",
-      TRUE ~ NA_character_
+      TRUE ~ "16-22"
     )
   )
 
@@ -1234,11 +1260,13 @@ spec_results <- spec_results |>
     spec_covars    = as.integer(controls == 1),
     spec_excl2020  = as.integer(exclusion == 1),
     spec_irs       = as.integer(data_type == "IRS"),
-    spec_irs5      = as.integer(data_type == "IRS (Interstate)"),
+    spec_irs_outstate      = as.integer(data_type == "IRS (Out-of-State)"),
     spec_irs_389   = as.integer(data_type == "IRS (389)"),
-    spec_irs5_389  = as.integer(data_type == "IRS (389, Interstate)"),
+    spec_irs_outstate_389  = as.integer(data_type == "IRS (389, Out-of-State)"),
     spec_acs_all   = as.integer(data_type == "ACS All"),
-    spec_acs_col   = as.integer(data_type == "ACS College")
+    spec_acs_col   = as.integer(data_type == "ACS College"),
+    spec_acs_all_outstate = as.integer(data_type == "ACS All (Out-of-State)"),
+    spec_acs_col_outstate = as.integer(data_type == "ACS College (Out-of-State)")
   )
 
 ## Ensure significance is calculated
@@ -1278,6 +1306,17 @@ spec_results <- spec_results |>
     1L, preferred
   ))
 
+## ACS College (Out-of-State) preferred specs
+spec_results <- spec_results |>
+  mutate(preferred = if_else(
+    data_type == "ACS College (Out-of-State)" &
+      spec_16_24 == 1 &
+      sample %in% c("sample_all", "sample_urban95_covid") &
+      controls == 1 &
+      exclusion == 1,
+    1L, preferred
+  ))
+
 message("  Number of preferred specifications: ", sum(spec_results$preferred == 1))
 
 ## ============================================================================
@@ -1286,7 +1325,7 @@ message("  Number of preferred specifications: ", sum(spec_results$preferred == 
 
 for (otype in c("n1", "n2", "agi")) {
   for (migr in c("net", "in", "out")) {
-    for (pset in c("main", "irs5")) {
+    for (pset in c("main", "outstate")) {
 
     ## Filter to relevant specifications
     plot_data <- spec_results |>
@@ -1295,10 +1334,12 @@ for (otype in c("n1", "n2", "agi")) {
     ## Filter by plot set
     if (pset == "main") {
       plot_data <- plot_data |>
-        filter(!data_type %in% c("IRS (Interstate)", "IRS (389, Interstate)"))
-    } else if (pset == "irs5") {
+        filter(!data_type %in% c("IRS (Out-of-State)", "IRS (389, Out-of-State)",
+                                  "ACS All (Out-of-State)", "ACS College (Out-of-State)"))
+    } else if (pset == "outstate") {
       plot_data <- plot_data |>
-        filter(data_type %in% c("IRS (Interstate)", "IRS (389, Interstate)"))
+        filter(data_type %in% c("IRS (Out-of-State)", "IRS (389, Out-of-State)",
+                                 "ACS All (Out-of-State)", "ACS College (Out-of-State)"))
     }
 
     ## Skip if no data
@@ -1322,7 +1363,7 @@ for (otype in c("n1", "n2", "agi")) {
       "in"  = "In-Migration",
       "out" = "Out-Migration"
     )
-    pset_title <- if (pset == "irs5") " (Interstate)" else ""
+    pset_title <- if (pset == "outstate") " (Out-of-State)" else ""
 
     ## Create four categories: sig/insig x preferred/not
     plot_data <- plot_data |>
@@ -1373,6 +1414,7 @@ for (otype in c("n1", "n2", "agi")) {
       scale_color_manual(values = cat_colors, drop = FALSE) +
       scale_shape_manual(values = cat_shapes, drop = FALSE) +
       scale_size_manual(values = cat_sizes, drop = FALSE) +
+      scale_x_continuous(expand = expansion(add = 0.5)) +
       labs(
         title = paste0(otype_label, ": ", migr_label, pset_title),
         y = "Treatment Effect (pp)",
@@ -1393,12 +1435,12 @@ for (otype in c("n1", "n2", "agi")) {
 
     ## -----------------------------------------------------------------
     ## Lower panel: Specification indicator dots
-    ## (different indicators depending on main vs irs5 plot set)
+    ## (different indicators depending on main vs outstate plot set)
     ## -----------------------------------------------------------------
 
     if (pset == "main") {
 
-      ## Main plot: exclude IRS Interstate indicators
+      ## Main plot: exclude IRS Out-of-State indicators
       spec_indicators <- plot_data |>
         select(spec_rank, spec_all, spec_urban95, spec_covid, spec_covars,
                spec_excl2020, spec_irs, spec_irs_389,
@@ -1440,12 +1482,13 @@ for (otype in c("n1", "n2", "agi")) {
 
       y_limits <- c(-11.5, -0.5)
 
-    } else if (pset == "irs5") {
+    } else if (pset == "outstate") {
 
-      ## IRS5 plot: only IRS Interstate indicators
+      ## Out-of-State plot: IRS + ACS outstate indicators
       spec_indicators <- plot_data |>
         select(spec_rank, spec_all, spec_urban95, spec_covid, spec_covars,
-               spec_excl2020, spec_irs5, spec_irs5_389) |>
+               spec_excl2020, spec_irs_outstate, spec_irs_outstate_389,
+               spec_acs_all_outstate, spec_acs_col_outstate) |>
         pivot_longer(
           cols = -spec_rank,
           names_to = "indicator",
@@ -1454,26 +1497,30 @@ for (otype in c("n1", "n2", "agi")) {
         filter(active == 1)
 
       indicator_levels <- c(
-        "spec_all"      = -1,
-        "spec_urban95"  = -2,
-        "spec_covid"    = -3,
-        "spec_covars"   = -4,
-        "spec_excl2020" = -5,
-        "spec_irs5"     = -6,
-        "spec_irs5_389" = -7
+        "spec_all"              = -1,
+        "spec_urban95"          = -2,
+        "spec_covid"            = -3,
+        "spec_covars"           = -4,
+        "spec_excl2020"         = -5,
+        "spec_irs_outstate"     = -6,
+        "spec_irs_outstate_389" = -7,
+        "spec_acs_all_outstate" = -8,
+        "spec_acs_col_outstate" = -9
       )
 
       indicator_labels <- c(
-        "spec_all"      = "All Counties",
-        "spec_urban95"  = "Urban 95%",
-        "spec_covid"    = "COVID Match",
-        "spec_covars"   = "Covariates",
-        "spec_excl2020" = "Excl. 2020",
-        "spec_irs5"     = "IRS Interstate (all counties)",
-        "spec_irs5_389" = "IRS Interstate (ACS counties)"
+        "spec_all"              = "All Counties",
+        "spec_urban95"          = "Urban 95%",
+        "spec_covid"            = "COVID Match",
+        "spec_covars"           = "Covariates",
+        "spec_excl2020"         = "Excl. 2020",
+        "spec_irs_outstate"     = "IRS Out-of-State (all counties)",
+        "spec_irs_outstate_389" = "IRS Out-of-State (ACS counties)",
+        "spec_acs_all_outstate" = "ACS All (Out-of-State)",
+        "spec_acs_col_outstate" = "ACS College (Out-of-State)"
       )
 
-      y_limits <- c(-7.5, -0.5)
+      y_limits <- c(-9.5, -0.5)
 
     }
 
@@ -1482,6 +1529,7 @@ for (otype in c("n1", "n2", "agi")) {
 
     p_spec <- ggplot(spec_indicators, aes(x = spec_rank, y = y_pos)) +
       geom_point(color = "navy", shape = 16, size = 0.5) +
+      scale_x_continuous(expand = expansion(add = 0.5)) +
       scale_y_continuous(
         breaks = unname(indicator_levels),
         labels = unname(indicator_labels),
@@ -1504,7 +1552,7 @@ for (otype in c("n1", "n2", "agi")) {
       plot_layout(heights = c(2, 1.5))
 
     ## File suffix for IRS5 plots
-    fsuffix <- if (pset == "irs5") "_irs5" else ""
+    fsuffix <- if (pset == "outstate") "_outstate" else ""
 
     ## Export combined figure
     ggsave(file.path(results_sdid,
@@ -1515,7 +1563,7 @@ for (otype in c("n1", "n2", "agi")) {
            p_combined, width = 10, height = 8, dpi = fig_dpi)
 
     message("    Spec curve plot: ", otype, " / ", migr,
-            if (pset == "irs5") " (irs5)" else "",
+            if (pset == "outstate") " (outstate)" else "",
             " (", n_specs, " specifications)")
 
     } # END plot set loop
