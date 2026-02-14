@@ -13,7 +13,7 @@ Called by: 	00_multnomah.do
 
 Authors: John Iselin
 
-For more information, contact joiselin@gmail.com
+For more information, contact john.iselin@yale.edu
 *******************************************************************************/
 
 ********************************************************************************

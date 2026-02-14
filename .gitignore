@@ -1,11 +1,16 @@
 # Stata temporary and log files
 *.tmp
 *.stswp
+*.log
 .DS_Store
+
+# R artifacts
+.Rhistory
+.RData
+.Rproj.user
 
 # Ignore all raw IPUMS extracts (large, reproducible from scripts)
 data/acs/*.rds
-data/acs/*.dat.gz
 data/acs/*.dat.gz
 data/acs/*.txt
 data/acs/*.xml
@@ -21,12 +26,12 @@ data/working/*
 data/demographic/CAINC1/*.csv
 data/demographic/CAINC1/*.xml
 data/demographic/CAINC1/*.html
-data/demographic/CAINC1/*.html
 data/demographic/bls/*
 
 # Local configuration files
 profile.do
 api_codes.txt
+code/00_ipums_api.R
 
 # R pipeline (work in progress, not yet ready for tracking)
 R/
@@ -34,6 +39,15 @@ R/
 # Claude Code
 .claude/
 quality_reports/
+
+# Stata log files (machine-specific run artifacts)
+code/logs/
+
+# Archived results (not needed for replication)
+results/old/
+
+# Drafts (shared separately)
+drafts/
 
 # SDID output subdirectories (PDFs, JPGs, temp files, etc.)
 results/sdid/*/*

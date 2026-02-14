@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the associated paper."
+title: "Mult-No-More? The Migration Effects of Multnomah County's Preschool For All Income Tax"
+type: software
+authors:
+  - family-names: Conway
+    given-names: Karen
+  - family-names: Iselin
+    given-names: John
+    email: john.iselin@yale.edu
+  - family-names: Rork
+    given-names: Jon
+date-released: "2026-02-14"
+license: MIT
+repository-code: "https://github.com/johniselin-econ/multnomah-county-tax"
+preferred-citation:
+  type: article
+  title: "Mult-No-More? The Migration Effects of Multnomah County's Preschool For All Income Tax"
+  authors:
+    - family-names: Conway
+      given-names: Karen
+    - family-names: Iselin
+      given-names: John
+    - family-names: Rork
+      given-names: Jon
+  year: 2026
+  status: advance-online

@@ -63,7 +63,7 @@ program define hdfe_catyear_plot
     ** -----------------------------------------------------------------------
     ** Configuration: project root for relative paths
     ** -----------------------------------------------------------------------
-    local __project_root "C:/Users/ji252/Documents/GitHub/multnomah-county-tax/"
+    local __project_root "${dir}"
 
     ** -----------------------------------------------------------------------
     ** Debug flags
