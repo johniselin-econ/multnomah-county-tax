@@ -1,6 +1,8 @@
-# Multnomah County Tax Migration Analysis
+# Mult-No-More? The Migration Effects of Multnomah County's Preschool For All Income Tax
 
-Studying the effect of the Multnomah County income tax (enacted 2020, effective 2021) on domestic migration patterns by education and income level.
+**Karen Conway, John Iselin, and Jon Rork**
+
+Replication code for Conway, Iselin, and Rork (2026). Studies the effect of the Multnomah County income tax (enacted 2020, effective 2021) on domestic migration patterns by education and income level.
 
 ## Overview
 
