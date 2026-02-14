@@ -28,6 +28,9 @@ data/demographic/bls/*
 profile.do
 api_codes.txt
 
+# R pipeline (work in progress, not yet ready for tracking)
+R/
+
 # Claude Code
 .claude/
 quality_reports/

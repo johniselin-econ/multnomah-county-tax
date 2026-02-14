@@ -11,7 +11,7 @@ This project analyzes whether the Multnomah County tax policy change affected mi
 - **Flow-based analysis** using IRS county-to-county migration data
 - **Specification curve analysis** for robustness across data sources, samples, and covariates
 
-The codebase has parallel **Stata** and **R** implementations that produce equivalent results.
+The primary codebase is **Stata**, with R helper scripts for the IPUMS API data download and choropleth mapping.
 
 ## Project Structure
 
@@ -19,7 +19,6 @@ The codebase has parallel **Stata** and **R** implementations that produce equiv
 multnomah-county-tax/
 ├── code/                          # Stata do-files
 │   ├── 00_multnomah.do            # Orchestrator (runs full pipeline)
-│   ├── 00_ipums_api.R             # IPUMS data download via API
 │   ├── 01_clean_data.do           # Data cleaning and preparation
 │   ├── 02_sdid_analysis.do        # Synthetic DiD estimation
 │   ├── 02_did_analysis.do         # DiD + event study (ACS microdata)
@@ -28,26 +27,11 @@ multnomah-county-tax/
 │   ├── 02_multi_analysis.do       # Multi-specification analysis
 │   ├── 02_descriptives.do         # Descriptive statistics
 │   ├── 02_revenue.do              # Revenue analysis
-│   ├── R/                         # Legacy R helpers (API, mapping)
+│   ├── R/                         # R helpers called from Stata via rcall
+│   │   ├── api_code.R             # IPUMS API data download
+│   │   └── map_code.R             # Choropleth maps
 │   ├── old/                       # Archived do-files
 │   └── logs/                      # Stata log files (by run date)
-│
-├── R/                             # R scripts (mirrors Stata pipeline)
-│   ├── 00_multnomah.R             # Orchestrator (runs full pipeline)
-│   ├── 01_clean_data.R            # Data cleaning
-│   ├── 02_sdid_analysis.R         # SDID estimation (county-level)
-│   ├── 02_sdid_analysis_state.R   # SDID estimation (state-level)
-│   ├── 02_did_analysis.R          # DiD + event study
-│   ├── 02_flow_analysis.R         # Flow-based analysis
-│   ├── 02_indiv_analysis.R        # Individual-level analysis
-│   ├── 02_descriptives.R          # Descriptive statistics
-│   ├── 02_maps.R                  # Choropleth maps
-│   ├── 02_revenue.R               # Revenue analysis
-│   ├── 03_paper_output.R          # Paper-ready tables and figures
-│   └── utils/                     # Shared utilities
-│       ├── globals.R              # Constants, paths, color palettes
-│       ├── helpers.R              # Helper functions
-│       └── fig_diagrams.R         # Diagram/figure utilities
 │
 ├── data/
 │   ├── acs/                       # ACS microdata (IPUMS extracts, gitignored)
@@ -65,33 +49,15 @@ multnomah-county-tax/
 │
 ├── results/
 │   ├── sdid/                      # SDID outputs
-│   │   ├── sdid_results.*         # Treatment effects (csv/dta/rds/xlsx)
-│   │   ├── sdid_weights.*         # Synthetic control weights
-│   │   ├── sdid_*_state.*         # State-level results and weights
-│   │   ├── fig_speccurve_*.pdf    # Specification curve plots
-│   │   ├── fig_kmeans.jpg         # K-means clustering figure
-│   │   ├── irs_full_16_22/        # IRS full-sample SDID (gitignored)
-│   │   ├── irs_389_16_22/         # IRS top-389 counties (gitignored)
-│   │   ├── irs5_*/                # IRS type 5 interstate (gitignored)
-│   │   ├── acs_*/                 # ACS-based SDID (gitignored)
-│   │   └── *_outstate_*/          # Out-of-state samples (gitignored)
 │   ├── did/                       # DiD regression outputs
-│   │   ├── fig_es_*.png           # Event study coefficient plots
-│   │   └── tab_did_*.tex          # LaTeX regression tables
 │   ├── flows/                     # Flow analysis outputs
-│   │   ├── fig_hist_*.png         # Flow histograms
-│   │   └── fig_multnomah_*.png    # Multnomah-specific flow plots
 │   ├── individual/                # Individual-level analysis
-│   │   └── fig_cat_*.pdf          # Categorical breakdowns
-│   ├── maps/                      # Choropleth maps (US and West Coast)
-│   │   └── map_*.png              # Migration rate maps by outcome
+│   ├── maps/                      # Choropleth maps
 │   ├── revenue/                   # Revenue analysis
-│   │   ├── fig_pfa_*.png          # PFA revenue figures
-│   │   └── tbl_*.xlsx             # Revenue tables
-│   └── tables/                    # Summary tables
-│       └── table*.tex             # LaTeX tables for paper
+│   └── tables/                    # Summary tables (LaTeX)
 │
 ├── drafts/                        # Paper drafts (Word, PDF)
+├── api_codes.txt                  # API keys (gitignored)
 ├── .gitignore
 ├── STATA_REQUIREMENTS.txt         # Package installation guide
 └── README.md
@@ -134,20 +100,43 @@ Individual-level DiD using ACS microdata:
 
 Robustness is assessed across all combinations of data source, sample, outcome, and covariate specification, visualized in specification curve plots.
 
-## Usage
+## API Setup
 
-### Stata
+The Stata pipeline calls R via [`rcall`](https://github.com/haghish/rcall) to download ACS microdata from [IPUMS USA](https://usa.ipums.org/usa/). This requires an IPUMS API key.
+
+1. **Register for an IPUMS account** at <https://uma.pop.umn.edu/usa/user/new> and request an API key from your account settings.
+
+2. **Create `api_codes.txt`** in the project root (this file is gitignored). The file should be a comma-delimited table with the following format:
+
+   ```
+   name, code
+   "ipums", "YOUR_IPUMS_API_KEY_HERE"
+   "bls", ""
+   "dol", ""
+   ```
+
+   Only the IPUMS key is required. The BLS and DOL rows can be left blank.
+
+3. **Install the `rcall` Stata package** so that Stata can invoke R scripts:
+
+   ```stata
+   net install github, from("https://haghish.github.io/github/")
+   github install haghish/rcall, stable
+   ```
+
+4. **Install the `ipumsr` R package**, which `rcall` will use:
+
+   ```r
+   install.packages("ipumsr")
+   ```
+
+The orchestrator (`code/00_multnomah.do`) reads `api_codes.txt`, passes the key to R, and downloads year-by-year ACS extracts into `data/acs/`. Existing extracts are skipped unless `overwrite_csv` is set to 1.
+
+## Usage
 
 ```stata
 * Set working directory and run full pipeline
 do "code/00_multnomah.do"
-```
-
-### R
-
-```r
-# Run full pipeline from project root
-source("R/00_multnomah.R")
 ```
 
 ## Requirements
@@ -165,19 +154,17 @@ ssc install ppmlhdfe, replace
 ssc install estout, replace
 ssc install coefplot, replace
 ssc install blindschemes, replace
+ssc install geodist, replace
+ssc install ipfraking, replace
 net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
 ```
 
 See `STATA_REQUIREMENTS.txt` for verification instructions.
 
-### R Packages
+### R Packages (used by Stata via rcall)
 
 ```r
-install.packages(c(
-  "dplyr", "tidyr", "readr", "stringr", "purrr", "ggplot2", "patchwork",
-  "fixest", "synthdid", "openxlsx", "marginaleffects", "modelsummary",
-  "scales", "ipumsr", "sf", "tigris"
-))
+install.packages(c("ipumsr", "dplyr", "stringr", "sf", "tigris", "ggplot2"))
 ```
 
 ## Author
