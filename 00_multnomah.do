@@ -23,7 +23,8 @@ For more information, contact john.iselin@yale.edu
 * ssc install estout 
 * ssc install sdid_event
 * ssc install geodist
-* ssc install ipfraking 
+* ssc install ipfraking
+* ssc install distinct
 ** net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
 ** mata mata mlib index
 
@@ -42,11 +43,14 @@ global date "`: di %tdCY-N-D daily("$S_DATE", "DMY")'"
 ** Set Directories
 ** NOTE: Set your working directory to the project root before running this file.
 ** Example: cd "C:/Users/yourname/Documents/GitHub/multnomah-county-tax/"
-global dir "`c(pwd)'/"
-global code 	"${dir}code/"				// CODE FILEPATH
-global data 	"${dir}data/"				// DATA FILEPATH
-global results 	"${dir}results/"			// RESULTS FILEPATH
-global logs 	"${code}logs/"				// LOG FILE SUB-FILEPATH
+global dir 		`c(pwd)'
+** Convert backslashes to forward slashes for R/rcall compatibility (Windows)
+global dir = subinstr("${dir}", "\", "/", .)
+global code 	"${dir}/code/"				// CODE FILEPATH
+global data 	"${dir}/data/"				// DATA FILEPATH
+global results 	"${dir}/results/"			// RESULTS FILEPATH
+global logs 	"${code}/logs/"				// LOG FILE SUB-FILEPATH
+cd $dir
 
 ** OVERLEAF FILE PATH (optional — for syncing outputs to Overleaf)
 ** To enable, create profile.do (gitignored) in the project root with:
@@ -57,7 +61,7 @@ global ol_fig   ""
 global ol_tab   ""
 
 ** Load user-specific overrides from profile.do (gitignored)
-capture do "${dir}profile.do"
+capture do "${dir}/profile.do"
 
 ** If oth_path was set in profile.do, derive Overleaf subdirectories
 if "${oth_path}" != "" {
@@ -78,20 +82,32 @@ set scheme plotplainblind
 ** PARALLEL PROCESSING FLAG
 ** Set to 1 to use parallel processing, 0 for sequential processing
 global use_parallel = 1
+global n_clusters = 6
 
-** Set parameters 
+** Set parameters
 local overwrite_csv = 0
-global start_year_acs = 2015
+global start_year_irs_data = 2012		// Extended back for appendix (2011-12 flows)
+global start_year_irs_analysis = 2016	// Main analysis start (unchanged)
+global start_year_acs = 2012			// Extended back for appendix comparison
 global end_year_acs = 2024
 
-** CALL R CODE TO IMPORT IPUMS DATA 
+** CALL R CODE TO IMPORT IPUMS DATA
 rcall script "${code}R/api_code.R", ///
     args( project_root  <- "${dir}"; ///
           dir_data_acs  <- "${data}acs"; ///
-          api_codes_path<- "${dir}api_codes.txt"; ///
+          api_codes_path<- "${dir}/api_codes.txt"; ///
           start_year    <- ${start_year_acs}; ///
           end_year      <- ${end_year_acs}; ///
           overwrite_csv <- as.logical(`overwrite_csv'); ///
+    ) vanilla
+
+** CALL R CODE TO DOWNLOAD QWI DATA (Census Bureau API)
+rcall script "${code}R/qwi_data.R", ///
+    args( project_root   <- "${dir}"; ///
+          api_codes_path <- "${dir}/api_codes.txt"; ///
+          start_year     <- ${start_year_acs}; ///
+          end_year       <- ${end_year_acs}; ///
+          overwrite_csv  <- as.logical(`overwrite_csv'); ///
     ) vanilla
 
 ** CLEAN DATA (01)
@@ -107,8 +123,10 @@ rcall script "${code}R/api_code.R", ///
 ** 		- https://github.com/nytimes/covid-19-data
 ** (f) County-level childcare cost data via DOL 
 ** 		- www.dol.gov/sites/dolgov/files/WB/NDCP2022.xlsx
-** (g) County-level Unemployment data via BLS 
+** (g) County-level Unemployment data via BLS
 ** 		- https://www.bls.gov/lau/
+** (h) County-level QWI data via Census Bureau API
+** 		- https://www.census.gov/data/developers/data-sets/qwi.html
 do ${code}01_clean_data.do
 
 ** ANALYSIS (02)
@@ -119,24 +137,35 @@ do ${code}02_descriptives.do
 ** Create maps 
 rcall script "${code}R/map_code.R", vanilla
 
-** Flow-based models (IRS)
-do ${code}02_flow_analysis.do
+** Create diagrams 
+rcall script "${code}R/fig_diagrams.R", vanilla
 
 ** Difference-in-Difference (ACS)
 do ${code}02_did_analysis.do
 
+** Flow-based models (IRS)
+do ${code}02_flow_analysis.do
+
 ** Synthetic Difference-in-Difference Analysis
-*do ${code}02_sdid_analysis_parallel.do 
-do ${code}02_sdid_analysis.do 
+do ${code}02_sdid_analysis.do
+
+** Narrow SDID (similar-cities control pool)
+do ${code}02_narrow_sdid.do
+
+** Other Outcomes SDID (non-migration IRS outcomes)
+do ${code}02_otherout_sdid.do
 
 ** Individual-level Model
-do ${code}02_indiv_analysis.do 
-
-** Multinomial Logit Model
-*do ${code}02_multi_analysis.do
+do ${code}02_indiv_analysis.do
 
 ** Revenue Effects of Tax-Induced Migration
 do "${code}02_revenue.do"
+
+** Appendix B: IRS Data Quality
+do "${code}02_appendix_data_quality.do"
+
+** Diagnostics: observation count table (optional — uncomment to run)
+* do "${code}02_diagnostics.do"
 
 ** End log file
 capture log close
