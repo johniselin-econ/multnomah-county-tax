@@ -1,9 +1,11 @@
 /*****************************************************************************
 * File:        01d_covid.do
 * Purpose:     Import and clean NYTimes COVID-19 county-level data
+*              Import and clean JII COVID restriction-duration data
 * Called by:   01_clean_data.do
 * Outputs:     data/working/covid_cleaned.dta      (daily panel)
 *              data/working/covid_cleaned_wide.dta  (monthly, reshaped wide)
+*              data/working/jii_stringency.dta      (cross-sectional, 5 measures)
 ******************************************************************************/
 
 ** Import data
@@ -105,4 +107,41 @@ reshape wide cases_cum deaths_cum, i(fips state_name county_name) j(date)
 
 ** Save file
 save "${data}working/covid_cleaned_wide.dta", replace
+clear
+
+
+********************************************************************************
+** JII COVID Stringency Data
+** Source: JII Covid data.dta — restriction-duration measures (days) by county
+** Used for: COVID policy stringency k-means donor pool
+********************************************************************************
+
+** Load JII data
+use "${data}JII Covid data.dta", clear
+
+** Drop missing FIPS (1 row)
+drop if missing(scfips)
+
+** Rename FIPS
+rename scfips fips
+
+** Keep restriction-duration variables
+keep fips msahodays restclosedays gatherbandays strictgatherbandays maskpubdays
+
+** Label variables
+label var msahodays "Days under stay-at-home order"
+label var restclosedays "Days restaurants closed"
+label var gatherbandays "Days under gathering ban"
+label var strictgatherbandays "Days under strict gathering ban"
+label var maskpubdays "Days under public mask mandate"
+
+** Verify Multnomah County values
+assert msahodays == 88 if fips == 41051
+assert restclosedays == 109 if fips == 41051
+assert gatherbandays == 295 if fips == 41051
+assert strictgatherbandays == 284 if fips == 41051
+assert maskpubdays == 184 if fips == 41051
+
+** Save
+save "${data}working/jii_stringency.dta", replace
 clear

@@ -46,6 +46,12 @@ For more information, contact john.iselin@yale.edu
 capture log close log_02
 log using "${logs}02_log_flow_${date}", replace text name(log_02)
 
+** plotplainblind palette (RGB) — consistent across all figures
+local col_out  "0 114 178"    // sea (p7) — out-migration
+local col_in   "213 94 0"     // vermillion (p6) — in-migration
+local col_mult "230 159 0"    // orangebrown (p8) — Multnomah highlight
+local col_ref  "153 153 153"  // gs10 (p2) — reference lines
+
 ** Parameters
 local reps = 100
 
@@ -60,10 +66,11 @@ use "${data}working/acs_county_gross_25plus", clear
 ** Keep required variables
 keep year fips
 
-** Keep only always-observed fips
+** Keep only always-observed fips (13 ACS years: 2012-2024)
 bysort fips: gen ct = _N
 tab ct
-keep if ct == 10
+qui summ ct
+keep if ct == `r(max)'
 
 ** Keep fips
 keep fips
@@ -78,6 +85,9 @@ clear
 
 ** Load IRS Data
 use "${data}working/irs_county_flow.dta", clear
+
+** Keep analysis window (consistent with other SDID/DiD files)
+keep if inrange(year, 2016, 2022)
 
 ** Sample restrictions
 drop if inlist(state_fips_o, 2, 15)   	// Alaska and Hawaii
@@ -168,6 +178,83 @@ drop x_out_2020 x_in_2020
 tempfile main_data
 save `main_data'
 
+** Save to real file for parallel workers (parallel can't access tempfiles)
+save "${data}working/flow_analysis_data.dta", replace
+
+********************************************************************************
+** PARALLEL MODE: DEFINE PROGRAMS (must be outside foreach loop)
+********************************************************************************
+
+if ${use_parallel} == 1 {
+
+	** Define worker program: process a single county
+	capture program drop run_flow_county
+	program define run_flow_county
+		syntax, fips(integer)
+
+		** Load flow analysis data
+		use "${data}working/flow_analysis_data.dta", clear
+
+		** Generate treatment vars
+		gen out_tmp = fips_o == `fips'
+		gen in_tmp = fips_d == `fips'
+		gen out_post_tmp = out_tmp * post
+		gen in_post_tmp = in_tmp * post
+
+		** Run regression with capture
+		local tmp_b_out = .
+		local tmp_se_out = .
+		local tmp_b_in = .
+		local tmp_se_in = .
+
+		capture {
+			ppmlhdfe agi i.out_post_tmp i.in_post_tmp 		///
+				${flow_covars} 								///
+				if mover == 1 ${flow_sample_cond}, 			///
+				absorb(year flow_id) vce(cluster flow_id)
+
+			local tmp_b_out = _b[1.out_post_tmp]
+			local tmp_se_out = _se[1.out_post_tmp]
+			local tmp_b_in = _b[1.in_post_tmp]
+			local tmp_se_in = _se[1.in_post_tmp]
+		}
+
+		if _rc != 0 {
+			dis "Warning: Regression failed for fips `fips'"
+		}
+
+		** Save 1-row result
+		clear
+		set obs 1
+		gen fips = `fips'
+		gen b_out = `tmp_b_out'
+		gen se_out = `tmp_se_out'
+		gen b_in = `tmp_b_in'
+		gen se_in = `tmp_se_in'
+		save "${results}flows/temp_results/result_`fips'.dta", replace
+
+	end
+
+	** Define wrapper program for parallel execution
+	capture program drop parallel_flow_wrapper
+	program define parallel_flow_wrapper
+		** Store all fips values upfront (run_flow_county overwrites dataset)
+		local n_obs = _N
+		forvalues i = 1/`n_obs' {
+			local fid_`i' = fips_target[`i']
+		}
+
+		** Loop through and process each county
+		forvalues i = 1/`n_obs' {
+			if mod(`i', 50) == 0 {
+				dis "Worker processing county `i' of `n_obs' (fips = `fid_`i'')"
+			}
+			run_flow_county, fips(`fid_`i'')
+		}
+	end
+
+} // END PARALLEL PROGRAM DEFINITIONS
+
 ********************************************************************************
 ** MAIN ANALYSIS LOOP: Run regressions for (1) all counties, (2) ACS counties
 ** The second iteration restricts to flows where acs_flow == 1 and adds
@@ -231,9 +318,9 @@ foreach sample in "acs" "all" {
 
 		** Plot both regressions
 		coefplot 	(`outcome'_with_covars, label("With Covariates") 	///
-						mc(navy) ciopts(lc(navy))) 						///
+						mc("`col_out'") ciopts(lc("`col_out'"))) 		///
 					(`outcome'_no_covars, label("Without Covariates") 	///
-						mc(maroon) ciopts(lc(maroon))), 				///
+						mc("`col_in'") ciopts(lc("`col_in'"))), 		///
 			keep(1.out_multnomah_post 1.in_multnomah_post) 				///
 			ciopts(recast(rcap)) 										///
 			yline(0, lc(gs10) lp(dash)) 								///
@@ -312,63 +399,142 @@ foreach sample in "acs" "all" {
 		dis "Running regressions for `n_fips' counties (`sample' sample)..."
 	}
 
-	** Initialize tempfile to store results
-	postfile county_coefs fips b_out se_out b_in se_in 		///
-		using  "${data}working/county_flow_coefficients`file_suffix'`debug_txt'.dta", replace
+	if ${use_parallel} == 1 {
 
-	** Counter for display
-	local ct = 1
+		********************************************************************************
+		** PARALLEL PATH: Permutation-style county loop
+		********************************************************************************
 
-	foreach f of local fips_list {
+		** Set globals for worker access (locals don't transfer to parallel)
+		global flow_sample_cond "`sample_cond'"
+		global flow_covars "`covars'"
 
-		** Display status every 100 counties
-		if mod(`ct', 100) == 0 {
-			dis "Processing county `ct' of `n_fips' (fips = `f')..."
+		** Create FIPS grid dataset
+		clear
+		local n_fips_tmp : word count `fips_list'
+		set obs `n_fips_tmp'
+		gen fips_target = .
+		local i = 1
+		foreach f of local fips_list {
+			replace fips_target = `f' in `i'
+			local i = `i' + 1
 		}
 
-		** Generate treatment vars
-		gen out_tmp = fips_o == `f'
-		gen in_tmp = fips_d == `f'
+		** Shuffle for load balancing
+		gen random = runiform()
+		sort random
+		drop random
 
-		** Interactions
-		gen out_post_tmp = out_tmp * post
-		gen in_post_tmp = in_tmp * post
+		** Create temp directory (clean first to avoid residual files from failed runs)
+		capture mkdir "${results}flows"
+		capture shell rmdir "${results}flows/temp_results" /s /q
+		capture mkdir "${results}flows/temp_results"
 
-		** Run regression with capture to handle potential errors
-		capture {
-			** Regression: With covariates
-			 ppmlhdfe agi i.out_post_tmp i.in_post_tmp 	///
-				`covars' 										///
-				if mover == 1 `sample_cond', 					///
-				absorb(year flow_id) vce(cluster flow_id)
+		** Initialize and run parallel
+		parallel initialize ${n_clusters}, force
 
-			** Store coefficients and SEs
-			local tmp_b_out = _b[1.out_post_tmp]
-			local tmp_se_out = _se[1.out_post_tmp]
-			local tmp_b_in = _b[1.in_post_tmp]
-			local tmp_se_in = _se[1.in_post_tmp]
+		dis "Starting parallel flow estimation for `n_fips' counties at $S_TIME..."
+		timer clear 2
+		timer on 2
 
-			** Post results
-			post county_coefs (`f') (`tmp_b_out') (`tmp_se_out') (`tmp_b_in') (`tmp_se_in')
+		parallel, prog(parallel_flow_wrapper run_flow_county): parallel_flow_wrapper
+
+		timer off 2
+		timer list 2
+		dis "Parallel flow estimation completed at $S_TIME"
+
+		** Combine results from temp files
+		clear
+		local files : dir "${results}flows/temp_results" files "result_*.dta"
+		local first = 1
+		foreach f of local files {
+			if `first' == 1 {
+				use "${results}flows/temp_results/`f'", clear
+				local first = 0
+			}
+			else {
+				append using "${results}flows/temp_results/`f'"
+			}
 		}
 
-		** If regression failed, post missing values
-		if _rc != 0 {
-			post county_coefs (`f') (.) (.) (.) (.)
-			dis "Warning: Regression failed for fips `f'"
+		** Verify we got results
+		if _N == 0 {
+			dis as error "ERROR: No results from parallel flow estimation. Check worker logs."
+			error 1
 		}
 
+		** Save county flow coefficients
+		save "${data}working/county_flow_coefficients`file_suffix'`debug_txt'.dta", replace
 
-		** Drop temporary vars
-		drop out_tmp in_tmp out_post_tmp in_post_tmp
+		** Clean up temp directory
+		shell rmdir "${results}flows/temp_results" /s /q
 
-		** Update count
-		local ct = `ct' + 1
+	}
+	else {
 
-	} // END FIPS LOOP
+		********************************************************************************
+		** SEQUENTIAL PATH: Permutation-style county loop
+		********************************************************************************
 
-	** Close postfile
-	postclose county_coefs
+		** Initialize tempfile to store results
+		postfile county_coefs fips b_out se_out b_in se_in 		///
+			using  "${data}working/county_flow_coefficients`file_suffix'`debug_txt'.dta", replace
+
+		** Counter for display
+		local ct = 1
+
+		foreach f of local fips_list {
+
+			** Display status every 100 counties
+			if mod(`ct', 100) == 0 {
+				dis "Processing county `ct' of `n_fips' (fips = `f')..."
+			}
+
+			** Generate treatment vars
+			gen out_tmp = fips_o == `f'
+			gen in_tmp = fips_d == `f'
+
+			** Interactions
+			gen out_post_tmp = out_tmp * post
+			gen in_post_tmp = in_tmp * post
+
+			** Run regression with capture to handle potential errors
+			capture {
+				** Regression: With covariates
+				 ppmlhdfe agi i.out_post_tmp i.in_post_tmp 	///
+					`covars' 										///
+					if mover == 1 `sample_cond', 					///
+					absorb(year flow_id) vce(cluster flow_id)
+
+				** Store coefficients and SEs
+				local tmp_b_out = _b[1.out_post_tmp]
+				local tmp_se_out = _se[1.out_post_tmp]
+				local tmp_b_in = _b[1.in_post_tmp]
+				local tmp_se_in = _se[1.in_post_tmp]
+
+				** Post results
+				post county_coefs (`f') (`tmp_b_out') (`tmp_se_out') (`tmp_b_in') (`tmp_se_in')
+			}
+
+			** If regression failed, post missing values
+			if _rc != 0 {
+				post county_coefs (`f') (.) (.) (.) (.)
+				dis "Warning: Regression failed for fips `f'"
+			}
+
+
+			** Drop temporary vars
+			drop out_tmp in_tmp out_post_tmp in_post_tmp
+
+			** Update count
+			local ct = `ct' + 1
+
+		} // END FIPS LOOP
+
+		** Close postfile
+		postclose county_coefs
+
+	} // END PARALLEL/SEQUENTIAL BRANCHING
 
 	** Load results
 	use "${data}working/county_flow_coefficients`file_suffix'`debug_txt'.dta", clear
@@ -461,12 +627,12 @@ foreach sample in "acs" "all" {
 		** Plot 1: Out-migration coefficient distribution with Multnomah
 		histogram `x'_out if !missing(`x'_out), 								///
 			bin(50) 														///
-			fcolor(navy%50) lcolor(navy) 									///
-			xline(`multnomah_`x'_out', lcolor(red) lwidth(thick) lpattern(solid)) ///
+			fcolor("`col_out'"%50) lcolor("`col_out'") 						///
+			xline(`multnomah_`x'_out', lcolor("`col_mult'") lwidth(thick) lpattern(solid)) ///
 			xtitle("Out-migration `txt' (County x Post)") 			///
 			ytitle("Frequency") 											///
 			title("Distribution of Out-Migration `txt'`title_suffix'") 		///
-			subtitle("Red line = Multnomah County (percentile: `: display %4.1f `multnomah_pctile_out'')") ///
+			subtitle("Vertical line = Multnomah County (percentile: `: display %4.1f `multnomah_pctile_out'')") ///
 			graphregion(color(white))
 
 		graph export "${results}flows/fig_hist_out_`x'`file_suffix'`debug_txt'.png", replace
@@ -474,21 +640,21 @@ foreach sample in "acs" "all" {
 		** Plot 2: In-migration coefficient distribution with Multnomah
 		histogram `x'_in if !missing(`x'_in), 									///
 			bin(50) 														///
-			fcolor(maroon%50) lcolor(maroon) 								///
-			xline(`multnomah_`x'_in', lcolor(red) lwidth(thick) lpattern(solid)) ///
+			fcolor("`col_in'"%50) lcolor("`col_in'") 						///
+			xline(`multnomah_`x'_in', lcolor("`col_mult'") lwidth(thick) lpattern(solid)) ///
 			xtitle("In-migration `txt' (County x Post)") 				///
 			ytitle("Frequency") 											///
 			title("Distribution of In-Migration `txt'`title_suffix'") 		///
-			subtitle("Red line = Multnomah County (percentile: `: display %4.1f `multnomah_pctile_in'')") ///
+			subtitle("Vertical line = Multnomah County (percentile: `: display %4.1f `multnomah_pctile_in'')") ///
 			graphregion(color(white))
 
 		graph export "${results}flows/fig_hist_in_`x'`file_suffix'`debug_txt'.png", replace
 
 		** Plot 3: Combined scatter of out vs in coefficients
 		twoway 	(scatter `x'_in `x'_out if multnomah == 0, 						///
-					mc(navy%30) ms(O) msize(small)) 						///
+					mc("`col_out'"%30) ms(O) msize(small)) 					///
 				(scatter `x'_in `x'_out if multnomah == 1, 						///
-					mc(red) ms(D) msize(large)), 							///
+					mc("`col_mult'") ms(D) msize(large)), 					///
 			xline(0, lc(gs10) lp(dash)) 									///
 			yline(0, lc(gs10) lp(dash)) 									///
 			xtitle("Out-migration `txt'") 							///
@@ -606,9 +772,9 @@ foreach sample in "acs" "all" {
 	** Row counter
 	local row = 1
 
-	** ============================================================================
+	********************************************************************************
 	** MULTNOMAH STATISTICS
-	** ============================================================================
+	********************************************************************************
 
 	replace stat_name = "m_b_out" in `row'
 	replace stat_value = `m_b_out' in `row'
@@ -660,9 +826,9 @@ foreach sample in "acs" "all" {
 	replace stat_description = "Multnomah in-migration percentile rank" in `row'
 	local row = `row' + 1
 
-	** ============================================================================
+	********************************************************************************
 	** COUNT STATISTICS
-	** ============================================================================
+	********************************************************************************
 
 	replace stat_name = "n_counties_out" in `row'
 	replace stat_value = `n_counties_out' in `row'
@@ -709,9 +875,9 @@ foreach sample in "acs" "all" {
 	replace stat_description = "Counties worse on both (p<0.05 for both)" in `row'
 	local row = `row' + 1
 
-	** ============================================================================
+	********************************************************************************
 	** DISTRIBUTION STATISTICS - OUT-MIGRATION
-	** ============================================================================
+	********************************************************************************
 
 	replace stat_name = "dist_out_mean" in `row'
 	replace stat_value = `dist_out_mean' in `row'
@@ -748,9 +914,9 @@ foreach sample in "acs" "all" {
 	replace stat_description = "Distribution 75th pctile: out-migration coef" in `row'
 	local row = `row' + 1
 
-	** ============================================================================
+	********************************************************************************
 	** DISTRIBUTION STATISTICS - IN-MIGRATION
-	** ============================================================================
+	********************************************************************************
 
 	replace stat_name = "dist_in_mean" in `row'
 	replace stat_value = `dist_in_mean' in `row'
@@ -787,9 +953,9 @@ foreach sample in "acs" "all" {
 	replace stat_description = "Distribution 75th pctile: in-migration coef" in `row'
 	local row = `row' + 1
 
-	** ============================================================================
+	********************************************************************************
 	** DISTRIBUTION STATISTICS - T-STATISTICS
-	** ============================================================================
+	********************************************************************************
 
 	replace stat_name = "dist_t_out_mean" in `row'
 	replace stat_value = `dist_t_out_mean' in `row'
@@ -840,9 +1006,9 @@ foreach sample in "acs" "all" {
 
 	dis "Exported descriptive statistics to flow_analysis_stats.xlsx, sheet: `sample'"
 
-	** ============================================================================
+	********************************************************************************
 	** EXPORT COUNTY LISTS WITH LARGER COEFFICIENTS TO ADDITIONAL SHEETS
-	** ============================================================================
+	********************************************************************************
 
 	** Load county coefficients and merge with county identifiers
 	use `county_coefs_for_export', clear
@@ -1050,10 +1216,10 @@ foreach sample in "acs" "all" {
 		gen year_in = year + 0.1
 
 		** Plot 1: Out-migration (with and without covariates)
-		twoway 	(rcap out_ci_lo_wc out_ci_hi_wc year_out, lc(navy)) 			///
-				(connected out_coef_wc year_out, mc(navy) lc(navy) ms(O)) 		///
-				(rcap out_ci_lo_nc out_ci_hi_nc year_in, lc(maroon)) 			///
-				(connected out_coef_nc year_in, mc(maroon) lc(maroon) ms(T)),	///
+		twoway 	(rcap out_ci_lo_wc out_ci_hi_wc year_out, lc("`col_out'")) 		///
+				(connected out_coef_wc year_out, mc("`col_out'") lc("`col_out'") ms(O)) ///
+				(rcap out_ci_lo_nc out_ci_hi_nc year_in, lc("`col_in'")) 		///
+				(connected out_coef_nc year_in, mc("`col_in'") lc("`col_in'") ms(T)), ///
 			yline(0, lc(gs10) lp(dash)) 										///
 			xline(2020.5, lc(black) lp(solid))									///
 			xlabel(2016(1)2022) 												///
@@ -1068,10 +1234,10 @@ foreach sample in "acs" "all" {
 		graph export "${results}flows/fig_multnomah_out_`outcome'`file_suffix'.png", replace
 
 		** Plot 2: In-migration (with and without covariates)
-		twoway 	(rcap in_ci_lo_wc in_ci_hi_wc year_out, lc(navy)) 				///
-				(connected in_coef_wc year_out, mc(navy) lc(navy) ms(O)) 		///
-				(rcap in_ci_lo_nc in_ci_hi_nc year_in, lc(maroon)) 				///
-				(connected in_coef_nc year_in, mc(maroon) lc(maroon) ms(T)),	///
+		twoway 	(rcap in_ci_lo_wc in_ci_hi_wc year_out, lc("`col_out'")) 		///
+				(connected in_coef_wc year_out, mc("`col_out'") lc("`col_out'") ms(O)) ///
+				(rcap in_ci_lo_nc in_ci_hi_nc year_in, lc("`col_in'")) 		///
+				(connected in_coef_nc year_in, mc("`col_in'") lc("`col_in'") ms(T)), ///
 			yline(0, lc(gs10) lp(dash)) 										///
 			xline(2020.5, lc(black) lp(solid))									///
 			xlabel(2016(1)2022) 												///
@@ -1086,10 +1252,10 @@ foreach sample in "acs" "all" {
 		graph export "${results}flows/fig_multnomah_in_`outcome'`file_suffix'.png", replace
 
 		** Plot 3: Both flows (with covariates only, as in original)
-		twoway 	(rcap out_ci_lo_wc out_ci_hi_wc year_out, lc(navy)) 				///
-				(connected out_coef_wc year_out, mc(navy) lc(navy) ms(O)) 		///
-				(rcap in_ci_lo_wc in_ci_hi_wc year_in, lc(maroon)) 				///
-				(connected in_coef_wc year_in, mc(maroon) lc(maroon) ms(T)),	///
+		twoway 	(rcap out_ci_lo_wc out_ci_hi_wc year_out, lc("`col_out'")) 		///
+				(connected out_coef_wc year_out, mc("`col_out'") lc("`col_out'") ms(O)) ///
+				(rcap in_ci_lo_wc in_ci_hi_wc year_in, lc("`col_in'")) 		///
+				(connected in_coef_wc year_in, mc("`col_in'") lc("`col_in'") ms(T)), ///
 			yline(0, lc(gs10) lp(dash)) 										///
 			xline(2020.5, lc(black) lp(solid))									///
 			xlabel(2016(1)2022) 												///
@@ -1103,6 +1269,10 @@ foreach sample in "acs" "all" {
 
 		graph export "${results}flows/fig_multnomah_both_`outcome'`file_suffix'.png", replace
 
+		if ${overleaf} == 1 {
+			graph export "${ol_fig}fig_multnomah_both_`outcome'`file_suffix'.png", replace
+		}
+
 		** Reload main data for next outcome
 		use `main_data', clear
 
@@ -1110,6 +1280,9 @@ foreach sample in "acs" "all" {
 
 } // END SAMPLE LOOP (all vs acs)
 
+
+** Clean up parallel data file
+capture erase "${data}working/flow_analysis_data.dta"
 
 ** Close log
 clear

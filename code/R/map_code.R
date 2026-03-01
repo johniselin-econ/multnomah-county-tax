@@ -14,6 +14,8 @@ suppressPackageStartupMessages({
 
 options(tigris_use_cache = TRUE)
 
+# --- Shared plotplainblind palette ---
+source(here("code", "R", "colors_plotplainblind.R"))
 
 home_base <- here()
 results_dir <- file.path(home_base, "results")
@@ -77,7 +79,7 @@ wa_centroid <- st_centroid(wa_state)
 map1 <- ggplot() +
   geom_sf(data = or_counties, fill = "gray92", color = "white", size = 0.3) +
   geom_sf(data = wa_counties, fill = "gray88", color = "white", size = 0.3) +
-  geom_sf(data = multnomah, fill = "yellow", color = "black", size = 0.5) +
+  geom_sf(data = multnomah, fill = col_mult, color = "black", size = 0.5) +
   
   # county labels
   geom_sf_text(
@@ -103,7 +105,7 @@ map1 <- ggplot() +
   ) +
   
   # city points
-  geom_sf(data = city_points, color = "red", size = 2) +
+  geom_sf(data = city_points, color = PPB_VERMILLION, size = 2) +
   
   # city labels: Vancouver above; others below
   geom_sf_text(
@@ -192,14 +194,14 @@ metro_outline <- metro |>
 map2 <- ggplot() +
   geom_sf(data = or_cty_reg, fill = "gray90", color = "white", size = 0.4) +
   geom_sf(data = wa_cty_reg, fill = "gray85", color = "white", size = 0.4) +
-  geom_sf(data = multnomah, fill = "yellow", color = "black", size = 0.6) +
-  
+  geom_sf(data = multnomah, fill = col_mult, color = "black", size = 0.6) +
+
   # Portland + Vancouver
-  geom_sf(data = port_reg, color = "#3182BD", fill = "#3182BD", size = 4) +
-  geom_sf(data = van_reg,  color = "#31A354", fill = "#31A354", size = 4) +
-  
+  geom_sf(data = port_reg, color = col_portland, fill = col_portland, size = 4) +
+  geom_sf(data = van_reg,  color = col_vancouver, fill = col_vancouver, size = 4) +
+
   # Metro Boundary (official)
-  geom_sf(data = metro_outline, color = "#9E0168",
+  geom_sf(data = metro_outline, color = col_metro_bdy,
           linetype = "dashed", linewidth = 0.9) +
   
   # labels
@@ -220,7 +222,7 @@ map2 <- ggplot() +
   ) +
   geom_sf_text(
     data = st_centroid(metro_outline), aes(label = "METRO"),
-    color = "#9E0168",
+    color = col_metro_bdy,
     size = 3, fontface = "bold"
   ) +
   theme_void() +
@@ -248,10 +250,10 @@ vancouver_pt <- city_points |> filter(NAME == "Vancouver")
 map1_with_box <- ggplot() +
   geom_sf(data = or_counties, fill = "gray92", color = "white", size = 0.3) +
   geom_sf(data = wa_counties, fill = "gray88", color = "white", size = 0.3) +
-  geom_sf(data = multnomah, fill = "yellow", color = "black", size = 0.5) +
+  geom_sf(data = multnomah, fill = col_mult, color = "black", size = 0.5) +
 
   # Zoom area rectangle
-  geom_sf(data = zoom_rect, fill = NA, color = "red", linewidth = 1.2, linetype = "solid") +
+  geom_sf(data = zoom_rect, fill = NA, color = PPB_VERMILLION, linewidth = 1.2, linetype = "solid") +
 
   # County labels (restored)
   geom_sf_text(
@@ -277,9 +279,9 @@ map1_with_box <- ggplot() +
   ) +
 
   # City points (Bend & Spokane nudged up, others at original position)
-  geom_sf(data = other_city_pts, color = "red", size = 2) +
-  geom_sf(data = vancouver_pt, color = "red", size = 2) +
-  geom_sf(data = bend_spokane_nudged, color = "red", size = 2) +
+  geom_sf(data = other_city_pts, color = PPB_VERMILLION, size = 2) +
+  geom_sf(data = vancouver_pt, color = PPB_VERMILLION, size = 2) +
+  geom_sf(data = bend_spokane_nudged, color = PPB_VERMILLION, size = 2) +
 
   # City labels: Vancouver, Bend, Spokane above; others below
   geom_sf_text(
@@ -307,14 +309,14 @@ map1_with_box <- ggplot() +
 map2_inset <- ggplot() +
   geom_sf(data = or_cty_reg, fill = "gray90", color = "white", size = 0.3) +
   geom_sf(data = wa_cty_reg, fill = "gray85", color = "white", size = 0.3) +
-  geom_sf(data = multnomah, fill = "yellow", color = "black", size = 0.5) +
+  geom_sf(data = multnomah, fill = col_mult, color = "black", size = 0.5) +
 
   # Portland + Vancouver
-  geom_sf(data = port_reg, color = "#3182BD", fill = "#3182BD", alpha = 0.4) +
-  geom_sf(data = van_reg,  color = "#31A354", fill = "#31A354", alpha = 0.4) +
+  geom_sf(data = port_reg, color = col_portland, fill = col_portland, alpha = 0.4) +
+  geom_sf(data = van_reg,  color = col_vancouver, fill = col_vancouver, alpha = 0.4) +
 
   # Metro Boundary
-  geom_sf(data = metro_outline, color = "#9E0168",
+  geom_sf(data = metro_outline, color = col_metro_bdy,
           linetype = "dashed", linewidth = 0.7) +
 
   # County labels
@@ -338,12 +340,12 @@ map2_inset <- ggplot() +
   # Metro label
   geom_sf_text(
     data = st_centroid(metro_outline), aes(label = "METRO"),
-    color = "#9E0168",
+    color = col_metro_bdy,
     size = 3.5, fontface = "bold"
   ) +
   theme_void() +
   theme(
-    panel.border = element_rect(color = "red", fill = NA, linewidth = 1.5),
+    panel.border = element_rect(color = PPB_VERMILLION, fill = NA, linewidth = 1.5),
     plot.background = element_rect(fill = "white", color = NA)
   ) +
   coord_sf(expand = FALSE)
@@ -370,13 +372,13 @@ map_combined <- ggdraw() +
   draw_line(
     x = c(zoom_box_right, inset_x),
     y = c(zoom_box_top, inset_y + inset_h - 0.07),
-    color = "red", size = 0.6, linetype = "dashed"
+    color = PPB_VERMILLION, size = 0.6, linetype = "dashed"
   ) +
   # Bottom-right corner of zoom box to bottom-left corner of inset
   draw_line(
     x = c(zoom_box_right, inset_x),
     y = c(zoom_box_bottom, inset_y + 0.07),
-    color = "red", size = 0.6, linetype = "dashed"
+    color = PPB_VERMILLION, size = 0.6, linetype = "dashed"
   )
 ggsave(filepath_combined, map_combined, width = 16, height = 10, dpi = 300, bg = "white")
 message("Saved: ", filepath_combined)
@@ -428,17 +430,8 @@ multnomah_us <- us_counties_plot %>% dplyr::filter(GEOID == "41051")
 map_us_pool <- ggplot() +
   geom_sf(data = us_counties_plot, aes(fill = group), color = NA) +
   geom_sf(data = us_states, fill = NA, color = "gray25", linewidth = 0.25) +
-  geom_sf(data = multnomah_us, fill = NA, color = "red", linewidth = 0.8) +  # optional emphasis
-  scale_fill_manual(
-    values = c(
-      "Other"     = "gray95",
-      "Out-only"  = "#4C9F70",  # muted green
-      "In-only"   = "#4C78A8",  # muted blue
-      "Both"      = "#F2B701",  # muted amber
-      "Multnomah" = "yellow"
-    ),
-    name = NULL
-  ) +
+  geom_sf(data = multnomah_us, fill = NA, color = PPB_VERMILLION, linewidth = 0.8) +
+  scale_fill_ppb_pool(name = NULL) +
   theme_void() +
   theme(legend.position = "bottom",
         legend.text = element_text(colour = "black"),
@@ -479,6 +472,10 @@ us_counties_flow <- us_counties |>
 west_coast_states <- c("06", "41", "53")
 west_coast_counties <- us_counties_flow |>
  filter(STATEFP %in% west_coast_states)
+
+orwa_states <- c("41", "53")
+orwa_counties <- us_counties_flow |>
+ filter(STATEFP %in% orwa_states)
 
 # ------------------------------------------------------------
 # DEFINE MEASURE AND DIRECTION LABELS
@@ -554,11 +551,11 @@ create_flow_map <- function(data, counties_sf, direction, measure, region_name,
  p <- ggplot(map_data) +
    geom_sf(aes(fill = pct_change_capped), color = "gray80", linewidth = 0.05) +
    geom_sf(data = us_states, fill = NA, color = "gray25", linewidth = 0.25) +
-   geom_sf(data = multnomah_highlight, fill = "yellow", color = "black", linewidth = 0.5) +
+   geom_sf(data = multnomah_highlight, fill = col_mult, color = "black", linewidth = 0.5) +
    scale_fill_gradient2(
-     low = "#2166AC",
+     low = col_div_low,
      mid = "white",
-     high = "#B2182B",
+     high = col_div_high,
      midpoint = 0,
      na.value = "gray90",
      name = legend_title,
@@ -648,11 +645,11 @@ create_rate_change_map <- function(data, counties_sf, direction, measure, region
  p <- ggplot(map_data) +
    geom_sf(aes(fill = rate_change_capped), color = "gray80", linewidth = 0.05) +
    geom_sf(data = us_states, fill = NA, color = "gray25", linewidth = 0.25) +
-   geom_sf(data = multnomah_highlight, fill = "yellow", color = "black", linewidth = 0.5) +
+   geom_sf(data = multnomah_highlight, fill = col_mult, color = "black", linewidth = 0.5) +
    scale_fill_gradient2(
-     low = "#2166AC",
+     low = col_div_low,
      mid = "white",
-     high = "#B2182B",
+     high = col_div_high,
      midpoint = 0,
      na.value = "gray90",
      name = legend_title
@@ -697,6 +694,12 @@ wc_bbox <- st_bbox(west_coast_counties)
 wc_coord_limits <- list(
   xlim = c(wc_bbox["xmin"] - 50000, wc_bbox["xmax"] + 50000),
   ylim = c(wc_bbox["ymin"] - 50000, wc_bbox["ymax"] + 50000)
+)
+
+orwa_bbox <- st_bbox(orwa_counties)
+orwa_coord_limits <- list(
+  xlim = c(orwa_bbox["xmin"] - 50000, orwa_bbox["xmax"] + 50000),
+  ylim = c(orwa_bbox["ymin"] - 50000, orwa_bbox["ymax"] + 50000)
 )
 
 # Loop over measures
@@ -879,9 +882,9 @@ create_directional_flow_map <- function(data, counties_sf, direction, measure,
       mutate(rate_change = out_rate_change)
     title_prefix <- "Out-Migration FROM Multnomah"
     subtitle_text <- "Rate change per 100K destination population"
-    # Positive = more people leaving Multnomah for this county (red)
-    low_color <- "#2166AC"   # Blue for negative
-    high_color <- "#B2182B"  # Red for positive
+    # Positive = more people leaving Multnomah for this county
+    low_color <- col_div_low
+    high_color <- col_div_high
     n_counties_with_flows <- nrow(data_filtered)
     message(paste0("  ", direction, ": ", n_counties_with_flows,
                    " counties with positive flows in both periods"))
@@ -892,9 +895,9 @@ create_directional_flow_map <- function(data, counties_sf, direction, measure,
       mutate(rate_change = in_rate_change)
     title_prefix <- "In-Migration TO Multnomah"
     subtitle_text <- "Rate change per 100K origin population"
-    # Negative = fewer people coming to Multnomah (blue)
-    low_color <- "#2166AC"   # Blue for negative
-    high_color <- "#B2182B"  # Red for positive
+    # Negative = fewer people coming to Multnomah
+    low_color <- col_div_low
+    high_color <- col_div_high
     n_counties_with_flows <- nrow(data_filtered)
     message(paste0("  ", direction, ": ", n_counties_with_flows,
                    " counties with positive flows in both periods"))
@@ -1048,6 +1051,22 @@ for (measure in c("n1", "n2", "agi")) {
                               paste0("map_directional_", measure, "_", direction, "_westcoast.png"))
     ggsave(wc_filepath, wc_dir_map, width = 8, height = 14, dpi = 300, bg = "white")
     message(paste0("Saved: ", wc_filepath))
+
+    # ---- Oregon + Washington Map ----
+    orwa_dir_map <- create_directional_flow_map(
+      data = flow_data,
+      counties_sf = orwa_counties,
+      direction = direction,
+      measure = measure,
+      region_name = "Oregon & Washington",
+      coord_limits = orwa_coord_limits
+    )
+
+    # Save OR+WA map
+    orwa_filepath <- file.path(flows_output_dir,
+                                paste0("map_directional_", measure, "_", direction, "_orwa.png"))
+    ggsave(orwa_filepath, orwa_dir_map, width = 8, height = 10, dpi = 300, bg = "white")
+    message(paste0("Saved: ", orwa_filepath))
 
   }
 }

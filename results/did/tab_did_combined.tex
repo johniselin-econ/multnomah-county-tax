@@ -1,0 +1,36 @@
+\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}
+\begin{tabular}{l*{4}{w{c}{3cm}}}
+\hline\hline
+            &\multicolumn{1}{c}{(1)}&\multicolumn{1}{c}{(2)}&\multicolumn{1}{c}{(3)}&\multicolumn{1}{c}{(4)}\\
+            &\multicolumn{1}{c}{\shortstack{Out-\\migration}}&\multicolumn{1}{c}{\shortstack{Out-of-\\state}}&\multicolumn{1}{c}{\shortstack{In-migration\\(West Coast)}}&\multicolumn{1}{c}{\shortstack{In-migration\\(Lower 48 + DC)}}\\
+\hline
+\multicolumn{5}{l}{\textit{Panel A: College Degree as Treatment Proxy}}\\[0.3em]
+College Degree $\times$ Post&       2.129***&       1.522***&      -0.003   &      -0.002   \\
+            &     (0.514)   &     (0.401)   &     (0.011)   &     (0.002)   \\
+
+\hline
+\multicolumn{5}{l}{\textit{Panel B: Age Group as Treatment Proxy (Reference: 45--64)}}\\[0.3em]
+
+Age 25-44 $\times$ Post&      -0.090   &      -0.325   &      -0.022   &      -0.004*  \\
+            &     (0.584)   &     (0.460)   &     (0.014)   &     (0.002)   \\
+[1em]
+Age 65+ $\times$ Post&      -1.145** &      -0.949***&      -0.001   &       0.000   \\
+            &     (0.503)   &     (0.353)   &     (0.007)   &     (0.001)   \\
+
+\hline
+\multicolumn{5}{l}{\textit{Panel C: Treatment heterogeniety by age (College $\times$ Age $\times$ Post)}}\\[0.3em]
+
+College $\times$ Post $\times$ Age 25-44&       2.408***&       1.888***&       0.009   &       0.002   \\
+            &     (0.702)   &     (0.574)   &     (0.015)   &     (0.003)   \\
+[1em]
+College $\times$ Post $\times$ Age 45-64&       2.381***&       1.912***&      -0.009   &      -0.005** \\
+            &     (0.633)   &     (0.506)   &     (0.014)   &     (0.002)   \\
+[1em]
+College $\times$ Post $\times$ Age 65+&       0.863   &      -0.244   &      -0.016   &      -0.007** \\
+            &     (0.612)   &     (0.367)   &     (0.013)   &     (0.003)   \\
+\hline
+Observations&      58,727   &      58,727   &   3,585,562   &  23,638,195   \\
+\hline\hline
+\multicolumn{5}{l}{\footnotesize Standard errors in parentheses}\\
+\multicolumn{5}{l}{\footnotesize \sym{*} \(p<0.10\), \sym{**} \(p<0.05\), \sym{***} \(p<0.01\)}\\
+\end{tabular}

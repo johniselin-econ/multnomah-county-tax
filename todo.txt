@@ -1,0 +1,59 @@
+Multnomah County Project to do list: 
+
+
+1) Create a SDID control pool where pre-treatment per-capita income, population, and share of the population under 24 and over 65 (this last one will need to be created) are used in a k-means clustering approach (similar to current covid method) to create a potential donor pool. (in SDID do file)
+
+2) Produce some descriptive statistics on migration using IRS statistics: (In descriptives do-file)
+- For County-level data, create a table, with two super columns (2018-2019) and (2021-2022) and four columns (Multnomah, median, 25th and 75th percentiles) under each, with the following rows: 
+  - Returns 
+    - Out migration rate 
+    - In migration rate
+    - Net migration rate 
+  - Exemptions 
+    - Out migration rate 
+    - In migration rate
+    - Net migration rate 
+  - AGI 
+    - Out migration rate 
+    - In migration rate
+    - Net migration rate 
+- For state-level data, create a table, with two super columns (2018-2019) and (2021-2022) and four columns (Oregon, median, 25th and 75th percentiles) under each, with the following rows: 
+  - Returns 
+    - Out migration rate 
+    - In migration rate
+    - Net migration rate 
+  - Exemptions 
+    - Out migration rate 
+    - In migration rate
+    - Net migration rate 
+  - AGI 
+    - Out migration rate 
+    - In migration rate
+    - Net migration rate 
+
+Note that you may have to implement a similar downloading protocol for state-level migration files. 
+
+3) Create a new do-file called 02_narrow_sdid.do. In this file, load the same data as for the current SDID file, but the control pool should be limited to counties that make up the following major cities. Run a simple set of models (ACS and IRS, all three measures of migration (income, returns, people), with and without controls, dropping and not dropping 2020, etc...). Cite this link: https://metroverse.hks.harvard.edu/city/101/similar-cities
+- Columbus, OH
+- Minneapolis, MN
+- Philadelphia, PA 
+- Austin, TX
+- Orlando, FL
+- Tampa, FL
+- Salt Lake City, UT
+- Detroit, MI
+- Vancouver, WA 
+- Seattle, WA 
+- Baltimore, MD
+- Milwaukee, WI
+- St. Louis, MO
+- Denver, CO
+- Kansas City, MO
+- Indianapolis, IN
+- Atlanta, GA
+- Las Vegas, NV 
+- Sacremento, CA 
+- San Antonio, TX
+- Boston, MA 
+
+4) Create a new do-file called 02_otherout_sdid.do, which is set up just like the current sdid file, but pulls in the dataset of county-level IRS statistics (not migration). Run the SDID on the same basic setup, but with different outcome variables, namely number of returns, and dollars of AGI, wages, and taxable income. Set up this file so other datasets can be added with similar structure (future work on unemployment rates, birth rates, etc...) 

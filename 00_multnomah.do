@@ -91,6 +91,7 @@ global start_year_irs_analysis = 2016	// Main analysis start (unchanged)
 global start_year_acs = 2012			// Extended back for appendix comparison
 global end_year_acs = 2024
 
+
 ** CALL R CODE TO IMPORT IPUMS DATA
 rcall script "${code}R/api_code.R", ///
     args( project_root  <- "${dir}"; ///
@@ -101,13 +102,21 @@ rcall script "${code}R/api_code.R", ///
           overwrite_csv <- as.logical(`overwrite_csv'); ///
     ) vanilla
 
-** CALL R CODE TO DOWNLOAD QWI DATA (Census Bureau API)
+** CALL R CODE TO DOWNLOAD QWI DATA (LEHD bulk download)
 rcall script "${code}R/qwi_data.R", ///
     args( project_root   <- "${dir}"; ///
           api_codes_path <- "${dir}/api_codes.txt"; ///
           start_year     <- ${start_year_acs}; ///
           end_year       <- ${end_year_acs}; ///
           overwrite_csv  <- as.logical(`overwrite_csv'); ///
+    ) vanilla
+
+** CALL R CODE TO DOWNLOAD QCEW DATA (BLS)
+rcall script "${code}R/qcew_data.R", ///
+    args( project_root  <- "${dir}"; ///
+          start_year    <- ${start_year_acs}; ///
+          end_year      <- ${end_year_acs}; ///
+          overwrite_csv <- as.logical(`overwrite_csv'); ///
     ) vanilla
 
 ** CLEAN DATA (01)
@@ -125,8 +134,10 @@ rcall script "${code}R/qwi_data.R", ///
 ** 		- www.dol.gov/sites/dolgov/files/WB/NDCP2022.xlsx
 ** (g) County-level Unemployment data via BLS
 ** 		- https://www.bls.gov/lau/
-** (h) County-level QWI data via Census Bureau API
-** 		- https://www.census.gov/data/developers/data-sets/qwi.html
+** (h) County-level QWI data via LEHD bulk download
+** 		- https://lehd.ces.census.gov/data/qwi/
+** (i) County-level QCEW data via BLS
+** 		- https://www.bls.gov/cew/
 do ${code}01_clean_data.do
 
 ** ANALYSIS (02)
@@ -155,11 +166,17 @@ do ${code}02_narrow_sdid.do
 ** Other Outcomes SDID (non-migration IRS outcomes)
 do ${code}02_otherout_sdid.do
 
+** Quarterly SDID (QWI employment/earnings + QCEW establishments/wages)
+do ${code}02_quarterly_sdid.do
+
 ** Individual-level Model
 do ${code}02_indiv_analysis.do
 
 ** Revenue Effects of Tax-Induced Migration
 do "${code}02_revenue.do"
+
+** Elasticities of Migration with Respect to PFA Tax
+do "${code}02_elasticities.do"
 
 ** Appendix B: IRS Data Quality
 do "${code}02_appendix_data_quality.do"

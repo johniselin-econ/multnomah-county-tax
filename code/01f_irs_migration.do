@@ -178,6 +178,9 @@ forvalues y = 12(1)22 {
 	** Drop unnecc variable
 	drop move_type
 
+	** Drop exact duplicate rows (known issue in IRS 2013-2014 vintage)
+	duplicates drop
+
 	** Save
 	save "${data}working/irs_county_flow_`y'", replace
 	clear

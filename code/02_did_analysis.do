@@ -76,59 +76,67 @@ gen treated = high_ed * post
 label var treated "College Degree × Post"
 
 ********************************************************************************
-** COVARIATE CATEGORIES
+** COVARIATE CATEGORIES (program definition + first call)
 ********************************************************************************
 
-** Age categories
-recode age ///
-    (25/44   = 1 "25-44") ///
-    (45/64   = 2 "45-64") ///
-    (65/max  = 3 "65+"), ///
-    gen(cat_age)
-label var cat_age "Age categories"
+** Define reusable program for categorical covariate creation
+capture program drop create_covariates
+program define create_covariates
 
-** Sex
-gen cat_sex = (sex == 2)
-label var cat_sex "Female indicator"
-label define lb_cat_sex 0 "Male" 1 "Female", replace
-label values cat_sex lb_cat_sex
+	** Age categories
+	recode age ///
+		(25/44   = 1 "25-44") ///
+		(45/64   = 2 "45-64") ///
+		(65/max  = 3 "65+"), ///
+		gen(cat_age)
+	label var cat_age "Age categories"
 
-** Marital status
-recode marst ///
-    (1       = 1 "Married") ///
-    (2/3     = 2 "Separated") ///
-    (4/5     = 3 "Divorced / Widowed") ///
-    (6       = 4 "Single"), ///
-    gen(cat_married)
-label var cat_married "Marriage categories"
+	** Sex
+	gen cat_sex = (sex == 2)
+	label var cat_sex "Female indicator"
+	label define lb_cat_sex 0 "Male" 1 "Female", replace
+	label values cat_sex lb_cat_sex
 
-** Number of children
-recode nchild ///
-    (0       = 0 "0 Children") ///
-    (1       = 1 "1 Child") ///
-    (2       = 2 "2 Children") ///
-    (3/max   = 3 "3+ Children"), ///
-    gen(cat_child)
-label var cat_child "Number of Children"
+	** Marital status
+	recode marst ///
+		(1       = 1 "Married") ///
+		(2/3     = 2 "Separated") ///
+		(4/5     = 3 "Divorced / Widowed") ///
+		(6       = 4 "Single"), ///
+		gen(cat_married)
+	label var cat_married "Marriage categories"
 
-** Age of youngest child
-recode yngch ///
-    (99      = 0 "No Children") ///
-    (0/4     = 1 "0-4") ///
-    (5/12    = 2 "5-12") ///
-    (13/17   = 3 "13-17")	///
-	(18/max  = 4 "18+"), ///
-    gen(cat_yngch)
-label var cat_yngch "Age of youngest child"
+	** Number of children
+	recode nchild ///
+		(0       = 0 "0 Children") ///
+		(1       = 1 "1 Child") ///
+		(2       = 2 "2 Children") ///
+		(3/max   = 3 "3+ Children"), ///
+		gen(cat_child)
+	label var cat_child "Number of Children"
 
-** Education categories
-recode educd ///
-    (min/61  = 1 "Less than HS") ///
-    (62/71   = 2 "HS Diploma") ///
-    (80/100  = 3 "Some College") ///
-    (101/max = 4 "College Degree"), ///
-    gen(cat_educ)
-label var cat_educ "Education categories"
+	** Age of youngest child
+	recode yngch ///
+		(99      = 0 "No Children") ///
+		(0/4     = 1 "0-4") ///
+		(5/12    = 2 "5-12") ///
+		(13/17   = 3 "13-17")	///
+		(18/max  = 4 "18+"), ///
+		gen(cat_yngch)
+	label var cat_yngch "Age of youngest child"
+
+	** Education categories
+	recode educd ///
+		(min/61  = 1 "Less than HS") ///
+		(62/71   = 2 "HS Diploma") ///
+		(80/100  = 3 "Some College") ///
+		(101/max = 4 "College Degree"), ///
+		gen(cat_educ)
+	label var cat_educ "Education categories"
+
+end
+
+create_covariates
 
 ********************************************************************************
 ** REGRESSION 1: DIFFERENCE-IN-DIFFERENCES
@@ -166,7 +174,8 @@ estadd scalar N_unwtd = r(N)
 estimates store did_out_state
 
 ********************************************************************************
-** TABLE: DiD RESULTS
+** TABLE: DiD RESULTS (individual panel -- kept for reference)
+** Combined table output moved to after all DiD regressions below
 ********************************************************************************
 
 esttab did_out did_out_state did_in_west did_in_48 						///
@@ -407,7 +416,6 @@ label var treated_age_2 "College x Post x Age 45-64"
 label var treated_age_3 "College x Post x Age 65+"
 
 ** Store estimates
-estimates clear
 
 ** Out-migration regression by age (Sample 1: Multnomah residents)
 reghdfe out_1 treated_age_* if sample_1 == 1 [pw = perwt], 	///
@@ -438,7 +446,8 @@ estadd scalar N_unwtd = r(N)
 estimates store did_age_out_state
 
 ********************************************************************************
-** TABLE: DiD BY AGE
+** TABLE: DiD BY AGE (individual panel -- kept for reference)
+** Combined table output moved to after all DiD regressions below
 ********************************************************************************
 
 esttab did_age_out did_age_out_state did_age_in_west did_age_in_48 		///
@@ -686,45 +695,8 @@ gen out_3 = (state_fips_o != state_fips_d) * 100
 ** Treatment variables
 gen post = year > 2020
 
-** Covariate categories
-recode age ///
-    (25/44   = 1 "25-44") ///
-    (45/64   = 2 "45-64") ///
-    (65/max  = 3 "65+"), ///
-    gen(cat_age)
-
-gen cat_sex = (sex == 2)
-label define lb_cat_sex 0 "Male" 1 "Female", replace
-label values cat_sex lb_cat_sex
-
-recode marst ///
-    (1       = 1 "Married") ///
-    (2/3     = 2 "Separated") ///
-    (4/5     = 3 "Divorced / Widowed") ///
-    (6       = 4 "Single"), ///
-    gen(cat_married)
-
-recode nchild ///
-    (0       = 0 "0 Children") ///
-    (1       = 1 "1 Child") ///
-    (2       = 2 "2 Children") ///
-    (3/max   = 3 "3+ Children"), ///
-    gen(cat_child)
-
-recode yngch ///
-    (99      = 0 "No Children") ///
-    (0/4     = 1 "0-4") ///
-    (5/12    = 2 "5-12") ///
-    (13/17   = 3 "13-17")	///
-	(18/max  = 4 "18+"), ///
-    gen(cat_yngch)
-
-recode educd ///
-    (min/61  = 1 "Less than HS") ///
-    (62/71   = 2 "HS Diploma") ///
-    (80/100  = 3 "Some College") ///
-    (101/max = 4 "College Degree"), ///
-    gen(cat_educ)
+** Covariate categories (reuse program from above)
+create_covariates
 
 ** Create age × post interactions (omit middle age group: 45-64)
 gen age_post_1 = (cat_age == 1) * post
@@ -734,7 +706,6 @@ label var age_post_1 "Age 25-44 × Post"
 label var age_post_3 "Age 65+ × Post"
 
 ** Store estimates
-estimates clear
 
 ** Out-migration regression (Sample 1: Multnomah residents)
 reghdfe out_1 age_post_1 age_post_3 if sample_1 == 1 [pw = perwt], 	///
@@ -765,7 +736,7 @@ estadd scalar N_unwtd = r(N)
 estimates store did_agep_out_state
 
 ********************************************************************************
-** TABLE: DiD BY AGE (NO EDUCATION)
+** TABLE: DiD BY AGE (NO EDUCATION) (individual panel -- kept for reference)
 ********************************************************************************
 
 esttab did_agep_out did_agep_out_state did_agep_in_west did_agep_in_48 	///
@@ -782,6 +753,134 @@ esttab did_agep_out did_agep_out_state did_agep_in_west did_agep_in_48 	///
 			"In-migration (Lower 48 + DC)")								///
 	stats(N_unwtd, fmt(%12.0fc) labels("Observations"))
 
+********************************************************************************
+** COMBINED TABLE: DiD RESULTS (Panels A, B, C in single file)
+** Produces tab_did_combined.tex for use in main.tex Table A3
+********************************************************************************
+
+** Panel A: College Degree × Post (creates file with full header)
+esttab did_out did_out_state did_in_west did_in_48 						///
+	using "${results}did/tab_did_combined.tex",							///
+	replace 															///
+	starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
+	b(%-9.3f) se(%-9.3f) 												///
+	keep(treated) 														///
+	coeflabels(treated  "College Degree $\times$ Post")					///
+	mtitle(	"\shortstack{Out-\\migration}" 								///
+			"\shortstack{Out-of-\\state}"								///
+			"\shortstack{In-migration\\(West Coast)}" 					///
+			"\shortstack{In-migration\\(Lower 48 + DC)}")				///
+	prehead("\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}" 				///
+			"\begin{tabular}{l*{4}{w{c}{3cm}}}" 						///
+			"\hline\hline")												///
+	posthead("\hline" 													///
+			 "\multicolumn{5}{l}{\textit{Panel A: College Degree as Treatment Proxy}}\\[0.3em]") ///
+	prefoot("") 														///
+	postfoot("\hline") 													///
+	noobs
+
+** Panel B: Age Group × Post (appends to combined file)
+esttab did_agep_out did_agep_out_state did_agep_in_west did_agep_in_48 	///
+	using "${results}did/tab_did_combined.tex",							///
+	append 																///
+	starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
+	b(%-9.3f) se(%-9.3f) 												///
+	keep(age_post_1 age_post_3) 										///
+	order(age_post_1 age_post_3)										///
+	coeflabels(	age_post_1  "Age 25-44 $\times$ Post"					///
+				age_post_3  "Age 65+ $\times$ Post")					///
+	nomtitles nonumbers 												///
+	prehead("\multicolumn{5}{l}{\textit{Panel B: Age Group as Treatment Proxy (Reference: 45--64)}}\\[0.3em]") ///
+	posthead("") 														///
+	prefoot("") 														///
+	postfoot("\hline") 													///
+	noobs
+
+** Panel C: Treatment heterogeniety by age (appends and closes table)
+esttab did_age_out did_age_out_state did_age_in_west did_age_in_48 		///
+	using "${results}did/tab_did_combined.tex",							///
+	append 																///
+	starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
+	b(%-9.3f) se(%-9.3f) 												///
+	keep(treated_age_*) 												///
+	order(treated_age_1 treated_age_2 treated_age_3)					///
+	coeflabels(	treated_age_1  "College $\times$ Post $\times$ Age 25-44"	///
+				treated_age_2  "College $\times$ Post $\times$ Age 45-64"	///
+				treated_age_3  "College $\times$ Post $\times$ Age 65+")	///
+	nomtitles nonumbers 												///
+	prehead("\multicolumn{5}{l}{\textit{Panel C: Treatment heterogeniety by age (College $\times$ Age $\times$ Post)}}\\[0.3em]") ///
+	posthead("") 														///
+	prefoot("\hline") 													///
+	stats(N_unwtd, fmt(%12.0fc) labels("Observations"))					///
+	postfoot("\hline\hline" 											///
+			 "\multicolumn{5}{l}{\footnotesize Standard errors in parentheses}\\" ///
+			 "\multicolumn{5}{l}{\footnotesize \sym{*} \(p<0.10\), \sym{**} \(p<0.05\), \sym{***} \(p<0.01\)}\\" ///
+			 "\end{tabular}")
+
+if ${overleaf} == 1 {
+
+
+	** Panel A: College Degree × Post (creates file with full header)
+	esttab did_out did_out_state did_in_west did_in_48 						///
+		using "${ol_tab}tab_did_combined.tex",							///
+		replace 															///
+		starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
+		b(%-9.3f) se(%-9.3f) 												///
+		keep(treated) 														///
+		coeflabels(treated  "College Degree $\times$ Post")					///
+		mtitle(	"\shortstack{Out-\\migration}" 								///
+				"\shortstack{Out-of-\\state}"								///
+				"\shortstack{In-migration\\(West Coast)}" 					///
+				"\shortstack{In-migration\\(Lower 48 + DC)}")				///
+		prehead("\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}" 				///
+				"\begin{tabular}{l*{4}{w{c}{3cm}}}" 						///
+				"\hline\hline")												///
+		posthead("\hline" 													///
+				 "\multicolumn{5}{l}{\textit{Panel A: College Degree as Treatment Proxy}}\\[0.3em]") ///
+		prefoot("") 														///
+		postfoot("\hline") 													///
+		noobs
+
+	** Panel B: Age Group × Post (appends to combined file)
+	esttab did_agep_out did_agep_out_state did_agep_in_west did_agep_in_48 	///
+		using "${ol_tab}tab_did_combined.tex",							///
+		append 																///
+		starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
+		b(%-9.3f) se(%-9.3f) 												///
+		keep(age_post_1 age_post_3) 										///
+		order(age_post_1 age_post_3)										///
+		coeflabels(	age_post_1  "Age 25-44 $\times$ Post"					///
+					age_post_3  "Age 65+ $\times$ Post")					///
+		nomtitles nonumbers 												///
+		prehead("\multicolumn{5}{l}{\textit{Panel B: Age Group as Treatment Proxy (Reference: 45--64)}}\\[0.3em]") ///
+		posthead("") 														///
+		prefoot("") 														///
+		postfoot("\hline") 													///
+		noobs
+
+	** Panel C: Treatment heterogeniety by age (appends and closes table)
+	esttab did_age_out did_age_out_state did_age_in_west did_age_in_48 		///
+		using "${ol_tab}tab_did_combined.tex",							///
+		append 																///
+		starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
+		b(%-9.3f) se(%-9.3f) 												///
+		keep(treated_age_*) 												///
+		order(treated_age_1 treated_age_2 treated_age_3)					///
+		coeflabels(	treated_age_1  "College $\times$ Post $\times$ Age 25-44"	///
+					treated_age_2  "College $\times$ Post $\times$ Age 45-64"	///
+					treated_age_3  "College $\times$ Post $\times$ Age 65+")	///
+		nomtitles nonumbers 												///
+		prehead("\multicolumn{5}{l}{\textit{Panel C: Treatment heterogeniety by age (College $\times$ Age $\times$ Post)}}\\[0.3em]") ///
+		posthead("") 														///
+		prefoot("\hline") 													///
+		stats(N_unwtd, fmt(%12.0fc) labels("Observations"))					///
+		postfoot("\hline\hline" 											///
+				 "\multicolumn{5}{l}{\footnotesize Standard errors in parentheses}\\" ///
+				 "\multicolumn{5}{l}{\footnotesize \sym{*} \(p<0.10\), \sym{**} \(p<0.05\), \sym{***} \(p<0.01\)}\\" ///
+				 "\end{tabular}")
+
+	}			 
+			 
 ********************************************************************************
 ** REGRESSION 6: EVENT STUDY BY AGE (NO EDUCATION)
 ********************************************************************************

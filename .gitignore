@@ -22,6 +22,14 @@ data/irs/*.csv
 # Ignore Working data
 data/working/*
 
+# Ignore QWI data
+data/qwi/*.csv
+data/qwi/raw/
+
+# Ignore QCEW data
+data/qcew/*.csv
+data/qcew/raw/
+
 # Ignore BEA Data
 data/demographic/CAINC1/*.csv
 data/demographic/CAINC1/*.xml
