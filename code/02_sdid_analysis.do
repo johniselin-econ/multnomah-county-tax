@@ -199,6 +199,13 @@ gen sample_urban95 = percent_urban >= `cutoff' // All counties
 label var sample_urban95 "Urban counties (top 5%) (excluding AK, CA, HI OR, WA)"
 tab sample_urban95 if year == 2020
 
+** Compute top-10% urban threshold for stringency clustering base
+** Note: must be computed before state drops (like sample_urban95) so
+**       Multnomah is evaluated against the full county distribution
+qui summ percent_urban if year == 2020, de
+local p90 = r(p90)
+gen urban_top10 = percent_urban >= `p90'
+
 ** Define Sample of States
 drop if state_name == "Alaska"
 drop if state_name == "Hawaii"
@@ -260,11 +267,6 @@ tab sample_demog if year == 2020
 
 ** Define sample 6: COVID stringency k-means match (JII restriction-duration)
 merge m:1 fips using "${data}working/jii_stringency.dta", gen(jii_merge) keep(master match)
-
-** Compute top-10% urban threshold for stringency clustering base
-qui summ percent_urban if year == 2020, de
-local p90 = r(p90)
-gen urban_top10 = percent_urban >= `p90'
 
 ** Standardize 5 stringency vars within urban top-10%
 foreach v in msahodays restclosedays gatherbandays strictgatherbandays maskpubdays {
