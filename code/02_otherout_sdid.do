@@ -138,17 +138,17 @@ gen sample_all = 1
 label var sample_all "All counties (excluding AK, CA, HI, OR, WA)"
 
 ** Define sample 2: Urban counties (top 5% urbanization)
-summ percent_urban if year == 2020, de
+qui summ percent_urban if year == 2020, de
 local cutoff = r(p95)
 gen sample_urban95 = percent_urban >= `cutoff'
 label var sample_urban95 "Urban counties (top 5%)"
 
-** Compute top-10% urban threshold for stringency clustering base
+** Compute top-25% urban threshold for COVID/stringency clustering base
 ** Note: must be computed before state drops (like sample_urban95) so
 **       Multnomah is evaluated against the full county distribution
 qui summ percent_urban if year == 2020, de
-local p90 = r(p90)
-gen urban_top10 = percent_urban >= `p90'
+local p75 = r(p75)
+gen urban_top75 = percent_urban >= `p75'
 
 ** Drop states (same as main SDID)
 drop if state_name == "Alaska"
@@ -159,14 +159,14 @@ drop if state_name == "Oregon" & multnomah == 0
 
 ** Define sample 3: COVID k-means match
 cluster kmeans cases_cum* deaths_cum* if ///
-	sample_urban95 == 1 & year == 2020 & covid_merge == 3, k(5) gen(kmean)
+	urban_top75 == 1 & year == 2020 & covid_merge == 3, k(5) gen(kmean)
 bysort fips: egen kmean_group = mean(kmean)
 
-gen tmp1 = kmean if sample_urban95 == 1 & year == 2020 & covid_merge == 3 & multnomah == 1
+gen tmp1 = kmean if urban_top75 == 1 & year == 2020 & covid_merge == 3 & multnomah == 1
 egen tmp2 = mean(tmp1)
-gen sample_urban95_covid = sample_urban95 == 1 & kmean_group == tmp2
+gen sample_urban75_covid = urban_top75 == 1 & kmean_group == tmp2
 drop tmp1 tmp2
-label var sample_urban95_covid "Urban counties (top 5%) w. COVID k-means match"
+label var sample_urban75_covid "Urban counties (top 25%) w. COVID k-means match"
 
 ** Define sample 4: Demographic k-means match
 ** Note: matches 02_sdid_analysis.do — clusters urban95 counties,
@@ -191,20 +191,23 @@ drop tmp1 tmp2 std_* pci_pre
 label var sample_demog "Counties with Demographic Kmean Match (excluding AK, CA, HI OR, WA)"
 
 ** Define sample 5: COVID stringency k-means match (JII restriction-duration)
+** Standardize 5 stringency vars within urban top-75%
 foreach v in msahodays restclosedays gatherbandays strictgatherbandays maskpubdays {
-	egen std_`v' = std(`v') if urban_top10 == 1 & year == 2020 & jii_merge == 3
+	egen std_`v' = std(`v') if urban_top75 == 1 & year == 2020 & jii_merge == 3
 }
 
+** K-means on standardized stringency measures
 cluster kmeans std_msahodays std_restclosedays std_gatherbandays 	///
 	std_strictgatherbandays std_maskpubdays if 						///
-	urban_top10 == 1 & year == 2020 & jii_merge == 3, k(5) gen(kmean_string)
+	urban_top75 == 1 & year == 2020 & jii_merge == 3, k(5) gen(kmean_string)
 bysort fips: egen kmean_string_group = mean(kmean_string)
 
-gen tmp1 = kmean_string if urban_top10 == 1 & year == 2020 & jii_merge == 3 & multnomah == 1
+** Identify Multnomah's cluster
+gen tmp1 = kmean_string if urban_top75 == 1 & year == 2020 & jii_merge == 3 & multnomah == 1
 egen tmp2 = mean(tmp1)
-gen sample_stringency = urban_top10 == 1 & kmean_string_group == tmp2
-drop tmp1 tmp2 std_* urban_top10 kmean_string kmean_string_group
-label var sample_stringency "Urban counties (top 10%) w. COVID stringency k-means match"
+gen sample_stringency = urban_top75 == 1 & kmean_string_group == tmp2
+drop tmp1 tmp2 std_* urban_top75 kmean_string kmean_string_group
+label var sample_stringency "Urban counties (top 25%) w. COVID stringency k-means match"
 
 ********************************************************************************
 ** OUTCOME VARIABLES
@@ -268,7 +271,7 @@ if ${use_parallel} == 1 {
 
 	** Create table-level specification grid
 	** Table units are defined by:
-	** - samp_var (sample_all, sample_urban95, sample_urban95_covid, sample_demog, sample_stringency)
+	** - samp_var (sample_all, sample_urban95, sample_urban75_covid, sample_demog, sample_stringency)
 	** - exclusion (0, 1)
 	** Total: 5 x 2 = 10 table units
 	** Each table unit runs 4 outcomes x 2 covariate settings = 8 SDID specs
@@ -287,7 +290,7 @@ if ${use_parallel} == 1 {
 	save "${data}working/otherout_table_grid.dta", replace
 
 	** Build table grid
-	foreach samp in "sample_all" "sample_urban95" "sample_urban95_covid" "sample_demog" "sample_stringency" {
+	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
 		forvalues exl = 0/1 {
 
 			local table_id = `table_id' + 1
@@ -583,7 +586,7 @@ if ${use_parallel} == 1 {
 	** Step 1: Count distinct counties per sample
 	use "${data}working/otherout_sdid_data.dta", clear
 
-	foreach samp in "sample_all" "sample_urban95" "sample_urban95_covid" "sample_demog" "sample_stringency" {
+	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
 		qui count if `samp' == 1 & year == 2021
 		local nc_`samp' = r(N)
 	}
@@ -596,7 +599,7 @@ if ${use_parallel} == 1 {
 	gen cost = .
 
 	local row = 0
-	foreach samp in "sample_all" "sample_urban95" "sample_urban95_covid" "sample_demog" "sample_stringency" {
+	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
 		local row = `row' + 1
 		qui replace samp_var = "`samp'" in `row'
 		local nc = `nc_`samp''
@@ -760,7 +763,7 @@ else {
 	local covariates "population per_capita_income"
 
 	** Loop over samples
-	foreach samp of varlist sample_all sample_urban95 sample_urban95_covid sample_demog sample_stringency {
+	foreach samp of varlist sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency {
 
 		** Loop over exclusion of 2020
 		forvalues exl = 1(-1)0 {
@@ -985,7 +988,7 @@ use "${results}sdid/otherout/otherout_sdid_results.dta", clear
 ** Create specification indicators for bottom panel
 gen spec_all = sample == "sample_all"
 gen spec_urban95 = sample == "sample_urban95"
-gen spec_covid = sample == "sample_urban95_covid"
+gen spec_covid = sample == "sample_urban75_covid"
 gen spec_demog = sample == "sample_demog"
 gen spec_stringency = sample == "sample_stringency"
 gen spec_covars = controls == 1
@@ -1004,7 +1007,7 @@ gen preferred = 0
 
 ** Preferred: Urban 95% COVID match + covariates + excl 2020
 replace preferred = 1 if 									///
-	sample == "sample_urban95_covid" &						///
+	sample == "sample_urban75_covid" &						///
 	controls == 1 &											///
 	exclusion == 1
 
