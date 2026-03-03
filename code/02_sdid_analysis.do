@@ -42,6 +42,10 @@ local col_ref          "153 153 153"  // gs10 (p2) — reference lines
 ** Number of bootstrap replications for SDID
 local reps = 100
 
+** Fallback defaults for standalone execution (not via 00_multnomah.do)
+if "${use_parallel}" == "" global use_parallel 0
+if "${n_clusters}" == ""   global n_clusters 1
+
 ** Initialize parallel processing if enabled
 if ${use_parallel} == 1 {
 	parallel initialize ${n_clusters}, force
@@ -149,12 +153,15 @@ isid fips year
 tab county_name year if (missing(n1_out_1 ) | n1_out_1 == 0 ) & year <= 2022
 drop if (missing(n1_out_1 ) | n1_out_1 == 0 ) & year <= 2022
 
-** Keep only sample with observations in each year
-** Note: balanced panel is required for SDID estimation
-bysort fips: gen ct = _N
-qui summ ct
-drop if ct < `r(max)'
-drop ct
+** Keep only counties with observations in every IRS year (2016-2022)
+** Note: balanced panel is required for SDID estimation. IRS-only
+**       counties span 2016-2022; ACS-matched counties extend to 2024.
+**       Require IRS-period balance for all counties here; ACS-period
+**       balance is enforced separately via acs_period indicators below.
+bysort fips: egen ct_irs = total(inrange(year, 2016, 2022))
+local n_irs_years = 2022 - 2016 + 1
+drop if ct_irs < `n_irs_years'
+drop ct_irs
 
 ** Generate IRS sample
 gen irs_sample_1 = inrange(year, 2016, 2022)
@@ -233,16 +240,20 @@ bysort fips: egen pci_pre_fill = mean(pci_pre)
 drop pci_pre
 rename pci_pre_fill pci_pre
 
+** Generate tag for not missing values 
+gen not_missing = 1 
+
 foreach v in pci_pre pop_census share_under_24 share_over_65 percent_urban {
-	egen std_`v' = std(`v') if sample_urban95 == 1 & year == 2020
+	egen std_`v' = std(`v') if year == 2020
+	replace not_missing = 0 if missing(`v') 
 }
 
 cluster kmeans std_pci_pre std_pop_census std_share_under_24 std_share_over_65 std_percent_urban if ///
-	year == 2020 & !missing(share_under_24), k(5) gen(kmean_demog)
+	year == 2020 & not_missing == 1, k(10) gen(kmean_demog)
 bysort fips: egen kmean_demog_group = mean(kmean_demog)
 
 ** Pull out kmeans cluster containing Multnomah
-gen tmp1 = kmean_demog if year == 2020 & !missing(share_under_24) & multnomah == 1
+gen tmp1 = kmean_demog if year == 2020 & multnomah == 1
 egen tmp2 = mean(tmp1)
 gen sample_demog = kmean_demog_group == tmp2
 drop tmp1 tmp2 std_* pci_pre
@@ -1632,6 +1643,177 @@ foreach otype in "n1" "n2" "agi" {
 } // END OUTCOME TYPE LOOP
 
 ********************************************************************************
+** META-REGRESSION: SPECIFICATION INFLUENCE ANALYSIS
+********************************************************************************
+
+/*
+Treat the SDID results as a dataset and run OLS regressions with
+tau (treatment effect) as the dependent variable and specification
+choice indicators as regressors. Produces coefplots showing which
+researcher decisions (donor pool, data source, covariates, etc.)
+drive the most variation in estimated treatment effects.
+*/
+
+** Palette for influence coefplots
+local col_main    "0 114 178"     // sea (p7)
+local col_zero    "153 153 153"   // gs10 (p2)
+
+** Reload clean results (spec curve section modified the data)
+use "${results}sdid/sdid_results.dta", clear
+
+** Parse outcome type from variable name
+gen outcome_type = ""
+replace outcome_type = "n1"  if strpos(outcome, "n1_") > 0
+replace outcome_type = "n2"  if strpos(outcome, "n2_") > 0
+replace outcome_type = "agi" if strpos(outcome, "agi_") > 0
+
+** Parse migration direction
+gen migration = ""
+replace migration = "net" if strpos(outcome, "_net_") > 0
+replace migration = "in"  if strpos(outcome, "_in_") > 0
+replace migration = "out" if strpos(outcome, "_out_") > 0
+
+** 1. Donor pool (5 levels, base = All Counties)
+gen donor_pool = .
+replace donor_pool = 1 if sample == "sample_all"
+replace donor_pool = 2 if sample == "sample_urban95"
+replace donor_pool = 3 if sample == "sample_urban75_covid"
+replace donor_pool = 4 if sample == "sample_demog"
+replace donor_pool = 5 if sample == "sample_stringency"
+label define donor_pool_lbl 1 "All Counties" 2 "Urban 95%" 			///
+	3 "COVID Match" 4 "Demog. Match" 5 "Stringency"
+label values donor_pool donor_pool_lbl
+
+** 2. Data source (4 levels, base = IRS Full)
+gen data_src = .
+replace data_src = 1 if strpos(sample_data, "_full_") > 0
+replace data_src = 2 if strpos(sample_data, "_389_") > 0
+replace data_src = 3 if strpos(sample_data, "acs_") > 0 			///
+	& strpos(sample_data, "_all") > 0
+replace data_src = 4 if strpos(sample_data, "acs_") > 0 			///
+	& strpos(sample_data, "_col") > 0
+label define data_src_lbl 1 "IRS (Full)" 2 "IRS (ACS Counties)" 	///
+	3 "ACS (All 25+)" 4 "ACS (College)"
+label values data_src data_src_lbl
+
+** 3. Out-of-state movers (binary)
+gen outstate = strpos(sample_data, "outstate") > 0
+label var outstate "Out-of-State Movers"
+
+** 4. Extended period (binary: 16-24 vs 16-22)
+gen period_1624 = strpos(sample_data, "16_24") > 0
+label var period_1624 "Extended Period (16-24)"
+
+** 5. Label existing binary variables
+label var controls "With Covariates"
+label var exclusion "Exclude 2020"
+
+** Verify no missing specification choices
+assert !missing(donor_pool)
+assert !missing(data_src)
+
+** Summary of specification choices
+dis _n "Specification choice summary:"
+tab donor_pool
+tab data_src
+tab outstate
+tab period_1624
+tab controls
+tab exclusion
+
+** Loop over outcome types and migration directions
+foreach otype in "n1" "n2" "agi" {
+	foreach migr in "out" "in" "net" {
+
+		** Labels for titles
+		if "`otype'" == "n1"  local otype_label "Returns"
+		else if "`otype'" == "n2"  local otype_label "Exemptions"
+		else if "`otype'" == "agi" local otype_label "AGI"
+
+		if "`migr'" == "net" local migr_label "Net Migration"
+		else if "`migr'" == "in"  local migr_label "In-Migration"
+		else if "`migr'" == "out" local migr_label "Out-Migration"
+
+		** Preserve and subset
+		preserve
+		keep if outcome_type == "`otype'" & migration == "`migr'"
+
+		** Check sufficient observations
+		qui count
+		local n_specs = r(N)
+		if `n_specs' < 10 {
+			dis "Skipping `otype' `migr': only `n_specs' specifications."
+			restore
+			continue
+		}
+
+		dis _n "========================================================"
+		dis "`otype_label': `migr_label' (`n_specs' specifications)"
+		dis "========================================================"
+
+		** Run meta-regression
+		** LHS: SDID treatment effect (tau)
+		** RHS: Indicators for each specification decision
+		** Base categories: All Counties (donor pool), IRS Full (data source)
+		reg tau 	ib1.donor_pool 		///
+					ib1.data_src 		///
+					outstate 			///
+					period_1624 		///
+					controls 			///
+					exclusion, 			///
+					robust
+
+		** Store regression stats for subtitle
+		local r2 : di %4.3f e(r2)
+		local n  : di %4.0f e(N)
+
+		** Coefplot
+		coefplot, drop(_cons) noomitted 							///
+			xline(0, lc("`col_zero'") lp(dash)) 					///
+			headings( 												///
+				2.donor_pool = "{bf:Donor Pool (vs. All Counties)}" 	///
+				2.data_src = "{bf:Data Source (vs. IRS Full)}" 		///
+				outstate = "{bf:Other Specification Choices}" 		///
+			) 														///
+			coeflabels( 											///
+				2.donor_pool = "Urban 95%" 							///
+				3.donor_pool = "COVID Match" 						///
+				4.donor_pool = "Demog. Match" 						///
+				5.donor_pool = "Stringency Match" 					///
+				2.data_src   = "IRS (ACS Counties)" 				///
+				3.data_src   = "ACS (All 25+)" 						///
+				4.data_src   = "ACS (College)" 						///
+				outstate     = "Out-of-State Movers" 				///
+				period_1624  = "Extended Period (16-24)" 			///
+				controls     = "With Covariates" 					///
+				exclusion    = "Exclude 2020" 						///
+			) 														///
+			msymbol(D) mcolor("`col_main'") 						///
+			ciopts(lcolor("`col_main'")) 							///
+			graphregion(color(white)) 								///
+			title("`otype_label': `migr_label'", size(medium)) 		///
+			subtitle("N = `n' specifications, R-sq = `r2'", 		///
+				size(small)) 										///
+			xtitle("Effect on SDID Estimate (pp)", size(small)) 	///
+			note("OLS with robust SEs. Each observation is one SDID specification." , size(vsmall))
+
+		** Export
+		graph export "${results}sdid/fig_sdid_influence_`otype'_`migr'.pdf", replace
+		graph export "${results}sdid/fig_sdid_influence_`otype'_`migr'.jpg", ///
+			as(jpg) quality(100) replace
+
+		** Overleaf copy
+		if ${overleaf} == 1 {
+			graph export 											///
+				"${ol_fig}fig_sdid_influence_`otype'_`migr'.pdf", replace
+		}
+
+		restore
+
+	} // END MIGRATION LOOP
+} // END OUTCOME TYPE LOOP
+
+********************************************************************************
 ** FINISH
 ********************************************************************************
 
@@ -1646,6 +1828,7 @@ dis "  - ${results}sdid/sdid_results.dta"
 dis "  - ${results}sdid/sdid_results.xlsx"
 dis "  - ${results}sdid/*/tab_sdid_*.tex (tables)"
 dis "  - ${results}sdid/fig_speccurve_*.pdf"
+dis "  - ${results}sdid/fig_sdid_influence_*.pdf"
 dis "=============================================="
 
 ** Close log

@@ -115,12 +115,15 @@ isid fips year
 ** Keep only sample with non-missing base populations
 drop if (missing(n1_out_1) | n1_out_1 == 0) & year <= 2022
 
-** Keep only sample with observations in each year
-** Note: balanced panel is required for SDID estimation
-bysort fips: gen ct = _N
-qui summ ct
-drop if ct < `r(max)'
-drop ct
+** Keep only counties with observations in every IRS year (2016-2022)
+** Note: balanced panel is required for SDID estimation. IRS-only
+**       counties span 2016-2022; ACS-matched counties extend to 2024.
+**       Require IRS-period balance for all counties here; ACS-period
+**       balance is enforced separately via acs_period indicators below.
+bysort fips: egen ct_irs = total(inrange(year, 2016, 2022))
+local n_irs_years = 2022 - 2016 + 1
+drop if ct_irs < `n_irs_years'
+drop ct_irs
 
 ********************************************************************************
 ** NARROW SAMPLE DEFINITION
