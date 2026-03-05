@@ -30,8 +30,8 @@ drafts/
 # Scratch / misc
 other/
 
-# R pipeline (work in progress, not yet ready for tracking)
-R/
+# Top-level R pipeline (work in progress, not yet ready for tracking)
+/R/
 
 # ========================================
 # Data: large / reproducible extracts
@@ -54,4 +54,5 @@ results/
 # ========================================
 code/old/
 code/logs/
+code/stata/logs/
 code/*.zip

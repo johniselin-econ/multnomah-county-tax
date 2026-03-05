@@ -115,7 +115,8 @@ download_ipums_acs <- function(project_root,
   invisible(TRUE)
 }
 
-if (exists("project_root") && exists("dir_data_acs") && exists("api_codes_path")) {
+if (exists("project_root") && exists("dir_data_acs") && exists("api_codes_path") &&
+    !exists(".sourced_by_main")) {
    download_ipums_acs(project_root, dir_data_acs, api_codes_path,
                       start_year = start_year, end_year = end_year,
                       overwrite_csv = overwrite_csv)

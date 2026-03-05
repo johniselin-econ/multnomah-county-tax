@@ -6,7 +6,7 @@
 *                data/irs/          — IRS SOI migration + county AGI CSVs
 *                data/demographic/  — BEA CAINC1, BLS, DOL files
 *                data/covid/        — NYTimes COVID CSV
-*                data/working/      — Census age shares (.csv + .dta)
+*                data/working/      — Census age shares (created by R)
 ******************************************************************************/
 
 ** Ensure expected directory structure exists
@@ -145,17 +145,13 @@ if _rc != 0 {
 }
 
 * ----------------------------
-* Census B01001: County Age Shares (via R/tidycensus)
+* Census B01001: County Age Shares (created by 00_multnomah.R)
 * ----------------------------
 capture confirm file "${data}working/age_shares_county.csv"
 if _rc {
-    di as txt "Downloading Census B01001 age shares via R ..."
-    local dir_fwd = subinstr("${dir}", "\", "/", .)
-    local api_fwd = subinstr("${dir}/api_codes.txt", "\", "/", .)
-    local script_fwd = subinstr("${code}R/census_age_shares.R", "\", "/", .)
-    rcall script "`script_fwd'", ///
-        args(project_root <- "`dir_fwd'"; ///
-             api_codes_path <- "`api_fwd'") vanilla
+    di as err "ERROR: age_shares_county.csv not found."
+    di as err "Run 00_multnomah.R first to download Census age share data."
+    exit 601
 }
 
 ** Import and save as Stata dataset
