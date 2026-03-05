@@ -14,56 +14,64 @@ This project analyzes whether the Multnomah County tax policy change affected mi
 - **Specification curve analysis** for robustness across data sources, samples, and covariates
 - **Revenue microsimulation** using TAXSIM to estimate fiscal impacts of tax-induced migration
 
-The primary codebase is **Stata**, with R helper scripts for the IPUMS API data download and choropleth mapping.
-
 ## Project Structure
 
 ```
 multnomah-county-tax/
-├── 00_multnomah.do                # Orchestrator (runs full pipeline)
-├── code/                          # Stata do-files
-│   ├── 01_clean_data.do           # Data cleaning and preparation
-│   ├── 02_sdid_analysis.do        # Synthetic DiD estimation
-│   ├── 02_did_analysis.do         # DiD + event study (ACS microdata)
-│   ├── 02_flow_analysis.do        # Flow-based analysis (IRS county flows)
-│   ├── 02_indiv_analysis.do       # Individual-level categorical analysis
-│   ├── 02_multi_analysis.do       # Multi-specification analysis
-│   ├── 02_descriptives.do         # Descriptive statistics
-│   ├── 02_revenue.do              # Revenue analysis
-│   ├── R/                         # R helpers called from Stata via rcall
-│   │   ├── api_code.R             # IPUMS API data download
-│   │   └── map_code.R             # Choropleth maps
-│   └── old/                       # Archived do-files
+├── 00_multnomah.R                 # R orchestrator (run FIRST)
+├── 00_multnomah.do                # Stata orchestrator (run SECOND)
+│
+├── code/
+│   ├── R/                         # R scripts
+│   │   ├── api_code.R             #   ACS microdata download (IPUMS API)
+│   │   ├── qwi_data.R            #   QWI download (LEHD bulk)
+│   │   ├── qcew_data.R           #   QCEW download (BLS)
+│   │   ├── census_age_shares.R   #   Census B01001 age shares (tidycensus)
+│   │   ├── fig_diagrams.R        #   Conceptual diagrams (PDF)
+│   │   ├── map_code.R            #   Choropleth maps (requires Stata output)
+│   │   ├── colors_plotplainblind.R  # Shared colorblind-safe palette
+│   │   └── utils.R               #   Shared utilities (API key reader)
+│   │
+│   └── stata/                     # Stata do-files
+│       ├── 01_clean_data.do       #   Data cleaning caller (runs 01a–01h)
+│       ├── 01a_programs.do        #   Labels & reusable programs
+│       ├── 01b_download.do        #   Auto-download IRS/BEA/COVID data
+│       ├── 01c_demographics.do    #   NHGIS, BEA, BLS demographics
+│       ├── 01d_covid.do           #   NYTimes COVID panel
+│       ├── 01e_acs.do             #   ACS microdata processing
+│       ├── 01f_irs_migration.do   #   IRS county + state migration
+│       ├── 01g_irs_agi.do         #   IRS county AGI by bracket
+│       ├── 01h_auxiliary.do       #   DOL childcare + property tax
+│       ├── 02_sdid_analysis.do    #   Synthetic DiD estimation
+│       ├── 02_narrow_sdid.do      #   Narrow SDID (similar-cities pool)
+│       ├── 02_otherout_sdid.do    #   SDID on non-migration outcomes
+│       ├── 02_quarterly_sdid.do   #   Quarterly SDID (QWI/QCEW)
+│       ├── 02_did_analysis.do     #   DiD + event study (ACS)
+│       ├── 02_flow_analysis.do    #   PPML flow models (IRS)
+│       ├── 02_indiv_analysis.do   #   Individual-level analysis
+│       ├── 02_descriptives.do     #   Descriptive statistics + maps
+│       ├── 02_revenue.do          #   Revenue microsimulation
+│       ├── 02_elasticities.do     #   Migration elasticities
+│       └── 02_appendix_data_quality.do  # Appendix: IRS data quality
 │
 ├── data/
-│   ├── acs/                       # ACS microdata (IPUMS extracts, gitignored)
-│   ├── irs/                       # IRS SOI migration data (county flows + AGI)
+│   ├── acs/                       # ACS microdata (gitignored, created by R)
+│   ├── irs/                       # IRS SOI files (auto-downloaded by Stata)
+│   ├── qwi/                       # QWI data (gitignored, created by R)
+│   ├── qcew/                      # QCEW data (gitignored, created by R)
 │   ├── covid/                     # NYTimes COVID-19 county data
 │   ├── demographic/               # Census/BEA/BLS demographics
-│   │   ├── CAINC1/                # BEA county personal income
-│   │   ├── bls/                   # BLS employment data
-│   │   ├── dol/                   # Dept of Labor data
-│   │   └── nhgis0031_csv/         # 2020 Census (NHGIS)
 │   ├── mapping/                   # Shapefiles (Metro District Boundary)
 │   ├── working/                   # Processed datasets (gitignored)
 │   ├── multnomah.xlsx             # Multnomah County reference data
 │   └── taxsim_state_codes.csv     # TAXSIM state code crosswalk
 │
-├── results/
-│   ├── sdid/                      # SDID outputs
-│   ├── did/                       # DiD regression outputs
-│   ├── flows/                     # Flow analysis outputs
-│   ├── individual/                # Individual-level analysis
-│   ├── maps/                      # Choropleth maps
-│   ├── revenue/                   # Revenue analysis
-│   └── tables/                    # Summary tables (LaTeX)
-│
-├── api_codes.txt                  # API keys (gitignored — see setup below)
+├── results/                       # All outputs (gitignored, regenerated by code)
+├── api_codes.txt                  # API keys (gitignored — see setup)
 ├── profile.do                     # Local user overrides (gitignored)
 ├── LICENSE
 ├── CITATION.cff
-├── STATA_REQUIREMENTS.txt         # Package installation guide
-├── .gitignore
+├── STATA_REQUIREMENTS.txt
 └── README.md
 ```
 
@@ -71,13 +79,16 @@ multnomah-county-tax/
 
 | Source | Description | Period | Access |
 |--------|-------------|--------|--------|
-| **ACS (IPUMS)** | Individual-level migration microdata | 2015-2024 | Registration required |
+| **ACS (IPUMS)** | Individual-level migration microdata | 2012–2024 | Registration required |
 | **NHGIS (IPUMS)** | 2020 Census county demographics | 2020 | Registration required |
-| **IRS SOI** | County-level migration flows (returns, exemptions, AGI) | 2015-2022 | Public domain |
+| **IRS SOI** | County-level migration flows (returns, exemptions, AGI) | 2012–2022 | Public domain |
 | **BEA CAINC1** | County personal income | varies | Public domain |
 | **BLS LAUS** | County employment data | varies | Public domain |
+| **BLS QCEW** | Quarterly employment and wages by county | 2012–2024 | Public domain |
+| **LEHD QWI** | Quarterly workforce indicators by county | 2012–2024 | Public domain |
+| **Census B01001** | County age distribution (ACS 5-year) | 2015–2019 | Public domain |
 | **DOL** | County-level childcare costs | 2022 | Public domain |
-| **NYTimes** | COVID-19 cases/deaths by county | 2020-2022 | [License](https://github.com/nytimes/covid-19-data/blob/master/LICENSE) |
+| **NYTimes** | COVID-19 cases/deaths by county | 2020–2022 | [License](https://github.com/nytimes/covid-19-data/blob/master/LICENSE) |
 
 **IPUMS citation requirement:** Use of IPUMS data (ACS and NHGIS) requires [registration](https://uma.pop.umn.edu/usa/user/new) and proper citation. See [IPUMS citation guidelines](https://www.ipums.org/about/citation). ACS microdata are downloaded via the IPUMS API and are not redistributed in this repository.
 
@@ -93,7 +104,7 @@ The primary analysis uses SDID to estimate the causal effect on migration:
 - **Treatment period**: Post-2020
 - **Outcomes**: Migration rates (in, out, net) for returns (n1), exemptions (n2), and AGI
 - **Donor pools**: All counties, urban top 389, COVID-matched, out-of-state
-- **Data sources**: IRS county flows (2016-2022), ACS microdata (2016-2024)
+- **Data sources**: IRS county flows (2016–2022), ACS microdata (2016–2024)
 
 ### Difference-in-Differences (DiD)
 
@@ -101,7 +112,7 @@ Individual-level DiD using ACS microdata:
 
 - **Treatment**: College-educated x post-2020
 - **Samples**: Multnomah residents (out-migration), West Coast (in-migration), Lower 48 (in-migration)
-- **Age groups**: 25-44, 45-64, 65+
+- **Age groups**: 25–44, 45–64, 65+
 - **Fixed effects**: Year, origin county, demographic categories
 - **Year 2020 excluded** from all regressions (COVID robustness)
 
@@ -119,7 +130,19 @@ A TAXSIM-based microsimulation calibrated to 2019 ACS microdata and IRS administ
 
 ## Setup
 
-### 1. Stata Packages
+### 1. R Packages
+
+Install the required R packages:
+
+```r
+install.packages(c(
+  "ipumsr", "tidycensus", "dplyr", "tidyr", "readr", "stringr",
+  "sf", "tigris", "ggplot2", "tidyverse", "readxl",
+  "here", "patchwork", "cowplot", "grid"
+))
+```
+
+### 2. Stata Packages
 
 Install all required packages:
 
@@ -134,42 +157,26 @@ ssc install coefplot, replace
 ssc install blindschemes, replace
 ssc install geodist, replace
 ssc install ipfraking, replace
+ssc install distinct, replace
 net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
 ```
 
 See `STATA_REQUIREMENTS.txt` for verification instructions.
 
-### 2. R Packages (used by Stata via rcall)
+### 3. API Keys
 
-Install [`rcall`](https://github.com/haghish/rcall) so Stata can invoke R scripts:
+The pipeline downloads data from IPUMS and the Census Bureau via their APIs.
 
-```stata
-net install github, from("https://haghish.github.io/github/")
-github install haghish/rcall, stable
-```
+1. **IPUMS**: Register at <https://uma.pop.umn.edu/usa/user/new> and request an API key.
+2. **Census**: Request a key at <https://api.census.gov/data/key_signup.html>.
 
-Then install the required R packages:
-
-```r
-install.packages(c("ipumsr", "dplyr", "stringr", "sf", "tigris", "ggplot2"))
-```
-
-### 3. IPUMS API Key
-
-The pipeline downloads ACS microdata from [IPUMS USA](https://usa.ipums.org/usa/) via the API.
-
-1. **Register** at <https://uma.pop.umn.edu/usa/user/new> and request an API key from your account settings.
-
-2. **Create `api_codes.txt`** in the project root (this file is gitignored):
+3. **Create `api_codes.txt`** in the project root (this file is gitignored):
 
    ```
    name, code
    "ipums", "YOUR_IPUMS_API_KEY_HERE"
-   "bls", ""
-   "dol", ""
+   "census", "YOUR_CENSUS_API_KEY_HERE"
    ```
-
-   Only the IPUMS key is required.
 
 ### 4. Local Configuration (optional)
 
@@ -182,13 +189,34 @@ global oth_path "C:/Users/yourname/Dropbox/Apps/Overleaf/Your Project/"
 
 ## Usage
 
+The pipeline runs in two stages: **R first, then Stata**.
+
+### Step 1: Run R pipeline
+
+From the project root directory:
+
+```r
+source("00_multnomah.R")
+```
+
+This downloads all external data (ACS microdata, QWI, QCEW, Census age shares) and generates R-based figures. Scripts with missing Stata output (e.g., maps) skip gracefully and can be re-run after Step 2.
+
+### Step 2: Run Stata pipeline
+
 ```stata
-* Set working directory to project root, then run the full pipeline
 cd "path/to/multnomah-county-tax"
 do "00_multnomah.do"
 ```
 
-The orchestrator downloads ACS data via the IPUMS API (skipping years already on disk), cleans all data sources, and runs the full analysis pipeline.
+This cleans all data sources and runs the full analysis (SDID, DiD, flows, revenue, etc.).
+
+### Step 3 (optional): Re-run R for maps
+
+After Stata creates the working data, re-run the R script to generate maps that depend on Stata output:
+
+```r
+source("00_multnomah.R")
+```
 
 ## Citation
 
