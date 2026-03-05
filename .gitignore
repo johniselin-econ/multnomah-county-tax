@@ -1,70 +1,57 @@
-# Stata temporary and log files
+# OS / editor artifacts
+.DS_Store
 *.tmp
 *.stswp
+
+# Stata artifacts
 *.log
-.DS_Store
+__pll*
 
 # R artifacts
 .Rhistory
 .RData
 .Rproj.user
 
-# Ignore all raw IPUMS extracts (large, reproducible from scripts)
-data/acs/*.rds
-data/acs/*.dat.gz
-data/acs/*.txt
-data/acs/*.xml
-data/acs/*.csv
-
-# Ignore IRS csv files
-data/irs/*.csv
-
-# Ignore Working data
-data/working/*
-
-# Ignore QWI data
-data/qwi/*.csv
-data/qwi/raw/
-
-# Ignore QCEW data
-data/qcew/*.csv
-data/qcew/raw/
-
-# Ignore BEA Data
-data/demographic/CAINC1/*.csv
-data/demographic/CAINC1/*.xml
-data/demographic/CAINC1/*.html
-data/demographic/bls/*
-
-# Local configuration files
+# Local configuration (user-specific)
 profile.do
 api_codes.txt
 code/00_ipums_api.R
-
-# R pipeline (work in progress, not yet ready for tracking)
-R/
 
 # Claude Code
 .claude/
 quality_reports/
 
-# Stata log files (machine-specific run artifacts)
-code/logs/
-
-# Archived results (not needed for replication)
-results/old/
+# Personal notes
+todo.txt
 
 # Drafts (shared separately)
 drafts/
 
-# SDID output subdirectories (PDFs, JPGs, temp files, etc.)
-results/sdid/*/*
-
-# Flow analysis temp files
-results/flows/temp_results/
-
-# Stata parallel processing temp files
-__pll*
-
-# Other
+# Scratch / misc
 other/
+
+# R pipeline (work in progress, not yet ready for tracking)
+R/
+
+# ========================================
+# Data: large / reproducible extracts
+# ========================================
+data/acs/
+data/irs/*.csv
+data/working/
+data/qwi/
+data/qcew/
+data/demographic/CAINC1/
+data/demographic/bls/
+
+# ========================================
+# Results: all generated from code
+# ========================================
+results/
+
+# ========================================
+# Archives and deprecated code
+# ========================================
+code/old/
+code/logs/
+code/*.zip
