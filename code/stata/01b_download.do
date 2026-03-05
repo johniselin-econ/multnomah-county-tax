@@ -122,7 +122,9 @@ if "`covid_file'"=="" {
 }
 
 * ----------------------------
-* Verify manual downloads (DOL + BLS)
+* Verify public data downloads (DOL + BLS)
+* These are now auto-downloaded by 00_multnomah.R (download_public_data.R).
+* Keep verification as a safety check but warn instead of stopping.
 * ----------------------------
 
 local dol_dir "${data}demographic/dol/NDCP2022.xlsx"
@@ -131,17 +133,19 @@ local bls_dir "${data}demographic/bls/la.data.64.County"
 capture confirm file `dol_dir'
 
 if _rc != 0 {
-    display "Error: The file `dol_dir' was not found."
-    display "Execution of the do-file is stopping."
-    exit
+    di as err "WARNING: `dol_dir' not found."
+    di as err "Run 00_multnomah.R first, or download manually from:"
+    di as err "  https://www.dol.gov/sites/dolgov/files/WB/NDCP2022.xlsx"
+    exit 601
 }
 
 capture confirm file `bls_dir'
 
 if _rc != 0 {
-    display "Error: The file `bls_dir' was not found."
-    display "Execution of the do-file is stopping."
-    exit
+    di as err "WARNING: `bls_dir' not found."
+    di as err "Run 00_multnomah.R first, or download manually from:"
+    di as err "  https://download.bls.gov/pub/time.series/la/la.data.64.County"
+    exit 601
 }
 
 * ----------------------------

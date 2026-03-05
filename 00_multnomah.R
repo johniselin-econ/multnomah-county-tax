@@ -8,7 +8,8 @@
 # Purpose: Runs all R scripts for this project. Execute this BEFORE running
 #          00_multnomah.do (Stata). The pipeline is:
 #
-#   1. Data pulls    — ACS microdata, QWI, QCEW, Census age shares
+#   1. Data pulls    — ACS microdata, QWI, QCEW, Census age shares,
+#                      BLS/DOL/centroids, NHGIS demographics
 #   2. Stata         — Run 00_multnomah.do separately after this script
 #   3. R figures     — Maps and diagrams (run after Stata creates working data)
 #
@@ -24,12 +25,34 @@
 cat("=== 00_multnomah.R ===\n")
 cat("Start time:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n\n")
 
-# Set project root to the directory containing this script
-project_root <- tryCatch(
-  normalizePath(dirname(sys.frame(1)$ofile), winslash = "/"),
-  error = function(e) normalizePath(".", winslash = "/")
+# Install missing packages
+required_packages <- c(
+  "here",         # project root detection
+  "dplyr",        # data manipulation (api_code, qwi, qcew, census_age_shares)
+  "readr",        # CSV I/O (qwi, qcew, census_age_shares, download scripts)
+  "tidyr",        # reshaping (census_age_shares)
+  "stringr",      # string ops (api_code)
+  "ipumsr",       # IPUMS API (api_code, download_nhgis)
+  "tidycensus",   # Census API (census_age_shares)
+  "sf",           # spatial (map_code)
+  "tigris",       # TIGER shapefiles (map_code)
+  "readxl",       # Excel import (map_code)
+  "patchwork",    # plot composition (map_code)
+  "cowplot",      # plot composition (map_code)
+  "ggplot2"       # plotting (map_code, via tidyverse)
 )
+
+missing_packages <- required_packages[!vapply(required_packages, requireNamespace,
+                                              logical(1), quietly = TRUE)]
+if (length(missing_packages) > 0) {
+  cat("Installing missing packages:", paste(missing_packages, collapse = ", "), "\n")
+  install.packages(missing_packages, repos = "https://cloud.r-project.org")
+}
+
+# Project root (uses .Rproj / .git as anchor)
+project_root <- here::here()
 setwd(project_root)
+cat("Project root:", project_root, "\n\n")
 
 # Paths
 dir_code_r     <- file.path(project_root, "code", "R")
@@ -105,6 +128,35 @@ if (!file.exists(age_shares_path) || isTRUE(overwrite_csv)) {
   # Set variables expected by census_age_shares.R (script-based, not function-based)
   # project_root and api_codes_path are already set above
   source(file.path(dir_code_r, "census_age_shares.R"))
+} else {
+  cat("   Skipping (file exists). Set overwrite_csv=TRUE to re-download.\n")
+}
+cat("   Done.\n\n")
+
+
+# ---- 1e. Public data downloads (BLS, DOL, centroids) -------------------------
+
+cat(">> 1e. Public data (BLS LAUS, DOL childcare, county centroids)\n")
+source(file.path(dir_code_r, "download_public_data.R"))
+download_bls_laus(dir_data, overwrite = overwrite_csv)
+download_dol_childcare(dir_data, overwrite = overwrite_csv)
+download_county_centroids(dir_data, overwrite = overwrite_csv)
+cat("   Done.\n\n")
+
+
+# ---- 1f. NHGIS demographics (IPUMS API) --------------------------------------
+
+cat(">> 1f. NHGIS demographics (IPUMS API)\n")
+nhgis_path <- file.path(dir_data, "demographic", "nhgis0031_csv",
+                         "nhgis0031_ts_nominal_county.csv")
+
+if (!file.exists(nhgis_path) || isTRUE(overwrite_csv)) {
+  source(file.path(dir_code_r, "download_nhgis.R"))
+  download_nhgis_demographics(
+    dir_data       = dir_data,
+    api_codes_path = api_codes_path,
+    overwrite      = overwrite_csv
+  )
 } else {
   cat("   Skipping (file exists). Set overwrite_csv=TRUE to re-download.\n")
 }
