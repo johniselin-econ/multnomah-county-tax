@@ -9,38 +9,9 @@ suppressPackageStartupMessages({
   library(stringr)
 })
 
-# ---- Helper: read IPUMS key from api_codes.txt (flexible) ----
-.read_ipums_key <- function(api_codes_path) {
-  if (!file.exists(api_codes_path)) {
-    stop("STOP, NO API KEYS: file not found at: ", api_codes_path, call. = FALSE)
-  }
-  
-  api_codes <- tryCatch(
-    read.delim(api_codes_path, sep = ",", header = TRUE, stringsAsFactors = FALSE),
-    error = function(e) read.delim(api_codes_path, sep = ",", header = FALSE, stringsAsFactors = FALSE)
-  )
-  
-  # Try: find a row with "ipums" in column 1 (common pattern)
-  ipums_key <- NA_character_
-  if (ncol(api_codes) >= 2) {
-    col1 <- tolower(trimws(as.character(api_codes[[1]])))
-    idx  <- which(grepl("ipums", col1))
-    if (length(idx) >= 1) ipums_key <- as.character(api_codes[idx[1], 2])
-  }
-  
-  # Fallback: first row, second column (your original assumption)
-  if (is.na(ipums_key) && ncol(api_codes) >= 2 && nrow(api_codes) >= 1) {
-    ipums_key <- as.character(api_codes[1, 2])
-  }
-  
-  ipums_key <- stringr::str_trim(ipums_key)
-  
-  if (is.na(ipums_key) || ipums_key == "") {
-    stop("Could not parse an IPUMS key from: ", api_codes_path, call. = FALSE)
-  }
-  
-  ipums_key
-}
+# ---- Shared API key utility ----
+.this_dir_api <- tryCatch(dirname(sys.frame(1)$ofile), error = function(e) "code/R")
+source(file.path(.this_dir_api, "utils.R"))
 
 # ---- Main function ----
 download_ipums_acs <- function(project_root,
@@ -64,7 +35,7 @@ download_ipums_acs <- function(project_root,
   setwd(project_root)
   
   # IPUMS key setup
-  ipums_key <- .read_ipums_key(api_codes_path)
+  ipums_key <- read_api_key(api_codes_path, "ipums")
   ipumsr::set_ipums_api_key(ipums_key, save = TRUE, overwrite = TRUE)
   
   # Years

@@ -6,7 +6,7 @@
 ******************************************************************************/
 
 ** Loop over years (extended back to 2011 for appendix)
-forvalues y = 11(1)22 {
+forvalues y = $start_yy_irs_download(1)$end_yy_irs_agi {
 
 	** 2012 uses a different filename convention
 	if `y' == 12 {
@@ -87,7 +87,7 @@ forvalues y = 11(1)22 {
 ** Append data
 
 ** Loop over years (extended back to 2011 for appendix)
-forvalues y = 11(1)22 {
+forvalues y = $start_yy_irs_download(1)$end_yy_irs_agi {
 
 	** Append
 	append using "${data}working/irs_county_all_`y'"

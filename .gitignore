@@ -60,6 +60,9 @@ drafts/
 # SDID output subdirectories (PDFs, JPGs, temp files, etc.)
 results/sdid/*/*
 
+# Flow analysis temp files
+results/flows/temp_results/
+
 # Stata parallel processing temp files
 __pll*
 

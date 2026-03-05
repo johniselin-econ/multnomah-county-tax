@@ -55,6 +55,10 @@ local col_ref  "153 153 153"  // gs10 (p2) — reference lines
 ** Parameters
 local reps = 100
 
+** Fallback defaults for standalone execution (not via 00_multnomah.do)
+if "${use_parallel}" == "" global use_parallel 0
+if "${n_clusters}" == ""   global n_clusters 1
+
 ** Debug mode: set to 1 to run on a random subset of counties for faster testing
 ** Set to 0 for full production run
 local debug = 0

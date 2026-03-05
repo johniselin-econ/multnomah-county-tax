@@ -1,7 +1,7 @@
 /*******************************************************************************
 File Name: 		00_multnomah.do
 Creator: 		John Iselin
-Date Update:	December 12, 2025
+Date Update:	March 3rd, 2026
 
 Purpose: 	Runs the analysis on the effect of tax changes on migration in 
 			Multnomah County, Oregon
@@ -91,6 +91,13 @@ global start_year_irs_analysis = 2016	// Main analysis start (unchanged)
 global start_year_acs = 2012			// Extended back for appendix comparison
 global end_year_acs = 2024
 
+** IRS file year ranges (2-digit)
+global start_yy_irs_download = 11		// IRS file download start (2011-12 flows)
+global end_yy_irs_migration  = 21		// IRS migration file end (2021-22 flows)
+global end_yy_irs_agi        = 22		// IRS AGI file end (2022 data)
+global start_yy_irs_county   = 12		// County data processing start
+global end_yy_irs_county     = 22		// County data processing end
+
 
 ** CALL R CODE TO IMPORT IPUMS DATA
 rcall script "${code}R/api_code.R", ///
@@ -152,10 +159,10 @@ rcall script "${code}R/map_code.R", vanilla
 rcall script "${code}R/fig_diagrams.R", vanilla
 
 ** Difference-in-Difference (ACS)
-do ${code}02_did_analysis.do
+*do ${code}02_did_analysis.do
 
 ** Flow-based models (IRS)
-do ${code}02_flow_analysis.do
+*do ${code}02_flow_analysis.do
 
 ** Synthetic Difference-in-Difference Analysis
 do ${code}02_sdid_analysis.do

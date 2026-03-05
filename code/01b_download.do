@@ -25,7 +25,7 @@ capture mkdir "${data}covid"
 * ----------------------------
 local irs_base "https://www.irs.gov/pub/irs-soi"
 
-forvalues yy = 11/21 {
+forvalues yy = $start_yy_irs_download/$end_yy_irs_migration {
     local zz = `yy' + 1
     local fn_out "countyoutflow`yy'`zz'.csv"
     local fn_in  "countyinflow`yy'`zz'.csv"
@@ -46,7 +46,7 @@ forvalues yy = 11/21 {
 * ----------------------------
 * IRS SOI: county income (AGI) files
 * ----------------------------
-forvalues yy = 11/22 {
+forvalues yy = $start_yy_irs_download/$end_yy_irs_agi {
     ** 2012 uses a different filename convention (12cyallagi vs YYincyallagi)
     if `yy' == 12 {
         local fn_inc "12cyallagi.csv"
@@ -90,7 +90,7 @@ if "`bea_files'"=="" {
 * ----------------------------
 * IRS SOI: state-level migration files
 * ----------------------------
-forvalues yy = 11/21 {
+forvalues yy = $start_yy_irs_download/$end_yy_irs_migration {
     local zz = `yy' + 1
     local fn_sout "stateoutflow`yy'`zz'.csv"
     local fn_sin  "stateinflow`yy'`zz'.csv"

@@ -15,259 +15,194 @@
 //--------------------------------------------------
 // STEP 5a: County-Level IRS Migration
 //--------------------------------------------------
+// Outflow and inflow share 95% of their logic; only the variable prefixes
+// (y1_/y2_) and save targets differ. We loop over direction to avoid
+// duplicating ~100 lines. The flow-file creation is outflow-only.
 
 ** Loop over years (extended back to 2012 for appendix data quality analysis)
-forvalues y = 12(1)22 {
+forvalues y = $start_yy_irs_county(1)$end_yy_irs_county {
 
 	local start = `y' - 1
 	local end = `y'
 
-	** Import data (out)
-	import delimited "${data}irs/countyoutflow`start'`end'.csv", clear
+	foreach direction in "out" "in" {
 
-	** Describe data
-	des
+		** --- Direction-specific locals ---
+		** Outflow: y2_ is "other" side (destination), y1_ is "home" (origin)
+		** Inflow:  y1_ is "other" side (origin),      y2_ is "home" (destination)
+		if "`direction'" == "out" {
+			local file_prefix   "countyoutflow"
+			local other_state   "y2_state"
+			local agg_state     "y2_statefips"
+			local agg_county    "y2_countyfips"
+			local home_state    "y1_statefips"
+			local home_county   "y1_countyfips"
+			local drop_prefix   "y2"
+			local label_geo     "origin"
+		}
+		else {
+			local file_prefix   "countyinflow"
+			local other_state   "y1_state"
+			local agg_state     "y1_statefips"
+			local agg_county    "y1_countyfips"
+			local home_state    "y2_statefips"
+			local home_county   "y2_countyfips"
+			local drop_prefix   "y1"
+			local label_geo     "dest."
+		}
 
-	** Generate year (end year)
-	gen year = 2000 + `y'
+		** Import data
+		import delimited "${data}irs/`file_prefix'`start'`end'.csv", clear
+		des
 
-	** Drop Regional Values
-	drop if y2_state == "DS"
+		** Generate year (end year)
+		gen year = 2000 + `y'
 
-	** Drop Foreign Migration
-	drop if y2_state == "FR"
+		** Drop regional values and foreign migration
+		drop if `other_state' == "DS"
+		drop if `other_state' == "FR"
 
-	** Drop observations without a county
-	drop if y1_countyfips == 0
+		** Drop observations without a home county
+		drop if `home_county' == 0
 
-	** Deal with suppressed values
-	unsuppress n1 n2 agi
+		** Deal with suppressed values
+		unsuppress n1 n2 agi
 
-	** Drop unnecc variables
-	drop y2_state y2_countyname
+		** Outflow only: save full data for flow file creation
+		if "`direction'" == "out" {
+			capture drop `other_state'
+			capture drop `drop_prefix'_countyname
+			tempfile tmp
+			save `tmp'
+		}
 
-	** Create two versions: gross and net
-	tempfile tmp
-	save `tmp'
+		** Keep gross categories
+		** IRS aggregate pseudo-FIPS codes:
+		**   96 = total migration, 97 = domestic subtotals
+		**     county == 0 = total domestic, 1 = within-state, 3 = interstate
+		**   98 = foreign migration
+		** Self-matches (same state+county in y1 and y2) = non-movers.
+		keep if ///
+			(y1_statefips == y2_statefips & y1_countyfips == y2_countyfips) | ///
+			inlist(`agg_state', 96, 97, 98)
 
-	** Gross first
+		** Create move_type
+		gen move_type = 0
 
-	** Keep gross categories
-	** IRS aggregate pseudo-FIPS codes:
-	**   y2_statefips == 96 = total migration (all categories)
-	**   y2_statefips == 97 = domestic migration subtotals
-	**     county == 0 = total domestic, county == 1 = within-state, county == 3 = interstate
-	**   y2_statefips == 98 = foreign migration
-	** Self-matches (same state+county in y1 and y2) = non-movers.
-	keep if ///
-		(y1_statefips == y2_statefips & y1_countyfips == y2_countyfips) |	///
-		inlist(y2_statefips, 96, 97, 98)
+		** Stayers
+		replace move_type = 1 if (y1_statefips == y2_statefips) & ///
+		                         (y1_countyfips == y2_countyfips)
 
-	** Clean up
-	gen move_type = 0
+		** Movers
+		replace move_type = 2 if `agg_state' == 96 		// ALL
+		replace move_type = 3 if `agg_state' == 97 & 	///
+		                         `agg_county' == 0 		// Domestic Total
+		replace move_type = 4 if `agg_state' == 97 & 	///
+		                         `agg_county' == 1 		// Within-state
+		replace move_type = 5 if `agg_state' == 97 & 	///
+		                         `agg_county' == 3 		// Between-states
+		replace move_type = 6 if `agg_state' == 98 		// Foreign
 
-	** Stayers
-	replace move_type = 1 if	(y1_statefips == y2_statefips) & 	///
-								(y1_countyfips == y2_countyfips)
+		** Label movers
+		label values move_type lb_move_type
 
-	** Movers
-	replace move_type = 2 if 	y2_statefips == 96 		// ALL
-	replace move_type = 3 if 	y2_statefips == 97 & 	///
-								y2_countyfips == 0 		// Domestic Total
-	replace move_type = 4 if 	y2_statefips == 97 & 	///
-								y2_countyfips == 1 		// Within-state
-	replace move_type = 5 if 	y2_statefips == 97 & 	///
-								y2_countyfips == 3 		// Between-states
-	replace move_type = 6 if 	y2_statefips == 98 		// Foreign
+		** Generate total category
+		foreach var of varlist n1 n2 agi {
+			gen tmp_v = `var' if inlist(move_type, 1, 2)
+			bysort `home_state' `home_county': egen `var'_total = total(tmp_v)
+			drop tmp_v
+		} // END VAR LOOP
 
-	** Label movers
-	label values move_type lb_move_type
+		** Drop other-side variables
+		drop `drop_prefix'_*
 
-	** Generate total category
-	foreach var of varlist n1 n2 agi {
+		** Sort and order
+		sort year `home_state' `home_county' move_type
+		order year `home_state' `home_county' move_type
 
-		gen tmp = `var' if inlist(move_type, 1, 2)
-		bysort y1_statefips y1_countyfips: egen `var'_total = total(tmp)
-		drop tmp
+		** Rename to standard names
+		rename `home_county' county_fips
+		rename `home_state' state_fips
 
-	} // END VAR LOOP
+		** Label variables
+		label var year "Tax year (year before move)"
+		label var state_fips "State FIPS code (`label_geo' state)"
+		label var county_fips "County FIPS code (`label_geo' county)"
+		label var move_type "Mover category"
+		label var n1 "Number of returns"
+		label var n2 "Number of exemptions"
+		label var agi "Adjusted Gross Income"
+		label var n1_total "Number of returns, county total (`label_geo')"
+		label var n2_total "Number of exemptions, county total (`label_geo')"
+		label var agi_total "Adjusted Gross Income, county total (`label_geo')"
 
-	** Drop unnecc variables
-	drop y2_*
+		** Save
+		save "${data}working/irs_county_gross_`direction'_`y'", replace
 
-	** Sort
-	sort year y1_statefips y1_countyfips move_type
+		** --- Outflow only: create merge file and flow file ---
+		if "`direction'" == "out" {
 
-	** Order
-	order year y1_statefips y1_countyfips move_type
+			** Create version for merge with net
+			keep if move_type == 3
 
-	** Rename
-	rename y1_countyfips county_fips
-	rename y1_statefips state_fips
+			rename n1 n1_mover
+			rename n2 n2_mover
+			rename agi agi_mover
 
-	** Label variables
-	label var year "Tax year (year before move)"
-	label var state_fips "State FIPS code (origin state)"
-	label var county_fips "County FIPS code (origin county)"
-	label var move_type "Mover category"
-	label var n1 "Number of returns"
-	label var n2 "Number of exemptions"
-	label var agi "Adjusted Gross Income"
-	label var n1_total "Number of returns, county total (origin)"
-	label var n2_total "Number of exemptions, county total (origin)"
-	label var agi_total "Adjusted Gross Income, county total (origin)"
+			label var n1_mover "Number of domestic mover returns"
+			label var n2_mover "Number of domestic mover exemptions"
+			label var agi_mover "Adjusted Gross Income, domestic movers"
 
-	** Save
-	save "${data}working/irs_county_gross_out_`y'", replace
+			tempfile merge
+			save `merge'
+			clear
 
-	** Create version for merge with net
-	keep if move_type == 3
+			** Create flow file
+			use `tmp', clear
 
-	** Rename variables
-	rename n1 n1_mover
-	rename n2 n2_mover
-	rename agi agi_mover
+			** Drop aggregate values
+			drop if inlist(y2_statefips, 96, 97, 98)
+			drop if (y1_statefips == y2_statefips & y1_countyfips == y2_countyfips)
 
-	label var n1_mover "Number of domestic mover returns"
-	label var n2_mover "Number of domestic mover exemptions"
-	label var agi_mover "Adjusted Gross Income, domestic movers"
+			sort year y1_statefips y1_countyfips y2_statefips y2_countyfips
+			order year y1_statefips y1_countyfips y2_statefips y2_countyfips
 
-	** Save as temp file
-	tempfile merge
-	save `merge'
-	clear
+			rename y1_countyfips county_fips
+			rename y1_statefips state_fips
+			rename y2_countyfips y2_county_fips
+			rename y2_statefips y2_state_fips
 
-	** Next, create flow file
-	use `tmp', clear
+			label var year "Tax year (year before move)"
+			label var state_fips "State FIPS code (origin state)"
+			label var county_fips "County FIPS code (origin county)"
+			label var y2_state_fips "State FIPS code (dest. state)"
+			label var y2_county_fips "County FIPS code (dest. county)"
+			label var n1 "Number of returns"
+			label var n2 "Number of exemptions"
+			label var agi "Adjusted Gross Income"
 
-	** Drop aggregate values
-	drop if inlist(y2_statefips, 96, 97, 98)
-	drop if (y1_statefips == y2_statefips & y1_countyfips == y2_countyfips)
+			merge m:1 state_fips county_fips using `merge', nogen keep(master match)
 
-	** Sort
-	sort year y1_statefips y1_countyfips y2_statefips y2_countyfips
+			rename state_fips state_fips_o
+			rename county_fips county_fips_o
+			rename y2_* *_d
 
-	** Order
-	order year y1_statefips y1_countyfips y2_statefips y2_countyfips
+			drop move_type
 
+			** Log duplicate drops (known issue in IRS 2013-2014 vintage)
+			qui duplicates tag, gen(_dup)
+			qui count if _dup > 0
+			if r(N) > 0 di as txt "  Dropped " r(N) " duplicate rows in year `y' (known IRS vintage issue)"
+			drop _dup
+			duplicates drop
 
-	** Rename
-	rename y1_countyfips county_fips
-	rename y1_statefips state_fips
-	rename y2_countyfips y2_county_fips
-	rename y2_statefips y2_state_fips
+			save "${data}working/irs_county_flow_`y'", replace
 
-	** Label variables
-	label var year "Tax year (year before move)"
-	label var state_fips "State FIPS code (origin state)"
-	label var county_fips "County FIPS code (origin county)"
-	label var y2_state_fips "State FIPS code (dest. state)"
-	label var y2_county_fips "County FIPS code (dest. county)"
-	label var n1 "Number of returns"
-	label var n2 "Number of exemptions"
-	label var agi "Adjusted Gross Income"
+		} // END OUTFLOW-ONLY BLOCK
 
-	** Merge with county of origin data
-	merge m:1 state_fips county_fips using `merge', nogen keep(master match)
+		clear
 
-	** Rename
-	rename state_fips state_fips_o
-	rename county_fips county_fips_o
-	rename y2_* *_d
-
-	** Drop unnecc variable
-	drop move_type
-
-	** Drop exact duplicate rows (known issue in IRS 2013-2014 vintage)
-	duplicates drop
-
-	** Save
-	save "${data}working/irs_county_flow_`y'", replace
-	clear
-
-	** Import data (in)
-	import delimited "${data}irs/countyinflow`start'`end'.csv", clear
-
-	** Describe data
-	des
-
-	** Generate year
-	gen year = 2000 + `y'
-
-	** Drop Regional Values
-	drop if y1_state == "DS"
-
-	** Drop Foreign Migration
-	drop if y1_state == "FR"
-
-	** Drop observations with no county ID
-	drop if y2_countyfips == 0
-
-	** Keep gross categories
-	keep if ///
-		(y1_statefips == y2_statefips & y1_countyfips == y2_countyfips) |	///
-		inlist(y1_statefips, 96, 97, 98)
-
-	** Clean up
-	gen move_type = 0
-
-	** Deal with suppressed values
-	unsuppress n1 n2 agi
-
-	** Stayers
-	replace move_type = 1 if	(y1_statefips == y2_statefips) & 	///
-								(y1_countyfips == y2_countyfips)
-
-	** Movers
-	replace move_type = 2 if 	y1_statefips == 96 		// ALL
-	replace move_type = 3 if 	y1_statefips == 97 & 	///
-								y1_countyfips == 0 		// Domestic Total
-	replace move_type = 4 if 	y1_statefips == 97 & 	///
-								y1_countyfips == 1 		// Within-state
-	replace move_type = 5 if 	y1_statefips == 97 & 	///
-								y1_countyfips == 3 		// Between-states
-	replace move_type = 6 if 	y1_statefips == 98 		// Foreign
-
-	** Label move variable
-	label values move_type lb_move_type
-
-	** Generate total category
-	foreach var of varlist n1 n2 agi {
-
-		gen tmp = `var' if inlist(move_type, 1, 2)
-		bysort y2_statefips y2_countyfips: egen `var'_total = total(tmp)
-		drop tmp
-
-	} // END VAR LOOP
-
-	** Drop unnecc variables
-	drop y1_*
-
-	** Sort
-	sort year y2_statefips y2_countyfips move_type
-
-	** Order
-	order year y2_statefips y2_countyfips move_type
-
-	** Rename
-	rename y2_countyfips county_fips
-	rename y2_statefips state_fips
-
-	** Label variables
-	label var year "Tax year (year before move)"
-	label var state_fips "State FIPS code (dest. state)"
-	label var county_fips "County FIPS code (dest. county)"
-	label var move_type "Mover category"
-	label var n1 "Number of returns"
-	label var n2 "Number of exemptions"
-	label var agi "Adjusted Gross Income"
-	label var n1_total "Number of returns, county total (dest.)"
-	label var n2_total "Number of exemptions, county total (dest.)"
-	label var agi_total "Adjusted Gross Income, county total (dest.)"
-
-	** Save
-	save "${data}working/irs_county_gross_in_`y'", replace
-	clear
+	} // END DIRECTION LOOP
 
 } // END YEAR LOOP
 
@@ -280,7 +215,7 @@ foreach file in "irs_county_gross_in" "irs_county_gross_out" "irs_county_flow"{
 
 
 	** Loop over years (extended back to 2012 for appendix)
-	forvalues y = 12(1)22 {
+	forvalues y = $start_yy_irs_county(1)$end_yy_irs_county {
 
 		** Append
 		append using "${data}working/`file'_`y'"
@@ -442,7 +377,7 @@ clear
 //--------------------------------------------------
 
 ** Loop over years (extended back to 2012 for appendix)
-forvalues y = 12(1)22 {
+forvalues y = $start_yy_irs_county(1)$end_yy_irs_county {
 
 	local start = `y' - 1
 	local end = `y'
@@ -560,7 +495,7 @@ forvalues y = 12(1)22 {
 
 ** Append outflow files
 clear
-forvalues y = 12(1)22 {
+forvalues y = $start_yy_irs_county(1)$end_yy_irs_county {
 	append using `state_out_`y''
 }
 
@@ -576,7 +511,7 @@ save `state_gross_out'
 clear
 
 ** Append inflow files
-forvalues y = 12(1)22 {
+forvalues y = $start_yy_irs_county(1)$end_yy_irs_county {
 	append using `state_in_`y''
 }
 

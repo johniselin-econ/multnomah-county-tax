@@ -51,6 +51,10 @@ local col_ref          "153 153 153"  // gs10 (p2) — reference lines
 ** Number of bootstrap replications
 local reps = 100
 
+** Fallback defaults for standalone execution (not via 00_multnomah.do)
+if "${use_parallel}" == "" global use_parallel 0
+if "${n_clusters}" == ""   global n_clusters 1
+
 ** Initialize parallel processing if enabled
 if ${use_parallel} == 1 {
 	parallel initialize ${n_clusters}, force

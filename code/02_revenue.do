@@ -75,7 +75,8 @@ if _rc == 0 {
 		dis "  SDID effect_agi: tau = " %8.4f tau_agi " pp -> effect = " %8.4f effect_agi
 	}
 	else {
-		dis "  SDID for effect_agi failed, using default: " %8.4f effect_agi
+		dis as error "WARNING: SDID estimation for effect_agi failed. Using hardcoded default = " %8.4f effect_agi
+		dis as error "         Results use PLACEHOLDER values, not empirical estimates."
 	}
 
 	** ---- Run 2: effect_agi_oregon (state-level, interstate type 5) ----
@@ -91,14 +92,16 @@ if _rc == 0 {
 		dis "  SDID effect_agi_oregon: tau = " %8.4f tau_agi_oregon " pp -> effect = " %8.4f effect_agi_oregon
 	}
 	else {
-		dis "  SDID for effect_agi_oregon failed, using default: " %8.4f effect_agi_oregon
+		dis as error "WARNING: SDID estimation for effect_agi_oregon failed. Using hardcoded default = " %8.4f effect_agi_oregon
+		dis as error "         Results use PLACEHOLDER values, not empirical estimates."
 	}
 
 	** Restore original data state
 	restore
 }
 else {
-	dis "  SDID panel data not found. Using default effects."
+	dis as error "WARNING: SDID panel data (sdid_analysis_data.dta) not found."
+	dis as error "         Using hardcoded default effects. Results are PLACEHOLDERS."
 }
 
 dis "  Final parameters:"

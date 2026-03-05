@@ -82,7 +82,10 @@ foreach v of varlist mc_* mf_* {
 				replace `v' = `v'_hat if fips == `c' & year > 2022
 				drop `v'_hat
 			} // END IF-STATEMENT
-			else drop if fips == `c'
+			else {
+				di as txt "  Insufficient obs for extrapolation: fips=`c' (dropping)"
+				drop if fips == `c'
+			}
 		} // END QUIET
     } // END FIPS LOOP
 } // END VAR LOOP

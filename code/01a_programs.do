@@ -65,6 +65,18 @@ program define unsuppress
 end
 
 
+** Safe default for parallel processing
+** Avoids crash when running analysis do-files standalone (not via 00_multnomah.do)
+capture program drop setup_parallel
+program define setup_parallel
+    if "${use_parallel}" == "" global use_parallel 0
+    if "${n_clusters}" == ""   global n_clusters 1
+    if ${use_parallel} == 1 {
+        parallel initialize ${n_clusters}, force
+    }
+end
+
+
 ** Create a gross-migration file via ACS
 **
 ** This program aggregates individual ACS microdata into county-year gross

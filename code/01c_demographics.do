@@ -165,19 +165,28 @@ keep if inrange(year, ${start_year_acs}, ${end_year_acs})
 rename value2 population
 rename value3 per_capita_income
 
-** Drop if missing values
+** Drop string "(NA)" values before converting to numeric
+qui count if population == "(NA)"
+if r(N) > 0 di as txt "  Dropped " r(N) " obs with population == (NA)"
 drop if population == "(NA)"
+
+qui count if per_capita_income == "(NA)"
+if r(N) > 0 di as txt "  Dropped " r(N) " obs with per_capita_income == (NA)"
+drop if per_capita_income == "(NA)"
+
+** Now safe to convert
+destring population, replace
+destring per_capita_income, replace
 
 ** Keep only counties with all observations
 bysort fips: gen ct = _N
 tab ct
 qui summ ct
-keep if ct == `r(max)'
+local full_years = `r(max)'
+qui count if ct < `full_years'
+di as txt "  Dropping " r(N) " county-year obs from unbalanced panel (require `full_years' years)"
+keep if ct == `full_years'
 drop ct
-
-** Destring
-destring population, replace
-destring per_capita_income, replace
 
 ** Extrapolate through 2024: BEA data lags by one year, so the most recent
 ** observation is 2023. We fit a per-county OLS trend on all available years
