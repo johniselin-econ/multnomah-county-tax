@@ -121,11 +121,16 @@ download_dol_childcare <- function(dir_data, overwrite = FALSE) {
 #' @param overwrite If FALSE, skip download when file already exists
 download_county_centroids <- function(dir_data, overwrite = FALSE) {
 
-  dest <- file.path(dir_data, "demographic", "PopCenterCounty_US.csv")
+  dest    <- file.path(dir_data, "demographic", "PopCenterCounty_US.csv")
+  dir_dem <- dirname(dest)
 
   if (file.exists(dest) && !isTRUE(overwrite)) {
     message("   Skipping county centroids (file exists). Set overwrite=TRUE to re-download.")
     return(invisible(TRUE))
+  }
+
+  if (!dir.exists(dir_dem)) {
+    dir.create(dir_dem, recursive = TRUE, showWarnings = FALSE)
   }
 
   url <- "https://www2.census.gov/geo/docs/reference/cenpop2010/county/CenPop2010_Mean_CO.txt"

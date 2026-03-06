@@ -86,5 +86,8 @@ age_shares <- age_raw %>%
 cat(sprintf("Computed age shares for %d counties.\n", nrow(age_shares)))
 
 # ---- Save output ----
+if (!dir.exists(dirname(output_path))) {
+  dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
+}
 write_csv(age_shares, output_path)
 cat(sprintf("Saved to: %s\n", output_path))
