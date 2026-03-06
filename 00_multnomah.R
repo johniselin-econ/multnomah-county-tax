@@ -68,6 +68,14 @@ overwrite_csv  <- FALSE
 # Flag to prevent auto-execution when sourcing sub-scripts
 .sourced_by_main <- TRUE
 
+# Check for API keys file
+if (!file.exists(api_codes_path)) {
+  stop("api_codes.txt not found at: ", api_codes_path, "\n",
+       "  Create this file with your IPUMS and Census API keys.\n",
+       "  See README.md Section 'Setup > API Keys' for instructions.",
+       call. = FALSE)
+}
+
 # Source shared utilities
 source(file.path(dir_code_r, "utils.R"))
 

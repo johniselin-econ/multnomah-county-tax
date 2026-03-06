@@ -74,7 +74,12 @@ if "${oth_path}" != "" {
     global overleaf = 1
 }
 
-** Ensure log directory exists
+** Ensure output directories exist
+capture mkdir "${results}"
+capture mkdir "${results}tables"
+capture mkdir "${results}figures"
+capture mkdir "${results}sdid"
+capture mkdir "${results}flows"
 capture mkdir "${code}logs"
 
 ** Start log file
