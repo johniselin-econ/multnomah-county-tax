@@ -80,6 +80,8 @@ capture mkdir "${results}tables"
 capture mkdir "${results}figures"
 capture mkdir "${results}sdid"
 capture mkdir "${results}flows"
+capture mkdir "${results}did"
+capture mkdir "${results}individual"
 capture mkdir "${code}logs"
 
 ** Start log file
@@ -135,6 +137,12 @@ do ${code}01_clean_data.do
 
 ** Descriptives
 do ${code}02_descriptives.do
+
+** Flow Analysis (IRS county-level flow regressions)
+do ${code}02_flow_analysis.do
+
+** Difference-in-Differences (ACS individual-level DiD)
+do ${code}02_did_analysis.do
 
 ** Synthetic Difference-in-Difference Analysis
 do ${code}02_sdid_analysis.do

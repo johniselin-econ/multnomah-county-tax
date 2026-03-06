@@ -126,7 +126,7 @@ save "${data}working/demographics_2020", replace
 //--------------------------------------------------
 
 ** Load BEA Data
-import delimited "${data}demographic/CAINC1/CAINC1__ALL_AREAS_1969_2023.csv",	///
+import delimited "${data}demographic/CAINC1/CAINC1__ALL_AREAS_1969_2024.csv",	///
 	clear
 
 ** Drop unnecc variables
@@ -147,7 +147,7 @@ drop description
 
 ** Get V* to be in terms of years
 ** V9 == 1969
-forvalues i = 9/63 {
+forvalues i = 9/64 {
 
 	local j = 1960 + `i'
 	rename v`i' value`j'
@@ -188,38 +188,6 @@ di as txt "  Dropping " r(N) " county-year obs from unbalanced panel (require `f
 keep if ct == `full_years'
 drop ct
 
-** Extrapolate through 2024: BEA data lags by one year, so the most recent
-** observation is 2023. We fit a per-county OLS trend on all available years
-** and predict the 2024 value. This is a simple linear extrapolation that
-** fills the one-year gap for downstream panel merges.
-expand 2 if year == 2023, gen(tag)
-replace year = 2024 if tag == 1
-replace population = . if tag == 1
-replace per_capita_income = . if tag == 1
-
-** Get list of all counties
-qui levelsof fips, local(fips)
-
-** Loop over variables
-foreach v of varlist population per_capita_income {
-
-	** Loop over all FIPS
-    foreach c of local fips {
-
-		quietly{
-
-			regress `v' year if fips == `c' & tag != 1
-			predict `v'_hat
-			replace `v' = `v'_hat if fips == `c' & year == 2024
-			drop `v'_hat
-
-		} // END QUIET
-    } // END FIPS LOOP
-} // END VAR LOOP
-
-** Drop tag
-drop tag
-
 ** Save data
 save "${data}working/bea_economics", replace
 
@@ -228,7 +196,7 @@ save "${data}working/bea_economics", replace
 //--------------------------------------------------
 
 ** Load BLS Unemployment data
-import delimited "${data}demographic\bls\la.data.64.County", clear
+import delimited "${data}demographic/bls/la.data.64.County", clear
 
 ** Keep annual average
 keep if period == "M13"
@@ -267,7 +235,7 @@ save "${data}working/bls_unemployment", replace
 //--------------------------------------------------
 
 ** Load County Centroids
-import delimited "${data}demographic\PopCenterCounty_US.csv", clear
+import delimited "${data}demographic/PopCenterCounty_US.csv", clear
 
 ** Keep required years (2010)
 keep if year == 2010
