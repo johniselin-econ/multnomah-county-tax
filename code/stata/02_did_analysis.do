@@ -20,6 +20,15 @@ capture log close log_02
 log using "${logs}02_log_did_${date}", replace text name(log_02)
 
 
+** plotplainblind palette (RGB) — consistent across all figures
+local col_out   "0 114 178"    // sea (p7) — out-migration
+local col_in    "213 94 0"     // vermillion (p6) — in-migration
+local col_green "0 158 115"    // turquoise (p4) — in-migration (48) / age 45-64
+local col_state "204 121 167"  // reddish (p5) — out-of-state
+local col_mult  "230 159 0"    // orangebrown (p8) — age 65+ / highlight
+local col_ref   "153 153 153"  // gs10 (p2) — reference lines
+
+
 ********************************************************************************
 ** LOAD AND PREPARE DATA
 ********************************************************************************
@@ -298,9 +307,9 @@ preserve
 	gen year_in_48 = year + 0.2
 
 	** Plot 1: Out-migration event study
-	twoway 	(rcap out_ci_lo out_ci_hi year, lc(navy)) 				///
-			(scatter out_coef year, mc(navy) ms(O)),		///
-		yline(0, lc(gs10) lp(dash)) 								///
+	twoway 	(rcap out_ci_lo out_ci_hi year, lc("`col_out'")) 				///
+			(scatter out_coef year, mc("`col_out'") ms(O)),		///
+		yline(0, lc("`col_ref'") lp(dash)) 								///
 		xline(2020.5, lc(black) lp(solid))							///
 		xlabel(2016(1)2024) 										///
 		ytitle("Effect on Out-Migration (pp)") 						///
@@ -317,9 +326,9 @@ preserve
 	}
 
 	** Plot 2: In-migration event study (West Coast)
-	twoway 	(rcap in_west_ci_lo in_west_ci_hi year, lc(maroon)) 	///
-			(scatter in_west_coef year, mc(maroon) ms(O)),	///
-		yline(0, lc(gs10) lp(dash)) 								///
+	twoway 	(rcap in_west_ci_lo in_west_ci_hi year, lc("`col_in'")) 	///
+			(scatter in_west_coef year, mc("`col_in'") ms(O)),	///
+		yline(0, lc("`col_ref'") lp(dash)) 								///
 		xline(2020.5, lc(black) lp(solid))							///
 		xlabel(2016(1)2024) 										///
 		ytitle("Effect on In-Migration (pp)") 						///
@@ -336,9 +345,9 @@ preserve
 	}
 
 	** Plot 3: In-migration event study (Lower 48 + DC)
-	twoway 	(rcap in_48_ci_lo in_48_ci_hi year, lc(forest_green)) 	///
-			(scatter in_48_coef year, mc(forest_green) ms(O)),	///
-		yline(0, lc(gs10) lp(dash)) 								///
+	twoway 	(rcap in_48_ci_lo in_48_ci_hi year, lc("`col_green'")) 	///
+			(scatter in_48_coef year, mc("`col_green'") ms(O)),	///
+		yline(0, lc("`col_ref'") lp(dash)) 								///
 		xline(2020.5, lc(black) lp(solid))							///
 		xlabel(2016(1)2024) 										///
 		ytitle("Effect on In-Migration (pp)") 						///
@@ -355,9 +364,9 @@ preserve
 	}
 
 	** Plot 4: Out-of-state migration event study
-	twoway 	(rcap out_state_ci_lo out_state_ci_hi year, lc(purple)) 		///
-			(scatter out_state_coef year, mc(purple) ms(D)),				///
-		yline(0, lc(gs10) lp(dash)) 										///
+	twoway 	(rcap out_state_ci_lo out_state_ci_hi year, lc("`col_state'")) 		///
+			(scatter out_state_coef year, mc("`col_state'") ms(D)),				///
+		yline(0, lc("`col_ref'") lp(dash)) 										///
 		xline(2020.5, lc(black) lp(solid))									///
 		xlabel(2016(1)2024) 												///
 		ytitle("Effect on Out-of-State Migration (pp)") 					///
@@ -374,15 +383,15 @@ preserve
 	}
 
 	** Plot 5: Combined event study
-	twoway 	(rcap out_ci_lo out_ci_hi year_out, lc(navy)) 					///
-			(scatter out_coef year_out, mc(navy) ms(O)) 			///
-			(rcap out_state_ci_lo out_state_ci_hi year_out_state, lc(purple)) 	///
-			(scatter out_state_coef year_out_state, mc(purple) ms(D))	///
-			(rcap in_west_ci_lo in_west_ci_hi year_in_west, lc(maroon)) 	///
-			(scatter in_west_coef year_in_west, mc(maroon) ms(T))	///
-			(rcap in_48_ci_lo in_48_ci_hi year_in_48, lc(forest_green)) 	///
-			(scatter in_48_coef year_in_48, mc(forest_green) ms(S)),	///
-		yline(0, lc(gs10) lp(dash)) 										///
+	twoway 	(rcap out_ci_lo out_ci_hi year_out, lc("`col_out'")) 					///
+			(scatter out_coef year_out, mc("`col_out'") ms(O)) 			///
+			(rcap out_state_ci_lo out_state_ci_hi year_out_state, lc("`col_state'")) 	///
+			(scatter out_state_coef year_out_state, mc("`col_state'") ms(D))	///
+			(rcap in_west_ci_lo in_west_ci_hi year_in_west, lc("`col_in'")) 	///
+			(scatter in_west_coef year_in_west, mc("`col_in'") ms(T))	///
+			(rcap in_48_ci_lo in_48_ci_hi year_in_48, lc("`col_green'")) 	///
+			(scatter in_48_coef year_in_48, mc("`col_green'") ms(S)),	///
+		yline(0, lc("`col_ref'") lp(dash)) 										///
 		xline(2020.5, lc(black) lp(solid))									///
 		xlabel(2016(1)2024) 												///
 		ytitle("Effect on Migration Rate (pp)") 							///
@@ -568,13 +577,13 @@ estimates store es_age_out_state
 	gen year_age3 = year + 0.15
 
 	** Plot 1: Out-migration event study by age
-	twoway 	(rcap out_ci_lo_age1 out_ci_hi_age1 year_age1, lc(maroon)) 				///
-			(scatter out_coef_age1 year_age1, mc(maroon) ms(O)) 			///
-			(rcap out_ci_lo_age2 out_ci_hi_age2 year_age2, lc(forest_green)) 			///
-			(scatter out_coef_age2 year_age2, mc(forest_green) ms(T)) 	///
-			(rcap out_ci_lo_age3 out_ci_hi_age3 year_age3, lc(dkorange)) 				///
-			(scatter out_coef_age3 year_age3, mc(dkorange) ms(S)),		///
-		yline(0, lc(gs10) lp(dash)) 													///
+	twoway 	(rcap out_ci_lo_age1 out_ci_hi_age1 year_age1, lc("`col_in'")) 				///
+			(scatter out_coef_age1 year_age1, mc("`col_in'") ms(O)) 			///
+			(rcap out_ci_lo_age2 out_ci_hi_age2 year_age2, lc("`col_green'")) 			///
+			(scatter out_coef_age2 year_age2, mc("`col_green'") ms(T)) 	///
+			(rcap out_ci_lo_age3 out_ci_hi_age3 year_age3, lc("`col_mult'")) 				///
+			(scatter out_coef_age3 year_age3, mc("`col_mult'") ms(S)),		///
+		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
 		ytitle("Effect on Out-Migration (pp)") 											///
@@ -591,13 +600,13 @@ estimates store es_age_out_state
 	}
 
 	** Plot 2: In-migration (West Coast) event study by age
-	twoway 	(rcap in_west_ci_lo_age1 in_west_ci_hi_age1 year_age1, lc(maroon)) 		///
-			(scatter in_west_coef_age1 year_age1, mc(maroon) ms(O)) 		///
-			(rcap in_west_ci_lo_age2 in_west_ci_hi_age2 year_age2, lc(forest_green)) 	///
-			(scatter in_west_coef_age2 year_age2, mc(forest_green) ms(T)) ///
-			(rcap in_west_ci_lo_age3 in_west_ci_hi_age3 year_age3, lc(dkorange)) 		///
-			(scatter in_west_coef_age3 year_age3, mc(dkorange) ms(S)),	///
-		yline(0, lc(gs10) lp(dash)) 													///
+	twoway 	(rcap in_west_ci_lo_age1 in_west_ci_hi_age1 year_age1, lc("`col_in'")) 		///
+			(scatter in_west_coef_age1 year_age1, mc("`col_in'") ms(O)) 		///
+			(rcap in_west_ci_lo_age2 in_west_ci_hi_age2 year_age2, lc("`col_green'")) 	///
+			(scatter in_west_coef_age2 year_age2, mc("`col_green'") ms(T)) ///
+			(rcap in_west_ci_lo_age3 in_west_ci_hi_age3 year_age3, lc("`col_mult'")) 		///
+			(scatter in_west_coef_age3 year_age3, mc("`col_mult'") ms(S)),	///
+		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
 		ytitle("Effect on In-Migration (pp)") 											///
@@ -614,13 +623,13 @@ estimates store es_age_out_state
 	}
 
 	** Plot 3: In-migration (Lower 48 + DC) event study by age
-	twoway 	(rcap in_48_ci_lo_age1 in_48_ci_hi_age1 year_age1, lc(maroon)) 			///
-			(scatter in_48_coef_age1 year_age1, mc(maroon) ms(O)) 		///
-			(rcap in_48_ci_lo_age2 in_48_ci_hi_age2 year_age2, lc(forest_green)) 		///
-			(scatter in_48_coef_age2 year_age2, mc(forest_green) ms(T)) ///
-			(rcap in_48_ci_lo_age3 in_48_ci_hi_age3 year_age3, lc(dkorange)) 			///
-			(scatter in_48_coef_age3 year_age3, mc(dkorange) ms(S)),	///
-		yline(0, lc(gs10) lp(dash)) 													///
+	twoway 	(rcap in_48_ci_lo_age1 in_48_ci_hi_age1 year_age1, lc("`col_in'")) 			///
+			(scatter in_48_coef_age1 year_age1, mc("`col_in'") ms(O)) 		///
+			(rcap in_48_ci_lo_age2 in_48_ci_hi_age2 year_age2, lc("`col_green'")) 		///
+			(scatter in_48_coef_age2 year_age2, mc("`col_green'") ms(T)) ///
+			(rcap in_48_ci_lo_age3 in_48_ci_hi_age3 year_age3, lc("`col_mult'")) 			///
+			(scatter in_48_coef_age3 year_age3, mc("`col_mult'") ms(S)),	///
+		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
 		ytitle("Effect on In-Migration (pp)") 											///
@@ -637,13 +646,13 @@ estimates store es_age_out_state
 	}
 
 	** Plot 4: Out-of-state migration event study by age
-	twoway 	(rcap out_state_ci_lo_age1 out_state_ci_hi_age1 year_age1, lc(maroon)) 			///
-			(scatter out_state_coef_age1 year_age1, mc(maroon) ms(O)) 		///
-			(rcap out_state_ci_lo_age2 out_state_ci_hi_age2 year_age2, lc(forest_green)) 		///
-			(scatter out_state_coef_age2 year_age2, mc(forest_green) ms(T)) ///
-			(rcap out_state_ci_lo_age3 out_state_ci_hi_age3 year_age3, lc(dkorange)) 			///
-			(scatter out_state_coef_age3 year_age3, mc(dkorange) ms(S)),	///
-		yline(0, lc(gs10) lp(dash)) 													///
+	twoway 	(rcap out_state_ci_lo_age1 out_state_ci_hi_age1 year_age1, lc("`col_in'")) 			///
+			(scatter out_state_coef_age1 year_age1, mc("`col_in'") ms(O)) 		///
+			(rcap out_state_ci_lo_age2 out_state_ci_hi_age2 year_age2, lc("`col_green'")) 		///
+			(scatter out_state_coef_age2 year_age2, mc("`col_green'") ms(T)) ///
+			(rcap out_state_ci_lo_age3 out_state_ci_hi_age3 year_age3, lc("`col_mult'")) 			///
+			(scatter out_state_coef_age3 year_age3, mc("`col_mult'") ms(S)),	///
+		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
 		ytitle("Effect on Out-of-State Migration (pp)") 								///
@@ -982,11 +991,11 @@ preserve
 	gen year_age3 = year + 0.1
 
 	** Plot 1: Out-migration event study by age (no education)
-	twoway 	(rcap out_ci_lo_age1 out_ci_hi_age1 year_age1, lc(maroon)) 				///
-			(scatter out_coef_age1 year_age1, mc(maroon) ms(O)) 						///
-			(rcap out_ci_lo_age3 out_ci_hi_age3 year_age3, lc(dkorange)) 				///
-			(scatter out_coef_age3 year_age3, mc(dkorange) ms(S)),						///
-		yline(0, lc(gs10) lp(dash)) 													///
+	twoway 	(rcap out_ci_lo_age1 out_ci_hi_age1 year_age1, lc("`col_in'")) 				///
+			(scatter out_coef_age1 year_age1, mc("`col_in'") ms(O)) 						///
+			(rcap out_ci_lo_age3 out_ci_hi_age3 year_age3, lc("`col_mult'")) 				///
+			(scatter out_coef_age3 year_age3, mc("`col_mult'") ms(S)),						///
+		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
 		ytitle("Effect on Out-Migration (pp)") 											///
@@ -1003,11 +1012,11 @@ preserve
 	}
 
 	** Plot 2: In-migration (West Coast) event study by age (no education)
-	twoway 	(rcap in_west_ci_lo_age1 in_west_ci_hi_age1 year_age1, lc(maroon)) 		///
-			(scatter in_west_coef_age1 year_age1, mc(maroon) ms(O)) 					///
-			(rcap in_west_ci_lo_age3 in_west_ci_hi_age3 year_age3, lc(dkorange)) 		///
-			(scatter in_west_coef_age3 year_age3, mc(dkorange) ms(S)),					///
-		yline(0, lc(gs10) lp(dash)) 													///
+	twoway 	(rcap in_west_ci_lo_age1 in_west_ci_hi_age1 year_age1, lc("`col_in'")) 		///
+			(scatter in_west_coef_age1 year_age1, mc("`col_in'") ms(O)) 					///
+			(rcap in_west_ci_lo_age3 in_west_ci_hi_age3 year_age3, lc("`col_mult'")) 		///
+			(scatter in_west_coef_age3 year_age3, mc("`col_mult'") ms(S)),					///
+		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
 		ytitle("Effect on In-Migration (pp)") 											///
@@ -1024,11 +1033,11 @@ preserve
 	}
 
 	** Plot 3: In-migration (Lower 48 + DC) event study by age (no education)
-	twoway 	(rcap in_48_ci_lo_age1 in_48_ci_hi_age1 year_age1, lc(maroon)) 			///
-			(scatter in_48_coef_age1 year_age1, mc(maroon) ms(O)) 						///
-			(rcap in_48_ci_lo_age3 in_48_ci_hi_age3 year_age3, lc(dkorange)) 			///
-			(scatter in_48_coef_age3 year_age3, mc(dkorange) ms(S)),					///
-		yline(0, lc(gs10) lp(dash)) 													///
+	twoway 	(rcap in_48_ci_lo_age1 in_48_ci_hi_age1 year_age1, lc("`col_in'")) 			///
+			(scatter in_48_coef_age1 year_age1, mc("`col_in'") ms(O)) 						///
+			(rcap in_48_ci_lo_age3 in_48_ci_hi_age3 year_age3, lc("`col_mult'")) 			///
+			(scatter in_48_coef_age3 year_age3, mc("`col_mult'") ms(S)),					///
+		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
 		ytitle("Effect on In-Migration (pp)") 											///
@@ -1045,11 +1054,11 @@ preserve
 	}
 
 	** Plot 4: Out-of-state migration event study by age (no education)
-	twoway 	(rcap out_state_ci_lo_age1 out_state_ci_hi_age1 year_age1, lc(maroon)) 	///
-			(scatter out_state_coef_age1 year_age1, mc(maroon) ms(O)) 					///
-			(rcap out_state_ci_lo_age3 out_state_ci_hi_age3 year_age3, lc(dkorange)) 	///
-			(scatter out_state_coef_age3 year_age3, mc(dkorange) ms(S)),				///
-		yline(0, lc(gs10) lp(dash)) 													///
+	twoway 	(rcap out_state_ci_lo_age1 out_state_ci_hi_age1 year_age1, lc("`col_in'")) 	///
+			(scatter out_state_coef_age1 year_age1, mc("`col_in'") ms(O)) 					///
+			(rcap out_state_ci_lo_age3 out_state_ci_hi_age3 year_age3, lc("`col_mult'")) 	///
+			(scatter out_state_coef_age3 year_age3, mc("`col_mult'") ms(S)),				///
+		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
 		ytitle("Effect on Out-of-State Migration (pp)") 								///
