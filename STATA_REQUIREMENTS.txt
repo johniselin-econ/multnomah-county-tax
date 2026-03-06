@@ -9,32 +9,38 @@ before running the analysis scripts.
 REQUIRED PACKAGES
 --------------------------------------------------------------------------------
 
-1. sdid - Synthetic Difference-in-Differences
-   Install: ssc install sdid, replace
-
-2. sdid_event - Event study post-estimation for SDID
-   Install: ssc install sdid_event, replace
-
-3. reghdfe - Linear regression with high-dimensional fixed effects
+1. reghdfe - Linear regression with high-dimensional fixed effects
    Install: ssc install reghdfe, replace
 
-4. ftools - Fast Stata commands (required by reghdfe)
+2. ftools - Fast Stata commands (required by reghdfe)
    Install: ssc install ftools, replace
 
-5. ppmlhdfe - Poisson pseudo-maximum likelihood with HDFE
+3. ppmlhdfe - Poisson pseudo-maximum likelihood with HDFE
    Install: ssc install ppmlhdfe, replace
 
-6. estout - Export estimation results to LaTeX/Excel
+4. sdid - Synthetic Difference-in-Differences
+   Install: ssc install sdid, replace
+
+5. sdid_event - Event study post-estimation for SDID
+   Install: ssc install sdid_event, replace
+
+6. estout - Export estimation results to LaTeX/Excel (provides esttab, eststo, estadd)
    Install: ssc install estout, replace
 
 7. coefplot - Plot regression coefficients
    Install: ssc install coefplot, replace
 
-8. parallel - Parallel processing for Stata
-   Install: net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
+8. fre - Frequency tables
+   Install: ssc install fre, replace
 
-9. plotplainblind - Color-blind friendly plot scheme
-   Install: ssc install blindschemes, replace
+9. distinct - Count distinct values
+   Install: ssc install distinct, replace
+
+10. blindschemes - Color-blind friendly plot schemes (provides plotplainblind)
+    Install: ssc install blindschemes, replace
+
+11. parallel - Parallel processing for Stata (optional — set use_parallel=0 to skip)
+    Install: net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
 
 --------------------------------------------------------------------------------
 QUICK INSTALL (run in Stata)
@@ -42,15 +48,17 @@ QUICK INSTALL (run in Stata)
 
 Copy and paste the following commands into Stata to install all packages:
 
-    ssc install sdid, replace
-    ssc install sdid_event, replace
     ssc install reghdfe, replace
     ssc install ftools, replace
     ssc install ppmlhdfe, replace
+    ssc install sdid, replace
+    ssc install sdid_event, replace
     ssc install estout, replace
     ssc install coefplot, replace
-    net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
+    ssc install fre, replace
+    ssc install distinct, replace
     ssc install blindschemes, replace
+    net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
 
 --------------------------------------------------------------------------------
 VERIFICATION
@@ -58,12 +66,14 @@ VERIFICATION
 
 To verify packages are installed correctly, run:
 
-    which sdid
     which reghdfe
     which ppmlhdfe
+    which sdid
+    which sdid_event
     which estout
     which coefplot
-    which parallel
+    which fre
+    which distinct
 
 --------------------------------------------------------------------------------
 R PACKAGES (for data download and mapping)

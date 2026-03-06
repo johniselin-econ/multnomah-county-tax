@@ -16,26 +16,51 @@ For more information, contact john.iselin@yale.edu
 *******************************************************************************/
 
 ** INSTALLATION
-* net install github, from("https://haghish.github.io/github/")
-* github install haghish/rcall, stable
-* ssc install ftools
-* ssc install reghdfe
-* ssc install fre
-* ssc install coefplot
-* ssc install sdid
-* ssc install estout
-* ssc install sdid_event
-* ssc install geodist
-* ssc install ipfraking
-* ssc install distinct
-** net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
-** mata mata mlib index
+* ssc install reghdfe, replace
+* ssc install ftools, replace
+* ssc install ppmlhdfe, replace
+* ssc install sdid, replace
+* ssc install sdid_event, replace
+* ssc install estout, replace
+* ssc install coefplot, replace
+* ssc install fre, replace
+* ssc install distinct, replace
+* ssc install blindschemes, replace
+* net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
 
 ** Preliminaries
 capture log close
 clear matrix
 clear all
 set more off
+
+** CHECK REQUIRED PACKAGES
+** Verify all user-written packages are installed before proceeding.
+local pkg_missing = 0
+foreach pkg in reghdfe ftools ppmlhdfe sdid sdid_event estout coefplot fre distinct {
+    capture which `pkg'
+    if _rc {
+        di as error "  Package not found: `pkg'"
+        local pkg_missing = 1
+    }
+}
+** blindschemes check (look for the scheme file, not an ado)
+capture findfile scheme-plotplainblind.scheme
+if _rc {
+    di as error "  Package not found: blindschemes (scheme plotplainblind)"
+    local pkg_missing = 1
+}
+** parallel is optional (controlled by use_parallel flag below)
+capture which parallel
+if _rc {
+    di as txt "  Note: parallel not installed. Setting use_parallel = 0."
+    global use_parallel = 0
+}
+if `pkg_missing' {
+    di as error _n "ERROR: Required Stata packages are missing."
+    di as error "See STATA_REQUIREMENTS.txt for install instructions."
+    error 199
+}
 
 ** Name of project
 global pr_name "multnomah"
