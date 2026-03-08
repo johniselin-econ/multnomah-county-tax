@@ -1042,21 +1042,32 @@ if ${use_parallel} == 1 {
 	** Step 4: Sort by worker so parallel's contiguous row split aligns
 	sort worker table_id
 
-	** Diagnostic: show per-worker cost balance
+	** Diagnostic: show per-worker cost balance with phase breakdown
 	dis _n "=== Cost-Balanced Worker Assignment (Quarterly) ==="
-	dis "Tables: `=_N'  Workers: `k'"
+
+	** Count totals by phase
+	qui count if phase == "qcew"
+	local n_qcew = r(N)
+	qui count if phase == "qwi"
+	local n_qwi = r(N)
+	dis "Tables: `=_N' (`n_qcew' QCEW + `n_qwi' QWI)  Workers: `k'"
+
 	tempvar worker_cost worker_count
 	bysort worker: egen `worker_cost' = total(cost)
 	bysort worker: egen `worker_count' = count(table_id)
 
-	** Display per-worker summary
+	** Display per-worker summary with QCEW/QWI breakdown
 	forvalues w = 1/`k' {
 		qui summ `worker_cost' if worker == `w'
 		if r(N) > 0 {
 			local wc = r(mean)
 			qui summ `worker_count' if worker == `w'
 			local wn = r(mean)
-			dis "  Worker `w': `wn' tables, cost = " %12.0fc `wc'
+			qui count if worker == `w' & phase == "qcew"
+			local wn_qcew = r(N)
+			qui count if worker == `w' & phase == "qwi"
+			local wn_qwi = r(N)
+			dis "  Worker `w': `wn' tables (`wn_qcew' QCEW, `wn_qwi' QWI), cost = " %12.0fc `wc'
 		}
 	}
 
@@ -1065,6 +1076,18 @@ if ${use_parallel} == 1 {
 	local min_cost = r(min)
 	local imbalance = (`max_cost' - `min_cost') / `max_cost' * 100
 	dis "  Imbalance: " %4.1f `imbalance' "% (max-min)/max"
+
+	** Show full table assignment listing
+	dis _n "  Table assignments:"
+	forvalues i = 1/`=_N' {
+		local t_id = table_id[`i']
+		local t_phase = phase[`i']
+		local t_samp = samp_var[`i']
+		local t_exl = exclusion[`i']
+		local t_w = worker[`i']
+		local t_c = cost[`i']
+		dis "    Table `t_id': `t_phase' / `t_samp' / excl=`t_exl' -> Worker `t_w' (cost=" %9.0fc `t_c' ")"
+	}
 	dis "==========================================" _n
 
 	** Save table IDs in worker-sorted order for parallel processing
