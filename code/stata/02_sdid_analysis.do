@@ -45,6 +45,7 @@ local reps = 100
 ** Fallback defaults for standalone execution (not via 00_multnomah.do)
 if "${use_parallel}" == "" global use_parallel 0
 if "${n_clusters}" == ""   global n_clusters 1
+if "${resume}" == ""       global resume 0
 
 ** Initialize parallel processing if enabled
 if ${use_parallel} == 1 {
@@ -585,6 +586,15 @@ if ${use_parallel} == 1 {
 				if `exl' == 0 local path "`results_path'sdid/`out_txt'/fig_`out_txt'_`outcome'_`c'_`samp_var'_"
 				if `exl' == 1 local path "`results_path'sdid/`out_txt'/fig_`out_txt'_`outcome'_`c'_`samp_var'_excl2020_"
 
+				** ─── Skip if result already exists (resume mode) ───
+				if ${resume} == 1 {
+					capture confirm file "`results_path'sdid/temp_results/results_`table_id'_`outvar'_`c'.dta"
+					if _rc == 0 {
+						dis "RESUME: Skipping table `table_id' `outvar' c=`c' (result exists)"
+						continue
+					}
+				}
+
 				** Run SDID
 				capture noisily {
 					eststo sdid_`outvar'_`c': sdid `outcome' fips year Treated	///
@@ -984,26 +994,49 @@ else {
 	** SEQUENTIAL ESTIMATION
 	********************************************************************************
 
-	** Set up treatment effects dataset
-	preserve
-	clear
-	set obs 0
-	gen sample_data = ""
-	gen sample = ""
-	gen outcome = ""
-	gen controls = .
-	gen exclusion = .
-	gen tau = .
-	gen se = .
-	gen pval = .
-	gen ci_lower = .
-	gen ci_upper = .
-	gen n_counties = .
-	gen pre_mean = .
-	gen significant = .
-	save "${results}sdid/sdid_results.dta", replace
-	clear
-	restore
+	** Set up treatment effects dataset (skip if resuming from checkpoint)
+	if ${resume} == 0 {
+		preserve
+		clear
+		set obs 0
+		gen sample_data = ""
+		gen sample = ""
+		gen outcome = ""
+		gen controls = .
+		gen exclusion = .
+		gen tau = .
+		gen se = .
+		gen pval = .
+		gen ci_lower = .
+		gen ci_upper = .
+		gen n_counties = .
+		gen pre_mean = .
+		gen significant = .
+		save "${results}sdid/sdid_results.dta", replace
+		clear
+		restore
+	}
+
+	** ─── CHECKPOINT: load completed specs for resume mode ───
+	local n_done = 0
+	if ${resume} == 1 {
+		capture confirm file "${results}sdid/sdid_results.dta"
+		if _rc == 0 {
+			preserve
+			use "${results}sdid/sdid_results.dta", clear
+			qui count
+			local n_done = r(N)
+			if `n_done' > 0 {
+				** Build lookup key and store in mata associative array
+				gen _done_key = sample_data + "|" + sample + "|" + outcome ///
+					+ "|" + string(controls, "%1.0f") + "|" + string(exclusion, "%1.0f")
+				mata: _done_set = asarray_create()
+				mata: for (_i=1; _i<=st_nobs(); _i++) asarray(_done_set, st_sdata(_i, "_done_key"), 1)
+				dis "RESUME MODE: `n_done' specs already completed. Skipping those."
+			}
+			restore
+		}
+	}
 
 	** Loop over IRS and ACS Samples
 	foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
@@ -1077,6 +1110,15 @@ else {
 								if `exl' == 0 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_"
 								if `exl' == 1 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_excl2020_"
 
+								** ─── Skip if already completed (resume mode) ───
+								if `n_done' > 0 {
+									local _this_key "`out_txt'|`samp'|`out'|`c'|`exl'"
+									mata: st_local("_skip", strofreal(asarray_contains(_done_set, st_local("_this_key"))))
+									if `_skip' == 1 {
+										dis "RESUME: Skipping `out' c=`c' exl=`exl' samp=`samp'"
+										continue
+									}
+								}
 
 								** Run SDID
 								capture noisily {
@@ -1219,9 +1261,11 @@ else {
 
 						foreach _outfile of local _dests {
 
-						** Table of results
+						** Table of results (capture in case some eststo entries
+						** are missing during a resume run)
 						if "`data'" == "irs_sample_1" | "`data'" == "irs_sample_2" {
 
+						capture noisily {
 						esttab 	sdid_n1_`migr'_rate_`type'_0 sdid_n1_`migr'_rate_`type'_1	///
 								sdid_n2_`migr'_rate_`type'_0 sdid_n2_`migr'_rate_`type'_1	///
 								sdid_agi_`migr'_rate_`type'_0 sdid_agi_`migr'_rate_`type'_1 ///
@@ -1237,7 +1281,9 @@ else {
 							fmt(%9.0fc %9.3fc) 							///
 							labels("Number of Counties" "Pre-treatment mean"))
 						}
+						}
 						else {
+						capture noisily {
 						esttab 	sdid_n1_`migr'_rate_`type'_0 sdid_n1_`migr'_rate_`type'_1	///
 								sdid_n2_`migr'_rate_`type'_0 sdid_n2_`migr'_rate_`type'_1	///
 								sdid_agi_`migr'_rate_`type'_0 sdid_agi_`migr'_rate_`type'_1 ///
@@ -1252,6 +1298,7 @@ else {
 						stats(count mean, 								///
 							fmt(%9.0fc %9.3fc) 							///
 							labels("Number of Counties" "Pre-treatment mean"))
+						}
 
 						}
 
@@ -1270,6 +1317,11 @@ else {
 
 	} // END DATA LOOP
 
+
+	** Clean up mata checkpoint lookup
+	if `n_done' > 0 {
+		mata: mata drop _done_set
+	}
 
 	** Export treatment effects
 	use "${results}sdid/sdid_results.dta", clear
