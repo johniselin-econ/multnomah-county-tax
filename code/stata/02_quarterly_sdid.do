@@ -349,7 +349,11 @@ forvalues y = `start_year'/`end_year' {
 
 		** Keep needed variables
 		keep fips yq year education emp earns
-
+		
+		** Clean up missing values 
+		destring emp, replace ignore("NA")
+		destring earns, replace ignore("NA") 
+		
 		** Generate total earnings
 		gen tot_earns = emp * earns
 		drop earns
@@ -383,7 +387,7 @@ use `qwi_built', clear
 dis "QWI rows loaded (before reshape): " _N
 
 ** Destring fips if needed
-capture destring fips, replace force
+capture destring fips, replace
 
 ** Reshape wide on education: E0 and E4 become separate columns
 reshape wide emp earns, i(fips yq year) j(education) string
@@ -394,10 +398,15 @@ rename earnsE0 earns_all
 rename empE4   emp_ba
 rename earnsE4 earns_ba
 
-** Drop missing/zero values
+** Drop missing/zero values (all-education: must exist and be positive)
 drop if missing(emp_all) | emp_all <= 0
 drop if missing(earns_all) | earns_all <= 0
-drop if (!missing(emp_ba) & emp_ba <= 0) | (!missing(earns_ba) & earns_ba <= 0)
+
+** BA+: drop invalid (non-missing but ≤0), then set remaining missing to .
+** This keeps counties in the panel for all-education outcomes while
+** producing missing ln values for BA+ where data is unavailable.
+replace emp_ba = . if emp_ba <= 0
+replace earns_ba = . if earns_ba <= 0
 
 ** Create log outcomes
 gen ln_qwi_emp      = ln(emp_all)
@@ -1134,8 +1143,9 @@ if ${use_parallel} == 1 {
 	compress
 	save "${results}sdid/quarterly/quarterly_sdid_results.dta", replace
 
-	** Clean up temp directory
-	shell rmdir "${results}sdid/temp_quarterly_results" /s /q
+	** Clean up temp directory (cross-platform)
+	capture shell rm -rf "${results}sdid/temp_quarterly_results"
+	if _rc != 0 capture shell rmdir "${results}sdid/temp_quarterly_results" /s /q
 
 	** Clean up temporary files
 	capture erase "${data}working/quarterly_qcew_sdid_data.dta"
@@ -1807,7 +1817,7 @@ foreach out of local all_outcomes {
 	}
 
 	** Clean up
-	graph drop coef_`out' spec_`out'
+	capture graph drop coef_`out' spec_`out'
 
 	restore
 
