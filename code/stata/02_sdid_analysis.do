@@ -1346,6 +1346,9 @@ Coefficient colors (plotplainblind palette):
 Preferred specifications are defined by the local macro `preferred_specs` below.
 *******************************************************************************/
 
+** Create output subdirectory
+capture mkdir "${results}sdid/spec_curves"
+
 ** Load treatment effects
 use "${results}sdid/sdid_results.dta", clear
 
@@ -1679,8 +1682,8 @@ foreach otype in "n1" "n2" "agi" {
 		else local fsuffix ""
 
 		** Export combined figure
-		graph export "${results}sdid/fig_speccurve_`otype'_`migr'`fsuffix'.pdf", replace
-		graph export "${results}sdid/fig_speccurve_`otype'_`migr'`fsuffix'.jpg", as(jpg) quality(100) replace
+		graph export "${results}sdid/spec_curves/fig_speccurve_`otype'_`migr'`fsuffix'.pdf", replace
+		graph export "${results}sdid/spec_curves/fig_speccurve_`otype'_`migr'`fsuffix'.jpg", as(jpg) quality(100) replace
 		if ${overleaf} == 1 {
 			graph export "${ol_fig}fig_speccurve_`otype'_`migr'`fsuffix'.pdf", replace
 		}
@@ -1709,6 +1712,9 @@ drive the most variation in estimated treatment effects.
 ** Palette for influence coefplots
 local col_main    "0 114 178"     // sea (p7)
 local col_zero    "153 153 153"   // gs10 (p2)
+
+** Create output subdirectory
+capture mkdir "${results}sdid/influence"
 
 ** Reload clean results (spec curve section modified the data)
 use "${results}sdid/sdid_results.dta", clear
@@ -1773,7 +1779,23 @@ tab period_1624
 tab controls
 tab exclusion
 
-** Loop over outcome types and migration directions
+** Loop over geographic scope, outcome types, and migration directions
+** Run meta-regressions separately for out-of-county and out-of-state
+foreach geo in 0 1 {
+
+	if `geo' == 0 {
+		local geo_label "Out-of-County"
+		local geo_suffix ""
+	}
+	else {
+		local geo_label "Out-of-State"
+		local geo_suffix "_outstate"
+	}
+
+	dis _n "============================================================"
+	dis "META-REGRESSION: `geo_label' Estimates"
+	dis "============================================================"
+
 foreach otype in "n1" "n2" "agi" {
 	foreach migr in "out" "in" "net" {
 
@@ -1786,21 +1808,22 @@ foreach otype in "n1" "n2" "agi" {
 		else if "`migr'" == "in"  local migr_label "In-Migration"
 		else if "`migr'" == "out" local migr_label "Out-Migration"
 
-		** Preserve and subset
+		** Preserve and subset to geographic scope + outcome + migration
 		preserve
-		keep if outcome_type == "`otype'" & migration == "`migr'"
+		keep if outcome_type == "`otype'" & migration == "`migr'" ///
+			& outstate == `geo'
 
 		** Check sufficient observations
 		qui count
 		local n_specs = r(N)
 		if `n_specs' < 10 {
-			dis "Skipping `otype' `migr': only `n_specs' specifications."
+			dis "Skipping `otype' `migr' (`geo_label'): only `n_specs' specifications."
 			restore
 			continue
 		}
 
 		dis _n "========================================================"
-		dis "`otype_label': `migr_label' (`n_specs' specifications)"
+		dis "`otype_label': `migr_label' — `geo_label' (`n_specs' specifications)"
 		dis "========================================================"
 
 		** Run meta-regression
@@ -1809,7 +1832,6 @@ foreach otype in "n1" "n2" "agi" {
 		** Base categories: All Counties (donor pool), IRS Full (data source)
 		reg tau 	ib1.donor_pool 		///
 					ib1.data_src 		///
-					outstate 			///
 					period_1624 		///
 					controls 			///
 					exclusion, 			///
@@ -1825,7 +1847,7 @@ foreach otype in "n1" "n2" "agi" {
 			headings( 												///
 				2.donor_pool = "{bf:Donor Pool (vs. All Counties)}" 	///
 				2.data_src = "{bf:Data Source (vs. IRS Full)}" 		///
-				outstate = "{bf:Other Specification Choices}" 		///
+				period_1624 = "{bf:Other Specification Choices}" 	///
 			) 														///
 			coeflabels( 											///
 				2.donor_pool = "Urban 95%" 							///
@@ -1835,7 +1857,6 @@ foreach otype in "n1" "n2" "agi" {
 				2.data_src   = "IRS (ACS Counties)" 				///
 				3.data_src   = "ACS (All 25+)" 						///
 				4.data_src   = "ACS (College)" 						///
-				outstate     = "Out-of-State Movers" 				///
 				period_1624  = "Extended Period (16-24)" 			///
 				controls     = "With Covariates" 					///
 				exclusion    = "Exclude 2020" 						///
@@ -1843,27 +1864,29 @@ foreach otype in "n1" "n2" "agi" {
 			msymbol(D) mcolor("`col_main'") 						///
 			ciopts(lcolor("`col_main'")) 							///
 			graphregion(color(white)) 								///
-			title("`otype_label': `migr_label'", size(medium)) 		///
+			title("`otype_label': `migr_label' (`geo_label')", 		///
+				size(medium)) 										///
 			subtitle("N = `n' specifications, R-sq = `r2'", 		///
 				size(small)) 										///
 			xtitle("Effect on SDID Estimate (pp)", size(small)) 	///
 			note("OLS with robust SEs. Each observation is one SDID specification." , size(vsmall))
 
 		** Export
-		graph export "${results}sdid/fig_sdid_influence_`otype'_`migr'.pdf", replace
-		graph export "${results}sdid/fig_sdid_influence_`otype'_`migr'.jpg", ///
+		graph export "${results}sdid/influence/fig_sdid_influence_`otype'_`migr'`geo_suffix'.pdf", replace
+		graph export "${results}sdid/influence/fig_sdid_influence_`otype'_`migr'`geo_suffix'.jpg", ///
 			as(jpg) quality(100) replace
 
 		** Overleaf copy
 		if ${overleaf} == 1 {
 			graph export 											///
-				"${ol_fig}fig_sdid_influence_`otype'_`migr'.pdf", replace
+				"${ol_fig}fig_sdid_influence_`otype'_`migr'`geo_suffix'.pdf", replace
 		}
 
 		restore
 
 	} // END MIGRATION LOOP
 } // END OUTCOME TYPE LOOP
+} // END GEOGRAPHIC SCOPE LOOP
 
 ********************************************************************************
 ** FINISH
