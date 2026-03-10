@@ -29,6 +29,10 @@ scalar effect_agi = 0.02			// estimated net out-migration effect on AGI
 scalar effect_agi_oregon = 0.02		// Oregon-level effect
 local  cpi_2019_to_2022 = 1.136	// CPI-U inflation factor 2019→2022
 
+** Actual revenue (for scaling simulated effects)
+local actual_pfa_revenue = 187000000			// PFA actual collections
+local actual_oregon_revenue = 11772886000		// Oregon individual income tax
+
 ** PFA tax brackets (2022)
 local pfa_thresh1_single = 125000
 local pfa_thresh2_single = 250000
@@ -788,9 +792,41 @@ scalar total_agi_impacted = r(sum_w) * r(mean)
 scalar avg_mt_rate = total_mt_tax_impacted / total_agi_impacted
 dis "Average effective MT tax rate on impacted: " %6.4f avg_mt_rate
 
-** Oregon revenue loss from departing AGI
+** PFA revenue loss from departing AGI
 scalar mt_revenue_loss = avg_mt_rate * X_1
 dis "Multnomah county revenue loss from migration effect: $" %15.0fc mt_revenue_loss
+
+********************************************************************************
+** SECTION 10B: Revenue Scaling to Actual Collections
+********************************************************************************
+
+dis ""
+dis "=============================================="
+dis "Section 10B: Revenue scaling to actual collections"
+dis "=============================================="
+
+** Dynamic revenue = R_s + R_m (where R_m is negative, i.e. a loss)
+** R_dyn = baseline - loss
+scalar pfa_dynamic_revenue = baseline_pfa_revenue - mt_revenue_loss
+scalar oregon_dynamic_revenue = baseline_state_revenue - oregon_revenue_loss
+
+** Migration share = R_m / (R_s + R_m) = loss / dynamic_revenue
+** (positive number representing the % reduction)
+scalar pfa_migration_share = mt_revenue_loss / pfa_dynamic_revenue
+scalar oregon_migration_share = oregon_revenue_loss / oregon_dynamic_revenue
+
+** Implied actual revenue loss = share × actual revenue
+scalar pfa_implied_loss = pfa_migration_share * `actual_pfa_revenue'
+scalar oregon_implied_loss = oregon_migration_share * `actual_oregon_revenue'
+
+dis ""
+dis "PFA Dynamic Revenue (simulated):       $" %15.0fc pfa_dynamic_revenue
+dis "PFA Migration Share:                     " %8.4f pfa_migration_share " (" %5.2f pfa_migration_share*100 "%)"
+dis "PFA Implied Actual Loss:                $" %15.0fc pfa_implied_loss
+dis ""
+dis "Oregon Dynamic Revenue (simulated):     $" %15.0fc oregon_dynamic_revenue
+dis "Oregon Migration Share:                  " %8.4f oregon_migration_share " (" %5.2f oregon_migration_share*100 "%)"
+dis "Oregon Implied Actual Loss:             $" %15.0fc oregon_implied_loss
 
 ********************************************************************************
 ** SECTION 11: Output — Tables & Figures
@@ -811,29 +847,57 @@ dis "=================================================================="
 dis "REVENUE IMPACT SUMMARY"
 dis "=================================================================="
 dis ""
-dis "Baseline PFA revenue:                    $" %15.0fc baseline_pfa_revenue
-dis "Baseline Oregon state revenue:           $" %15.0fc baseline_state_revenue
+dis "--- Simulated (Microsim) ---"
+dis "Baseline PFA revenue (R_s):              $" %15.0fc baseline_pfa_revenue
+dis "PFA migration loss (R_m):                $" %15.0fc mt_revenue_loss
+dis "PFA dynamic revenue (R_s - R_m):         $" %15.0fc pfa_dynamic_revenue
+dis "PFA migration share (R_m / dynamic):      " %8.4f pfa_migration_share " (" %5.2f pfa_migration_share*100 "%)"
 dis ""
-dis "Multnomah PFA revenue loss (analytical): $" %15.0fc mt_revenue_loss
-dis "Oregon state revenue loss (analytical):  $" %15.0fc oregon_revenue_loss
+dis "Baseline Oregon revenue (R_s):           $" %15.0fc baseline_state_revenue
+dis "Oregon migration loss (R_m):             $" %15.0fc oregon_revenue_loss
+dis "Oregon dynamic revenue (R_s - R_m):      $" %15.0fc oregon_dynamic_revenue
+dis "Oregon migration share (R_m / dynamic):   " %8.4f oregon_migration_share " (" %5.2f oregon_migration_share*100 "%)"
+dis ""
+dis "--- Scaled to Actual Revenue ---"
+dis "Actual PFA revenue:                      $" %15.0fc `actual_pfa_revenue'
+dis "Implied PFA loss from migration:         $" %15.0fc pfa_implied_loss
+dis ""
+dis "Actual Oregon revenue:                   $" %15.0fc `actual_oregon_revenue'
+dis "Implied Oregon loss from migration:      $" %15.0fc oregon_implied_loss
 dis "=================================================================="
 
 ** Export summary table to Excel
 preserve
 clear
-set obs 4
+set obs 12
 
-gen str50 metric = ""
+gen str60 metric = ""
 gen double value = .
 
-replace metric = "Baseline PFA revenue"                    in 1
+replace metric = "Baseline PFA revenue (simulated)"        in 1
 replace value = baseline_pfa_revenue                       in 1
-replace metric = "Baseline Oregon state revenue"           in 2
-replace value = baseline_state_revenue                     in 2
-replace metric = "Multnomah PFA revenue loss (analytical)" in 3
-replace value = mt_revenue_loss                            in 3
-replace metric = "Oregon state revenue loss (analytical)"  in 4
-replace value = oregon_revenue_loss                        in 4
+replace metric = "PFA migration loss (simulated)"          in 2
+replace value = mt_revenue_loss                            in 2
+replace metric = "PFA dynamic revenue (simulated)"         in 3
+replace value = pfa_dynamic_revenue                        in 3
+replace metric = "PFA migration share (%)"                 in 4
+replace value = pfa_migration_share * 100                  in 4
+replace metric = "Actual PFA revenue"                      in 5
+replace value = `actual_pfa_revenue'                       in 5
+replace metric = "Implied PFA loss from migration"         in 6
+replace value = pfa_implied_loss                           in 6
+replace metric = "Baseline Oregon revenue (simulated)"     in 7
+replace value = baseline_state_revenue                     in 7
+replace metric = "Oregon migration loss (simulated)"       in 8
+replace value = oregon_revenue_loss                        in 8
+replace metric = "Oregon dynamic revenue (simulated)"      in 9
+replace value = oregon_dynamic_revenue                     in 9
+replace metric = "Oregon migration share (%)"              in 10
+replace value = oregon_migration_share * 100               in 10
+replace metric = "Actual Oregon revenue"                   in 11
+replace value = `actual_oregon_revenue'                    in 11
+replace metric = "Implied Oregon loss from migration"      in 12
+replace value = oregon_implied_loss                        in 12
 
 export excel "${results}revenue/tbl_revenue_summary.xlsx", ///
 	firstrow(variables) replace
@@ -903,15 +967,6 @@ restore
 
 save "${data}working/revenue_microsim.dta", replace
 
-dis ""
-dis "=============================================="
-dis "02_revenue.do complete."
-dis "Output files:"
-dis "  ${results}revenue/tbl_revenue_summary.xlsx"
-dis "  ${results}revenue/tbl_pfa_by_bracket.xlsx"
-dis "  ${data}working/revenue_microsim.dta"
-dis "=============================================="
-
 ********************************************************************************
 ** Export revenue parameters for elasticity calculations
 ** (Stata scalars do not persist across do-files)
@@ -923,15 +978,250 @@ set obs 1
 gen double avg_mt_rate = scalar(avg_mt_rate)
 gen double avg_state_rate = scalar(avg_state_rate)
 gen double baseline_pfa_revenue = scalar(baseline_pfa_revenue)
+gen double baseline_state_revenue = scalar(baseline_state_revenue)
 gen double total_agi_2022 = scalar(total_agi_2022)
+gen double pfa_migration_share = scalar(pfa_migration_share)
+gen double oregon_migration_share = scalar(oregon_migration_share)
+gen double pfa_implied_loss = scalar(pfa_implied_loss)
+gen double oregon_implied_loss = scalar(oregon_implied_loss)
 save "${data}working/revenue_parameters.dta", replace
 restore
 
 dis ""
 dis "Exported revenue_parameters.dta:"
-dis "  avg_mt_rate          = " %8.6f avg_mt_rate
-dis "  avg_state_rate       = " %8.6f avg_state_rate
-dis "  baseline_pfa_revenue = $" %15.0fc baseline_pfa_revenue
-dis "  total_agi_2022       = $" %15.0fc total_agi_2022
+dis "  avg_mt_rate           = " %8.6f avg_mt_rate
+dis "  avg_state_rate        = " %8.6f avg_state_rate
+dis "  baseline_pfa_revenue  = $" %15.0fc baseline_pfa_revenue
+dis "  baseline_state_revenue= $" %15.0fc baseline_state_revenue
+dis "  total_agi_2022        = $" %15.0fc total_agi_2022
+dis "  pfa_migration_share   = " %8.6f pfa_migration_share
+dis "  oregon_migration_share= " %8.6f oregon_migration_share
+dis "  pfa_implied_loss      = $" %15.0fc pfa_implied_loss
+dis "  oregon_implied_loss   = $" %15.0fc oregon_implied_loss
+
+********************************************************************************
+** SECTION 12: Distribution of Revenue Effects Across SDID Specifications
+********************************************************************************
+
+dis ""
+dis "=============================================="
+dis "Section 12: Revenue effect distribution"
+dis "=============================================="
+
+** plotplainblind palette
+local col_pfa     "213 94 0"		// vermillion — PFA preferred
+local col_oregon  "0 114 178"		// sea — Oregon preferred
+local col_fill    "86 180 233"		// sky — histogram fill
+local col_pref    "213 94 0"		// vermillion — preferred line
+
+capture confirm file "${results}sdid/sdid_results.dta"
+if _rc == 0 {
+
+	preserve
+	use "${results}sdid/sdid_results.dta", clear
+
+	** Parse outcome type and migration direction
+	gen outcome_type = ""
+	replace outcome_type = "n1" if strpos(outcome, "n1_") > 0
+	replace outcome_type = "n2" if strpos(outcome, "n2_") > 0
+	replace outcome_type = "agi" if strpos(outcome, "agi_") > 0
+
+	gen migration = ""
+	replace migration = "net" if strpos(outcome, "_net_") > 0
+	replace migration = "in" if strpos(outcome, "_in_") > 0
+	replace migration = "out" if strpos(outcome, "_out_") > 0
+
+	** Parse out-of-state flag
+	gen outstate = strpos(outcome, "_outstate") > 0 | strpos(outcome, "_irs5") > 0
+
+	** Parse data type
+	gen data_type = ""
+	replace data_type = "IRS" if strpos(outcome, "_irs") > 0 & outstate == 0
+	replace data_type = "IRS (Out-of-State)" if strpos(outcome, "_irs") > 0 & outstate == 1
+	replace data_type = "ACS All" if strpos(outcome, "_acs1") > 0 & outstate == 0
+	replace data_type = "ACS College" if strpos(outcome, "_acs2") > 0 & outstate == 0
+	replace data_type = "ACS All (Out-of-State)" if strpos(outcome, "_acs1") > 0 & outstate == 1
+	replace data_type = "ACS College (Out-of-State)" if strpos(outcome, "_acs2") > 0 & outstate == 1
+
+	** Parse period
+	gen period_type = ""
+	replace period_type = "16-22" if strpos(sample_data, "16_22") > 0
+	replace period_type = "16-22" if strpos(outcome, "_irs") > 0 & period_type == ""
+	replace period_type = "16-24" if strpos(sample_data, "16_24") > 0
+
+	** Define preferred specs (must match 02_sdid_analysis.do)
+	gen preferred = 0
+
+	** IRS preferred
+	replace preferred = 1 if 									///
+		data_type == "IRS" & 									///
+		period_type == "16-22" &								///
+		inlist(sample, "sample_all", "sample_urban75_covid") &	///
+		controls == 1 &											///
+		exclusion == 1
+
+	** ACS College preferred
+	replace preferred = 1 if 									///
+		data_type == "ACS College" & 							///
+		period_type == "16-24" &								///
+		inlist(sample, "sample_all", "sample_urban75_covid") &	///
+		controls == 1 &											///
+		exclusion == 1
+
+	** ACS College Out-of-State preferred
+	replace preferred = 1 if 									///
+		data_type == "ACS College (Out-of-State)" & 			///
+		period_type == "16-24" &								///
+		inlist(sample, "sample_all", "sample_urban75_covid") &	///
+		controls == 1 &											///
+		exclusion == 1
+
+	** ================================================================
+	** (a) PFA revenue effect distribution (domestic/county-level AGI net)
+	** ================================================================
+
+	preserve
+
+	** Keep AGI net migration specs, domestic (not out-of-state)
+	keep if outcome_type == "agi" & migration == "net" & outstate == 0
+
+	qui count
+	local n_specs = r(N)
+	dis "PFA revenue distribution: `n_specs' specifications"
+
+	if `n_specs' > 0 {
+
+		** Compute implied revenue effect for each specification
+		** effect_i = abs(tau_i) / 100
+		** X_i = effect_i * total_agi_2022
+		** R_m_i = avg_mt_rate * X_i
+		** dynamic_i = baseline_pfa_revenue - R_m_i
+		** share_i = R_m_i / dynamic_i
+		** implied_loss_i = share_i * actual_pfa_revenue
+		gen double effect_i = abs(tau) / 100
+		gen double X_i = effect_i * scalar(total_agi_2022)
+		gen double R_m_i = scalar(avg_mt_rate) * X_i
+		gen double dynamic_i = scalar(baseline_pfa_revenue) - R_m_i
+		gen double share_i = R_m_i / dynamic_i * 100
+		gen double implied_loss_i = (R_m_i / dynamic_i) * `actual_pfa_revenue' / 1e6
+
+		** Preferred specification value
+		qui summ implied_loss_i if preferred == 1
+		local pref_pfa_mean = r(mean)
+
+		** Summary
+		dis "PFA implied loss distribution ($ millions):"
+		summ implied_loss_i, detail
+
+		** Histogram
+		twoway (histogram implied_loss_i, 								///
+				fcolor("`col_fill'") lcolor(white) lwidth(thin) 		///
+				bin(20) fraction) 										///
+			(scatteri 0 `pref_pfa_mean' 1 `pref_pfa_mean', 			///
+				recast(line) lcolor("`col_pref'") lwidth(medthick) 		///
+				lpattern(dash)),										///
+			graphregion(color(white)) 									///
+			title("Distribution of Implied PFA Revenue Loss", 			///
+				size(medium)) 											///
+			subtitle("Across `n_specs' SDID specifications", 			///
+				size(small)) 											///
+			xtitle("Implied Revenue Loss ($ millions)") 				///
+			ytitle("Fraction of Specifications") 						///
+			legend(order(2 "Preferred Specification") 					///
+				ring(0) pos(2) size(small)) 							///
+			note("Dashed line = mean of preferred specifications." 		///
+				"Revenue loss scaled to actual PFA collections ($187M).", size(vsmall))
+
+		graph export "${results}revenue/fig_revenue_dist_pfa.pdf", replace
+		graph export "${results}revenue/fig_revenue_dist_pfa.jpg", ///
+			as(jpg) quality(100) replace
+
+		** Overleaf copy
+		if ${overleaf} == 1 {
+			graph export "${ol_fig}fig_revenue_dist_pfa.pdf", replace
+		}
+	}
+
+	restore
+
+	** ================================================================
+	** (b) Oregon revenue effect distribution (interstate/out-of-state AGI net)
+	** ================================================================
+
+	preserve
+
+	** Keep AGI net migration specs, out-of-state only
+	keep if outcome_type == "agi" & migration == "net" & outstate == 1
+
+	qui count
+	local n_specs = r(N)
+	dis "Oregon revenue distribution: `n_specs' specifications"
+
+	if `n_specs' > 0 {
+
+		** Compute implied revenue effect for each specification
+		gen double effect_i = abs(tau) / 100
+		gen double X_i = effect_i * scalar(total_agi_2022)
+		gen double R_m_i = scalar(avg_state_rate) * X_i
+		gen double dynamic_i = scalar(baseline_state_revenue) - R_m_i
+		gen double share_i = R_m_i / dynamic_i * 100
+		gen double implied_loss_i = (R_m_i / dynamic_i) * `actual_oregon_revenue' / 1e6
+
+		** Preferred specification value
+		qui summ implied_loss_i if preferred == 1
+		local pref_or_mean = r(mean)
+
+		** Summary
+		dis "Oregon implied loss distribution ($ millions):"
+		summ implied_loss_i, detail
+
+		** Histogram
+		twoway (histogram implied_loss_i, 								///
+				fcolor("`col_fill'") lcolor(white) lwidth(thin)			///
+				bin(20) fraction) 										///
+			(scatteri 0 `pref_or_mean' 1 `pref_or_mean', 				///
+				recast(line) lcolor("`col_pref'") lwidth(medthick)		///
+				lpattern(dash)),										///
+			graphregion(color(white)) 									///
+			title("Distribution of Implied Oregon Revenue Loss", 		///
+				size(medium)) 											///
+			subtitle("Across `n_specs' SDID specifications", 			///
+				size(small)) 											///
+			xtitle("Implied Revenue Loss ($ millions)") 				///
+			ytitle("Fraction of Specifications") 						///
+			legend(order(2 "Preferred Specification") 					///
+				ring(0) pos(2) size(small)) 							///
+			note("Dashed line = mean of preferred specifications." 		///
+				"Revenue loss scaled to actual Oregon income tax ($11.8B).", size(vsmall))
+
+		graph export "${results}revenue/fig_revenue_dist_oregon.pdf", replace
+		graph export "${results}revenue/fig_revenue_dist_oregon.jpg", ///
+			as(jpg) quality(100) replace
+
+		** Overleaf copy
+		if ${overleaf} == 1 {
+			graph export "${ol_fig}fig_revenue_dist_oregon.pdf", replace
+		}
+	}
+
+	restore
+
+	restore		// back to revenue_microsim data
+
+}
+else {
+	dis as error "WARNING: sdid_results.dta not found. Skipping revenue distribution plots."
+}
+
+dis ""
+dis "=============================================="
+dis "02_revenue.do complete."
+dis "Output files:"
+dis "  ${results}revenue/tbl_revenue_summary.xlsx"
+dis "  ${results}revenue/tbl_pfa_by_bracket.xlsx"
+dis "  ${results}revenue/fig_revenue_dist_pfa.pdf"
+dis "  ${results}revenue/fig_revenue_dist_oregon.pdf"
+dis "  ${data}working/revenue_microsim.dta"
+dis "=============================================="
 
 capture log close log_02rev
