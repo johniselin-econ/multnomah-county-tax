@@ -61,34 +61,32 @@ local ct = ${end_year_acs} - 2022 + 1
 expand `ct' if year == 2022
 by fips year, sort: replace year = year + _n - 1 if year == 2022 & _n > 1
 
-** Get list of all counties
-qui levelsof fips, local(fips)
-
-** Loop over variables
+** Extrapolate 2023-24 by county using county-specific linear trends.
+** Counties with <=3 observed values for a given variable are left missing for
+** extrapolated years rather than being dropped from the full childcare panel.
 foreach v of varlist mc_* mf_* {
+    tempfile coef_`v'
 
 	** Replace 2023 + 2024 values with missings
     replace `v' = . if year > 2022
 
-	** Loop over all FIPS
-    foreach c of local fips {
+    preserve
+        keep if year <= 2022 & !missing(`v')
+        statsby b_cons=_b[_cons] b_year=_b[year] n_obs=e(N), by(fips) clear: ///
+            regress `v' year
+        keep if n_obs > 3
+        save `coef_`v'', replace
+    restore
 
-		quietly{
+    merge m:1 fips using `coef_`v'', keep(master match) nogen
+    replace `v' = b_cons + b_year * year if year > 2022 & missing(`v')
 
-			** Run if not missing too many observations
-			count if !missing(`v') & fips == `c'
-			if `r(N)' > 3 {
-				regress `v' year if fips == `c'
-				predict `v'_hat
-				replace `v' = `v'_hat if fips == `c' & year > 2022
-				drop `v'_hat
-			} // END IF-STATEMENT
-			else {
-				di as txt "  Insufficient obs for extrapolation: fips=`c' (dropping)"
-				drop if fips == `c'
-			}
-		} // END QUIET
-    } // END FIPS LOOP
+    qui count if year > 2022 & missing(`v')
+    if r(N) > 0 {
+        di as txt "  `v': left " r(N) " extrapolated obs missing (insufficient county history)"
+    }
+
+    drop b_cons b_year n_obs
 } // END VAR LOOP
 
 ** Save file

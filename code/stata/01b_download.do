@@ -69,13 +69,18 @@ local bea_dir "${data}demographic/CAINC1"
 local bea_url "https://apps.bea.gov/regional/zip/CAINC1.zip"
 local bea_zip "`bea_dir'/CAINC1.zip"
 
-* If we don't already have a CAINC1 "_ALL_AREAS" file, download + unzip the ZIP.
+* If we do not already have a latest-year CAINC1 aggregate file, download + unzip the ZIP.
 local bea_files : dir "`bea_dir'" files "CAINC1__ALL_AREAS_*.csv"
 if "`bea_files'"=="" {
     local bea_files : dir "`bea_dir'" files "CAINC1__ALL_STATES_*.csv"
 }
+local bea_latest ""
+if "`bea_files'" != "" {
+    local n_bea : word count `bea_files'
+    local bea_latest : word `n_bea' of `bea_files'
+}
 
-if "`bea_files'"=="" {
+if strpos("`bea_latest'", "2024.csv") == 0 {
     di as txt "Downloading (BEA) CAINC1.zip ..."
     copy "`bea_url'" "`bea_zip'", replace
 

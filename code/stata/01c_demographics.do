@@ -127,14 +127,16 @@ save "${data}working/demographics_2020", replace
 
 ** Load BEA Data — resolve whichever filename variant BEA provided
 local bea_dir "${data}demographic/CAINC1"
-local bea_file : dir "`bea_dir'" files "CAINC1__ALL_AREAS_*.csv"
-if `"`bea_file'"' == "" {
-	local bea_file : dir "`bea_dir'" files "CAINC1__ALL_STATES_*.csv"
+local bea_files : dir "`bea_dir'" files "CAINC1__ALL_AREAS_*.csv"
+if `"`bea_files'"' == "" {
+	local bea_files : dir "`bea_dir'" files "CAINC1__ALL_STATES_*.csv"
 }
-if `"`bea_file'"' == "" {
+if `"`bea_files'"' == "" {
 	di as err "ERROR: No CAINC1 CSV found in `bea_dir'"
 	exit 601
 }
+local n_bea : word count `bea_files'
+local bea_file : word `n_bea' of `bea_files'
 import delimited "`bea_dir'/`bea_file'", clear
 
 ** Drop unnecc variables

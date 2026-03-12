@@ -17,6 +17,11 @@ This project analyzes whether the Multnomah County tax policy change affected mi
 ## Project Structure
 
 ```
+
+Primary R entry points:
+- `00_download_data.R` runs the R-managed downloads before Stata.
+- `00_post_stata.R` runs maps and other post-Stata R outputs.
+- `00_multnomah.R` remains available as a backward-compatible wrapper that runs both R stages.
 multnomah-county-tax/
 ├── 00_multnomah.R                 # R orchestrator (run FIRST)
 ├── 00_multnomah.do                # Stata orchestrator (run SECOND)
@@ -258,17 +263,17 @@ If TAXSIM is not installed or fails, `02_revenue.do` automatically falls back to
 
 ## Usage
 
-The pipeline runs in two stages: **R first, then Stata**.
+The preferred pipeline now runs in three stages: **R downloads, then Stata, then post-Stata R**.
 
-### Step 1: Run R pipeline
+### Step 1: Run R data downloads
 
 From the project root directory:
 
 ```r
-source("00_multnomah.R")
+source("00_download_data.R")
 ```
 
-This downloads all external data (ACS microdata, QWI, QCEW, Census age shares, BLS, DOL, NHGIS) and generates R-based figures. Scripts with missing Stata output (e.g., maps) skip gracefully and can be re-run after Step 2.
+This downloads all external data managed by the R side of the pipeline: ACS microdata, QWI, QCEW, Census age shares, BLS, DOL, county centroids, and NHGIS.
 
 ### Step 2: Run Stata pipeline
 
@@ -279,13 +284,17 @@ do "00_multnomah.do"
 
 This cleans all data sources and runs the full analysis (SDID, DiD, flows, revenue, etc.). All output directories (`results/`, subdirectories) are created automatically.
 
-### Step 3 (optional): Re-run R for maps
+### Step 3: Run post-Stata R outputs
 
-After Stata creates the working data, re-run the R script to generate maps that depend on Stata output:
+After Stata creates the working data, run the post-Stata R script to generate maps and other R outputs that depend on cleaned Stata data:
 
 ```r
-source("00_multnomah.R")
+source("00_post_stata.R")
 ```
+
+### Compatibility option
+
+`00_multnomah.R` still exists as a wrapper that runs both R stages in sequence. It remains safe to use, but the split scripts above are the recommended workflow.
 
 ## Citation
 

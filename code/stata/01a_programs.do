@@ -97,7 +97,7 @@ capture program drop acs_make_gross_migration
 program define acs_make_gross_migration
     version 16.0
 
-    syntax using/ [if] [in], SAVING(string) [REPLACE] ///
+    syntax [using/] [if] [in], SAVING(string) [REPLACE] ///
         [ IDSFILE(string) ///
           YEARVAR(name) ORIGFIPS(name) DESTFIPS(name) ///
           PERSONWT(name) HHWT(name) HHPERWT(name) HEADVAR(name) INCOME(name) SAMPLE(string)]
@@ -113,8 +113,19 @@ program define acs_make_gross_migration
     if "`headvar'"  == "" local headvar  hh_head
     if "`income'"   == "" local income   inctot
 
-    // Load microdata (optionally subset via if/in)
-    use "`using'" `if' `in', clear
+    local __restore = 0
+
+    // Load microdata (optionally subset via if/in), or operate on current data
+    if `"`using'"' != "" {
+        use "`using'" `if' `in', clear
+    }
+    else {
+        local __restore = 1
+        preserve
+        if `"`if'"' != "" | `"`in'"' != "" {
+            keep `if' `in'
+        }
+    }
 
 	if "`sample'" != "" keep if `sample'
 
@@ -122,7 +133,8 @@ program define acs_make_gross_migration
     foreach v in `yearvar' `origfips' `destfips' `personwt' `hhwt' `headvar' `income' {
         capture confirm variable `v'
         if _rc {
-            di as err "Required variable `v' not found in `using'."
+            di as err "Required variable `v' not found."
+            if `__restore' restore
             exit 198
         }
     }
@@ -275,6 +287,7 @@ program define acs_make_gross_migration
 
     // Save
     save "`saving'", `replace'
-	clear
+    if `__restore' restore
+	else clear
 
 end

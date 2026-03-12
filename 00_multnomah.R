@@ -1,215 +1,24 @@
 # =============================================================================
 # 00_multnomah.R
-# Main R orchestrator for Multnomah County tax-migration project
+# Backward-compatible wrapper for the split R pipeline
 #
-# Author: John Iselin
-# Date:   March 5, 2026
-#
-# Purpose: Runs all R scripts for this project. Execute this BEFORE running
-#          00_multnomah.do (Stata). The pipeline is:
-#
-#   1. Data pulls    — ACS microdata, QWI, QCEW, Census age shares,
-#                      BLS/DOL/centroids, NHGIS demographics
-#   2. Stata         — Run 00_multnomah.do separately after this script
-#   3. R figures     — Maps and diagrams (run after Stata creates working data)
-#
-# Usage:
-#   From the project root directory:
-#     source("00_multnomah.R")
-#   Or from the command line:
-#     Rscript 00_multnomah.R
+# Preferred usage:
+#   source("00_download_data.R")
+#   ... run 00_multnomah.do in Stata ...
+#   source("00_post_stata.R")
 # =============================================================================
 
-# ---- Setup ------------------------------------------------------------------
-
-cat("=== 00_multnomah.R ===\n")
-cat("Start time:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n\n")
-
-# Check / install missing packages
-required_packages <- c(
-  "here",         # project root detection
-  "dplyr",        # data manipulation (api_code, qwi, qcew, census_age_shares)
-  "readr",        # CSV I/O (qwi, qcew, census_age_shares, download scripts)
-  "tidyr",        # reshaping (census_age_shares)
-  "stringr",      # string ops (api_code)
-  "ipumsr",       # IPUMS API (api_code, download_nhgis)
-  "tidycensus",   # Census API (census_age_shares)
-  "sf",           # spatial (map_code)
-  "tigris",       # TIGER shapefiles (map_code)
-  "readxl",       # Excel import (map_code)
-  "patchwork",    # plot composition (map_code)
-  "cowplot",      # plot composition (map_code)
-  "ggplot2"       # plotting (map_code)
-)
-
-missing_packages <- required_packages[!vapply(required_packages, requireNamespace,
-                                              logical(1), quietly = TRUE)]
-if (length(missing_packages) > 0) {
-  if (isTRUE(auto_install_pkgs)) {
-    cat("Installing missing packages:", paste(missing_packages, collapse = ", "), "\n")
-    install.packages(missing_packages, repos = "https://cloud.r-project.org")
-  } else {
-    stop("Missing required packages: ", paste(missing_packages, collapse = ", "), "\n",
-         "  Install them manually or set auto_install_pkgs <- TRUE.", call. = FALSE)
-  }
-}
-
-# Project root (uses .Rproj / .git as anchor)
-project_root <- here::here()
-setwd(project_root)
-cat("Project root:", project_root, "\n\n")
-
-# Paths
-dir_code_r     <- file.path(project_root, "code", "R")
-dir_data       <- file.path(project_root, "data")
-dir_data_acs   <- file.path(dir_data, "acs")
-api_codes_path <- file.path(project_root, "api_codes.txt")
-
-# Parameters (match 00_multnomah.do)
-start_year        <- 2012L
-end_year          <- 2024L
-overwrite_csv     <- FALSE
-auto_install_pkgs <- TRUE     # set FALSE to skip automatic package installation
-
-# Flag to prevent auto-execution when sourcing sub-scripts
 .sourced_by_main <- TRUE
+source(file.path("code", "R", "multnomah_r_common.R"))
 
-# Check for API keys file
-if (!file.exists(api_codes_path)) {
-  stop("api_codes.txt not found at: ", api_codes_path, "\n",
-       "  Create this file with your IPUMS and Census API keys.\n",
-       "  See README.md Section 'Setup > API Keys' for instructions.",
-       call. = FALSE)
-}
+cfg <- multnomah_r_init("00_multnomah.R")
 
-# Source shared utilities
-source(file.path(dir_code_r, "utils.R"))
+cat("This wrapper runs both R stages in sequence.\n")
+cat("For the split workflow, use 00_download_data.R before Stata and 00_post_stata.R after Stata.\n\n")
 
+run_multnomah_data_pulls(cfg)
+run_multnomah_post_stata(cfg)
 
-# =============================================================================
-# SECTION 1: DATA PULLS
-# =============================================================================
-
-cat("── Section 1: Data Pulls ──────────────────────────────────────────────\n\n")
-
-# ---- 1a. ACS microdata via IPUMS --------------------------------------------
-
-cat(">> 1a. ACS microdata (IPUMS)\n")
-source(file.path(dir_code_r, "api_code.R"))
-download_ipums_acs(
-  project_root  = project_root,
-  dir_data_acs  = dir_data_acs,
-  api_codes_path = api_codes_path,
-  start_year    = start_year,
-  end_year      = end_year,
-  overwrite_csv = overwrite_csv
+multnomah_r_finish(
+  "If maps were skipped, run 00_multnomah.do in Stata and then source(\"00_post_stata.R\")."
 )
-cat("   Done.\n\n")
-
-
-# ---- 1b. QWI data via LEHD bulk download ------------------------------------
-
-cat(">> 1b. QWI data (LEHD)\n")
-source(file.path(dir_code_r, "qwi_data.R"))
-download_qwi(
-  project_root  = project_root,
-  start_year    = start_year,
-  end_year      = end_year,
-  overwrite_csv = overwrite_csv
-)
-cat("   Done.\n\n")
-
-
-# ---- 1c. QCEW data via BLS -------------------------------------------------
-
-cat(">> 1c. QCEW data (BLS)\n")
-source(file.path(dir_code_r, "qcew_data.R"))
-download_qcew(
-  project_root  = project_root,
-  start_year    = start_year,
-  end_year      = end_year,
-  overwrite_csv = overwrite_csv
-)
-cat("   Done.\n\n")
-
-
-# ---- 1d. Census age shares via tidycensus -----------------------------------
-
-cat(">> 1d. Census age shares (B01001)\n")
-age_shares_path <- file.path(dir_data, "working", "age_shares_county.csv")
-
-if (!file.exists(age_shares_path) || isTRUE(overwrite_csv)) {
-  # Set variables expected by census_age_shares.R (script-based, not function-based)
-  # project_root and api_codes_path are already set above
-  source(file.path(dir_code_r, "census_age_shares.R"))
-} else {
-  cat("   Skipping (file exists). Set overwrite_csv=TRUE to re-download.\n")
-}
-cat("   Done.\n\n")
-
-
-# ---- 1e. Public data downloads (BLS, DOL, centroids) -------------------------
-
-cat(">> 1e. Public data (BLS LAUS, DOL childcare, county centroids)\n")
-source(file.path(dir_code_r, "download_public_data.R"))
-download_bls_laus(dir_data, overwrite = overwrite_csv)
-download_dol_childcare(dir_data, overwrite = overwrite_csv)
-download_county_centroids(dir_data, overwrite = overwrite_csv)
-cat("   Done.\n\n")
-
-
-# ---- 1f. NHGIS demographics (IPUMS API) --------------------------------------
-
-cat(">> 1f. NHGIS demographics (IPUMS API)\n")
-nhgis_path <- file.path(dir_data, "demographic", "nhgis0031_csv",
-                         "nhgis0031_ts_nominal_county.csv")
-
-if (!file.exists(nhgis_path) || isTRUE(overwrite_csv)) {
-  source(file.path(dir_code_r, "download_nhgis.R"))
-  download_nhgis_demographics(
-    dir_data       = dir_data,
-    api_codes_path = api_codes_path,
-    overwrite      = overwrite_csv
-  )
-} else {
-  cat("   Skipping (file exists). Set overwrite_csv=TRUE to re-download.\n")
-}
-cat("   Done.\n\n")
-
-
-# =============================================================================
-# SECTION 2: FIGURES (R-generated)
-# These may depend on Stata outputs. Scripts with missing inputs skip gracefully.
-# =============================================================================
-
-cat("── Section 2: R Figures ────────────────────────────────────────────────\n\n")
-
-# ---- 2a. Conceptual diagrams (no data dependencies) -------------------------
-
-cat(">> 2a. Conceptual diagrams\n")
-source(file.path(dir_code_r, "fig_diagrams.R"))
-cat("   Done.\n\n")
-
-
-# ---- 2b. Maps (requires Stata working data) ---------------------------------
-
-cat(">> 2b. Maps\n")
-county_sample_path <- file.path(dir_data, "working", "acs_county_sample.xlsx")
-
-if (file.exists(county_sample_path)) {
-  source(file.path(dir_code_r, "map_code.R"))
-  cat("   Done.\n\n")
-} else {
-  cat("   SKIPPED: acs_county_sample.xlsx not found.\n")
-  cat("   Run 00_multnomah.do first, then re-run this script for maps.\n\n")
-}
-
-
-# =============================================================================
-# DONE
-# =============================================================================
-
-cat("── Complete ────────────────────────────────────────────────────────────\n")
-cat("End time:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
-cat("\nNext step: run 00_multnomah.do in Stata.\n")
-cat("Then re-run this script to generate maps (Section 2b) if skipped.\n")

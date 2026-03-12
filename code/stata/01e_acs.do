@@ -124,6 +124,22 @@ save "${data}working/acs_proptx_slim", replace
 restore
 
 //--------------------------------------------------
+// Build gross-migration files while ACS microdata is still in memory
+//--------------------------------------------------
+
+** All (25+)
+acs_make_gross_migration, ///
+    saving("${data}working/acs_county_gross_25plus") replace sample("age >= 25")
+
+** College-degrees
+acs_make_gross_migration, ///
+    saving("${data}working/acs_county_gross_college") replace sample("hh_any_college == 1 & age >= 25")
+
+** No Kids
+acs_make_gross_migration, ///
+    saving("${data}working/acs_county_gross_nokids") replace sample("hh_any_child == 0 & age >= 25")
+
+//--------------------------------------------------
 // Build county-level flow file
 //--------------------------------------------------
 
@@ -175,28 +191,24 @@ label var state_fips_d "State FIPS (destination)"
 label var county_fips_d "County FIPS (destination)"
 
 ** Merge in names (from NHGIS IDs snapshot)
+preserve
+use "${data}working/ids", clear
+rename (state_fips county_fips state_name county_name) ///
+       (state_fips_d county_fips_d state_name_d county_name_d)
+tempfile ids_d
+save `ids_d'
+restore
 
-** Loop over origin and destination states
-foreach x in "d" "o" {
+preserve
+use "${data}working/ids", clear
+rename (state_fips county_fips state_name county_name) ///
+       (state_fips_o county_fips_o state_name_o county_name_o)
+tempfile ids_o
+save `ids_o'
+restore
 
-	preserve
-
-	** Load County IDs
-	use "${data}working/ids", clear
-
-	** Rename
-	rename 	(state_fips county_fips state_name county_name)	///
-			(state_fips_`x' county_fips_`x' state_name_`x' county_name_`x')
-
-	** Save as temporary file
-	tempfile ids_`x'
-	save `ids_`x''
-
-	** Restore and merge data
-	restore
-	merge m:1 state_fips_`x' county_fips_`x' using `ids_`x'', keep(master match) nogen
-
-} // END ORIGIN - DESTINATION LOOP
+merge m:1 state_fips_d county_fips_d using `ids_d', keep(master match) nogen
+merge m:1 state_fips_o county_fips_o using `ids_o', keep(master match) nogen
 
 ** Organize data
 order year ///
@@ -215,18 +227,3 @@ replace county_name_d = "Other" if county_fips_d == 0
 save "${data}working/acs_county_flow", replace
 clear
 
-//--------------------------------------------------
-// Build gross-migration files (using program from 01a)
-//--------------------------------------------------
-
-** All (25+)
-acs_make_gross_migration using "${data}working/acs_migration_file", ///
-    saving("${data}working/acs_county_gross_25plus") replace sample("age >= 25")
-
-** College-degrees
-acs_make_gross_migration  using "${data}working/acs_migration_file", ///
-    saving("${data}working/acs_county_gross_college") replace sample("hh_any_college == 1 & age >= 25")
-
-** No Kids
-acs_make_gross_migration using "${data}working/acs_migration_file", ///
-    saving("${data}working/acs_county_gross_nokids") replace sample("hh_any_child == 0 & age >= 25")
