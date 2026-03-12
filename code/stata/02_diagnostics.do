@@ -1,6 +1,7 @@
 /*****************************************************************************
 * File:        02_diagnostics.do
 * Purpose:     Observation count table by approach x specification x data source
+*              Covers: SDID (main), Narrow SDID, Flows, DiD
 * Called by:   00_multnomah.do (optional) or standalone after data cleaning
 * Outputs:     ${results}tables/diagnostics_obs_counts.tex
 *              ${results}tables/diagnostics_obs_counts.xlsx
@@ -8,6 +9,8 @@
 *
 * Note:        Replicates the sample-construction logic from each analysis
 *              do-file without running any regressions. Counts only.
+*              For Other-Outcome SDID and Quarterly SDID counts, see
+*              02_diagnostics_supp.do (runs after those scripts).
 ******************************************************************************/
 
 capture log close log_diag
@@ -238,77 +241,7 @@ clear
 
 
 ********************************************************************************
-** SECTION 3: Other-Outcome SDID
-********************************************************************************
-
-use "${data}working/irs_county_all", clear
-
-** Collapse across AGI brackets to county-year
-collapse (sum) n1 mars1 mars2 mars4 n2 elderly agi n_total_inc a_total_inc n_wage a_wage, ///
-    by(fips year state_fips state_abb county_fips county_name)
-
-keep if inrange(year, ${start_year_irs_analysis}, 2022)
-drop if county_fips == 0
-
-** Merge demographics
-merge m:1 state_fips county_fips using "${data}working/demographics_2020", gen(demo_merge)
-keep if demo_merge == 3
-drop demo_merge
-
-** Merge BEA economics
-merge 1:1 state_fips county_fips year using "${data}working/bea_economics", gen(econ_merge)
-keep if econ_merge == 3
-drop econ_merge
-
-** Balanced panel
-bysort fips: gen ct = _N
-qui summ ct
-keep if ct == `r(max)'
-drop ct
-
-** Log outcomes (drop if any are missing/zero)
-gen ln_n1 = ln(n1)
-gen ln_agi = ln(agi) if agi > 0
-gen ln_total_inc = ln(a_total_inc) if a_total_inc > 0
-gen ln_wage = ln(a_wage) if a_wage > 0
-
-** Count for each outcome
-foreach out in "ln_n1" "ln_agi" "ln_total_inc" "ln_wage" {
-
-    preserve
-    drop if missing(`out')
-
-    qui distinct fips
-    local n_units = r(ndistinct)
-    qui distinct year
-    local n_years = r(ndistinct)
-    local n_obs = _N
-
-    if "`out'" == "ln_n1" local lbl "Returns"
-    if "`out'" == "ln_agi" local lbl "AGI"
-    if "`out'" == "ln_total_inc" local lbl "Total Income"
-    if "`out'" == "ln_wage" local lbl "Wages"
-
-    clear
-    set obs 1
-    gen str40 approach = "Other-Outcome SDID"
-    gen str40 sample = "`lbl'"
-    gen str40 data_source = "IRS (county-level)"
-    gen str20 unit = "county-year"
-    gen long N_units = `n_units'
-    gen int N_years = `n_years'
-    gen long N_obs = `n_obs'
-    append using `results'
-    save `results', replace
-    restore
-
-} // END OUTCOME LOOP
-
-clear
-
-
-********************************************************************************
-** SECTION 4: Flow Analysis
+** SECTION 3: Flow Analysis
 ********************************************************************************
 
 use "${data}working/irs_county_flow", clear
@@ -346,7 +279,7 @@ clear
 
 
 ********************************************************************************
-** SECTION 5: DiD (Individual-Level ACS)
+** SECTION 4: DiD (Individual-Level ACS)
 ********************************************************************************
 
 use "${data}working/acs_migration_file", clear

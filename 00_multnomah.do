@@ -1,50 +1,55 @@
 /*******************************************************************************
-File Name: 		00_multnomah.do
-Creator: 		John Iselin
-Date Update:	March 5th, 2026
+	File Name:    00_multnomah.do
+	Creator:      John Iselin
+	Date Updated: March 12, 2026
 
-Purpose: 	Runs the Stata analysis on the effect of tax changes on migration in
-			Multnomah County, Oregon.
+	Purpose:      Orchestrator for the Stata analysis pipeline examining the
+	              effect of Multnomah County's Preschool for All tax on
+	              migration. Calls data-cleaning scripts (01_*) and analysis
+	              scripts (02_*) in dependency order.
 
-			NOTE: Run 00_multnomah.R first to download all data (ACS, QWI, QCEW,
-			Census age shares) and generate R-based figures (maps, diagrams).
+	Prerequisite: Run 00_ipums_api.R first to download ACS, QWI, QCEW, and
+	              Census age-share data and generate R-based figures.
 
-Authors: John Iselin
-
-For more information, contact john.iselin@yale.edu
-
+	Author:       John Iselin (john.iselin@yale.edu)
 *******************************************************************************/
 
-** INSTALLATION
-* ssc install reghdfe, replace
-* ssc install ftools, replace
-* ssc install ppmlhdfe, replace
-* ssc install sdid, replace
-* ssc install sdid_event, replace
-* ssc install estout, replace
-* ssc install coefplot, replace
-* ssc install fre, replace
-* ssc install distinct, replace
-* ssc install blindschemes, replace
-* net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
 
-** Preliminaries
+** ============================================================================
+** REQUIRED PACKAGES
+** ============================================================================
+** Uncomment and run once to install:
+*   ssc install reghdfe, replace
+*   ssc install ftools, replace
+*   ssc install ppmlhdfe, replace
+*   ssc install sdid, replace
+*   ssc install sdid_event, replace
+*   ssc install estout, replace
+*   ssc install coefplot, replace
+*   ssc install fre, replace
+*   ssc install distinct, replace
+*   ssc install blindschemes, replace
+*   net install taxsimlocal35, from("https://taxsim.nber.org/stata") replace
+*   net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
+
+
+** ============================================================================
+** PRELIMINARIES
+** ============================================================================
 capture log close
 clear matrix
 clear all
 set more off
 
-** CHECK REQUIRED PACKAGES
-** Verify all user-written packages are installed before proceeding.
+** Verify all required packages are installed
 local pkg_missing = 0
-foreach pkg in reghdfe ftools ppmlhdfe sdid sdid_event estout coefplot fre distinct {
+foreach pkg in reghdfe ftools ppmlhdfe sdid sdid_event estout coefplot fre distinct taxsimlocal35 {
     capture which `pkg'
     if _rc {
         di as error "  Package not found: `pkg'"
         local pkg_missing = 1
     }
 }
-** blindschemes check (look for the scheme file, not an ado)
 capture findfile scheme-plotplainblind.scheme
 if _rc {
     di as error "  Package not found: blindschemes (scheme plotplainblind)"
@@ -62,140 +67,142 @@ if `pkg_missing' {
     error 199
 }
 
-** Name of project
-global pr_name "multnomah"
 
-** Date of run
+** ============================================================================
+** PROJECT GLOBALS
+** ============================================================================
+global pr_name "multnomah"
 global date "`: di %tdCY-N-D daily("$S_DATE", "DMY")'"
 
-** Set Directories
-** NOTE: Set your working directory to the project root before running this file.
-** Example: cd "C:/Users/yourname/Documents/GitHub/multnomah-county-tax/"
-global dir 		`c(pwd)'
-** Convert backslashes to forward slashes for compatibility (Windows)
-global dir = subinstr("${dir}", "\", "/", .)
-global code 	"${dir}/code/stata/"			// STATA CODE FILEPATH
-global rcode 	"${dir}/code/R/"				// R CODE FILEPATH
-global data 	"${dir}/data/"					// DATA FILEPATH
-global results 	"${dir}/results/"				// RESULTS FILEPATH
-global logs 	"${code}logs/"					// LOG FILE SUB-FILEPATH
-cd $dir
+** Directories — set working directory to project root before running
+global dir      = subinstr("`c(pwd)'", "\", "/", .)
+global code     "${dir}/code/stata/"
+global rcode    "${dir}/code/R/"
+global data     "${dir}/data/"
+global results  "${dir}/results/"
+global logs     "${code}logs/"
+cd "${dir}"
 
-** OVERLEAF FILE PATH (optional — for syncing outputs to Overleaf)
-** To enable, create profile.do (gitignored) in the project root with:
-**   global oth_path "C:/Users/yourname/Dropbox/Apps/Overleaf/Your Project/"
+** Overleaf sync (optional) — set oth_path in profile.do (gitignored)
 global overleaf = 0
 global oth_path ""
 global ol_fig   ""
 global ol_tab   ""
-
-** Load user-specific overrides from profile.do (gitignored)
 capture do "${dir}/profile.do"
-
-** If oth_path was set in profile.do, derive Overleaf subdirectories
 if "${oth_path}" != "" {
     global ol_fig "${oth_path}figures/"
     global ol_tab "${oth_path}tables/"
     global overleaf = 1
 }
 
-** Ensure output directories exist
-capture mkdir "${results}"
-capture mkdir "${results}tables"
-capture mkdir "${results}figures"
-capture mkdir "${results}sdid"
-capture mkdir "${results}flows"
-capture mkdir "${results}did"
-capture mkdir "${results}individual"
-capture mkdir "${code}logs"
+** Create output directories
+foreach d in "" "tables" "figures" "sdid" "flows" "did" "individual" {
+    capture mkdir "${results}`d'"
+}
+capture mkdir "${logs}"
 
-** Start log file
+** Start log
 log using "${logs}00_log_${pr_name}_${date}", replace text
 
-** Set Seed
+** Seed and scheme
 set seed 56403
-
-** Set scheme
 set scheme plotplainblind
 
-** PARALLEL PROCESSING FLAG
-** Set to 1 to use parallel processing, 0 for sequential processing
+
+** ============================================================================
+** PARAMETERS
+** ============================================================================
+
+** Parallel processing (set to 0 for sequential)
 if "${use_parallel}" == "" global use_parallel = 1
 global n_clusters = 6
 
-** Set parameters
-global start_year_irs_data = 2012		// Extended back for appendix (2011-12 flows)
-global start_year_irs_analysis = 2016	// Main analysis start (unchanged)
-global start_year_acs = 2012			// Extended back for appendix comparison
-global end_year_acs = 2024
+** Year ranges
+global start_year_irs_data     = 2012   // Extended back for appendix (2011-12 flows)
+global start_year_irs_analysis = 2016   // Main analysis start
+global start_year_acs          = 2012   // Extended back for appendix comparison
+global end_year_acs            = 2024
 
 ** IRS file year ranges (2-digit)
-global start_yy_irs_download = 11		// IRS file download start (2011-12 flows)
-global end_yy_irs_migration  = 21		// IRS migration file end (2021-22 flows)
-global end_yy_irs_agi        = 22		// IRS AGI file end (2022 data)
-global start_yy_irs_county   = 12		// County data processing start
-global end_yy_irs_county     = 22		// County data processing end
+global start_yy_irs_download   = 11     // IRS file download start (2011-12 flows)
+global end_yy_irs_migration    = 21     // IRS migration file end (2021-22 flows)
+global end_yy_irs_agi          = 22     // IRS AGI file end (2022 data)
+global start_yy_irs_county     = 12     // County data processing start
+global end_yy_irs_county       = 22     // County data processing end
 
 
-** CLEAN DATA (01)
-** (a) 	Demographic data via IPUMS NHGIS
-** 		- https://www.nhgis.org/
-** (b) 	Individual-level ACS data via IPUMS USA
-** 		- https://usa.ipums.org/usa/index.shtml
-** (c) 	County-level IRS migration via IRS SOI
-** 		- https://www.irs.gov/statistics/soi-tax-stats-migration-data
-** (d) County-level IRS data via IRS SOI
-** 		- https://www.irs.gov/statistics/soi-tax-stats-county-data
-** (e) NYTimes Covid-19 Cases and Deaths by county
-** 		- https://github.com/nytimes/covid-19-data
-** (f) County-level childcare cost data via DOL
-** 		- www.dol.gov/sites/dolgov/files/WB/NDCP2022.xlsx
-** (g) County-level Unemployment data via BLS
-** 		- https://www.bls.gov/lau/
-** (h) County-level QWI data via LEHD bulk download
-** 		- https://lehd.ces.census.gov/data/qwi/
-** (i) County-level QCEW data via BLS
-** 		- https://www.bls.gov/cew/
-do ${code}01_clean_data.do
+** ============================================================================
+** STAGE 1: DATA CLEANING
+** ============================================================================
+** Calls 01a_programs through 01h_auxiliary; see 01_clean_data.do for details.
+do "${code}01_clean_data.do"
 
-** ANALYSIS (02)
 
-** Descriptives
-do ${code}02_descriptives.do
+** ============================================================================
+** STAGE 2: DESCRIPTIVE ANALYSIS
+** ============================================================================
+do "${code}02_descriptives.do"
 
-** Flow Analysis (IRS county-level flow regressions)
-do ${code}02_flow_analysis.do
 
-** Difference-in-Differences (ACS individual-level DiD)
-do ${code}02_did_analysis.do
+** ============================================================================
+** STAGE 3: CAUSAL ANALYSIS
+** ============================================================================
 
-** Synthetic Difference-in-Difference Analysis
-do ${code}02_sdid_analysis.do
+** IRS county-level flow regressions
+do "${code}02_flow_analysis.do"
 
-** Narrow SDID (similar-cities control pool)
-do ${code}02_narrow_sdid.do
+** ACS individual-level difference-in-differences
+do "${code}02_did_analysis.do"
 
-** Other Outcomes SDID (non-migration IRS outcomes)
-do ${code}02_otherout_sdid.do
+** Synthetic difference-in-differences (main specification)
+** Produces sdid_results.dta used by downstream scripts
+do "${code}02_sdid_analysis.do"
 
-** Quarterly SDID (QWI employment/earnings + QCEW establishments/wages)
-do ${code}02_quarterly_sdid.do
 
-** Individual-level Model
-do ${code}02_indiv_analysis.do
+** ============================================================================
+** STAGE 4: ROBUSTNESS
+** ============================================================================
 
-** Revenue Effects of Tax-Induced Migration
+** SDID with narrow control pool (21 similar cities)
+do "${code}02_narrow_sdid.do"
+
+** Individual-level person-year event study
+do "${code}02_indiv_analysis.do"
+
+
+** ============================================================================
+** STAGE 5: DERIVED ESTIMATES (depend on SDID results)
+** ============================================================================
+
+** Revenue effects of tax-induced migration
 do "${code}02_revenue.do"
 
-** Elasticities of Migration with Respect to PFA Tax
+** Flow and stock elasticities (depends on 02_revenue + 02_sdid_analysis)
 do "${code}02_elasticities.do"
 
-** Appendix B: IRS Data Quality
-do "${code}02_appendix_data_quality.do"
-
-** Diagnostics: observation count table (optional — uncomment to run)
+** Observation count table (optional — uncomment to run)
 * do "${code}02_diagnostics.do"
 
-** End log file
+
+** ============================================================================
+** STAGE 6: SUPPLEMENTAL ANALYSES & APPENDIX
+** ============================================================================
+
+** SDID on non-migration IRS outcomes (returns, AGI, wages, income)
+do "${code}02_otherout_sdid.do"
+
+** SDID on quarterly outcomes (QWI employment/earnings, QCEW estabs/wages)
+do "${code}02_quarterly_sdid.do"
+
+** Supplemental obs counts for otherout + quarterly (optional — uncomment to run)
+* do "${code}02_diagnostics_supp.do"
+
+** Appendix B: IRS data quality (extended 2012-2022 window)
+do "${code}02_appendix_data_quality.do"
+
+
+** ============================================================================
+** CLOSE
+** ============================================================================
 capture log close
 
