@@ -114,6 +114,7 @@ program define acs_make_gross_migration
     if "`income'"   == "" local income   inctot
 
     local __restore = 0
+    tempfile __src
 
     // Load microdata (optionally subset via if/in), or operate on current data
     if `"`using'"' != "" {
@@ -121,7 +122,7 @@ program define acs_make_gross_migration
     }
     else {
         local __restore = 1
-        preserve
+        save `__src', replace
         if `"`if'"' != "" | `"`in'"' != "" {
             keep `if' `in'
         }
@@ -134,7 +135,7 @@ program define acs_make_gross_migration
         capture confirm variable `v'
         if _rc {
             di as err "Required variable `v' not found."
-            if `__restore' restore
+            if `__restore' use `__src', clear
             exit 198
         }
     }
@@ -287,7 +288,7 @@ program define acs_make_gross_migration
 
     // Save
     save "`saving'", `replace'
-    if `__restore' restore
+    if `__restore' use `__src', clear
 	else clear
 
 end
