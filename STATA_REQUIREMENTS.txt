@@ -3,10 +3,10 @@ Stata Package Requirements for Multnomah County Tax Analysis
 ================================================================================
 
 Minimum Stata version: 16.0 (tested on Stata 18/MP)
-Stata/MP recommended for parallel SDID estimation (optional).
+Stata/MP is recommended for parallel SDID estimation, but not required.
 
-This project requires the following user-written Stata packages. Install them
-before running the analysis scripts.
+This project requires the following user-written Stata packages before running
+the analysis scripts.
 
 --------------------------------------------------------------------------------
 REQUIRED PACKAGES
@@ -27,7 +27,7 @@ REQUIRED PACKAGES
 5. sdid_event - Event study post-estimation for SDID
    Install: ssc install sdid_event, replace
 
-6. estout - Export estimation results to LaTeX/Excel (provides esttab, eststo, estadd)
+6. estout - Export estimation results to LaTeX/Excel
    Install: ssc install estout, replace
 
 7. coefplot - Plot regression coefficients
@@ -39,11 +39,23 @@ REQUIRED PACKAGES
 9. distinct - Count distinct values
    Install: ssc install distinct, replace
 
-10. blindschemes - Color-blind friendly plot schemes (provides plotplainblind)
+10. blindschemes - Color-blind-friendly plot schemes (plotplainblind)
     Install: ssc install blindschemes, replace
 
-11. parallel - Parallel processing for Stata (optional — set use_parallel=0 to skip)
+11. parallel - Parallel processing for Stata (optional; set use_parallel=0 to skip)
     Install: net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
+
+--------------------------------------------------------------------------------
+ADDITIONAL TOOLING
+--------------------------------------------------------------------------------
+
+12. TAXSIM 35 local executable - Revenue microsimulation in 02_revenue.do
+    Download: https://taxsim.nber.org/taxsim35/
+    Setup: Place the executable on your system PATH, or otherwise make it
+           available to Stata's taxsimlocal35 command.
+    Note: If TAXSIM is not installed, 02_revenue.do falls back to a simplified
+          tax calculator. That fallback is functional, but it is not the paper's
+          preferred revenue specification.
 
 --------------------------------------------------------------------------------
 QUICK INSTALL (run in Stata)
@@ -77,6 +89,7 @@ To verify packages are installed correctly, run:
     which coefplot
     which fre
     which distinct
+    which taxsimlocal35
 
 --------------------------------------------------------------------------------
 R PACKAGES (for data download and mapping)

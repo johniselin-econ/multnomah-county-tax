@@ -38,6 +38,12 @@ QCEW_OUTPUT_COLS <- c(
   "avg_wkly_wage"
 )
 
+QCEW_NUMERIC_COLS <- c(
+  "year", "qtr", "qtrly_estabs",
+  "month1_emplvl", "month2_emplvl", "month3_emplvl",
+  "total_qtrly_wages", "avg_wkly_wage"
+)
+
 # ---- Download helper -------------------------------------------------------
 
 download_qcew_year <- function(yr, raw_dir, max_retries = 3) {
@@ -79,6 +85,30 @@ download_qcew_year <- function(yr, raw_dir, max_retries = 3) {
 }
 
 # ---- Process one year's zip file -------------------------------------------
+
+process_qcew_chunk <- function(df) {
+  if (is.null(df) || nrow(df) == 0) return(NULL)
+
+  df <- df %>%
+    filter(agglvl_code == QCEW_AGGLVL_COUNTY_TOTAL)
+
+  if (nrow(df) == 0) return(NULL)
+
+  missing_cols <- setdiff(QCEW_OUTPUT_COLS, names(df))
+  if (length(missing_cols) > 0) {
+    keep_cols <- intersect(QCEW_OUTPUT_COLS, names(df))
+  } else {
+    keep_cols <- QCEW_OUTPUT_COLS
+  }
+
+  df <- df %>% select(all_of(keep_cols))
+
+  for (col in intersect(QCEW_NUMERIC_COLS, names(df))) {
+    df[[col]] <- as.numeric(df[[col]])
+  }
+
+  df
+}
 
 process_qcew_year <- function(zip_path, yr) {
   if (is.null(zip_path) || !file.exists(zip_path)) return(NULL)
@@ -129,37 +159,117 @@ process_qcew_year <- function(zip_path, yr) {
 
   if (is.null(df) || nrow(df) == 0) return(NULL)
 
-  # Filter to county-level totals
-  df <- df %>%
-    filter(agglvl_code == QCEW_AGGLVL_COUNTY_TOTAL)
-
-  if (nrow(df) == 0) {
+  df <- process_qcew_chunk(df)
+  if (is.null(df) || nrow(df) == 0) {
     message("  No county-level rows (agglvl_code=70) for year ", yr)
     return(NULL)
   }
 
-  # Select and convert columns
-  # Ensure all expected columns exist
-  missing_cols <- setdiff(QCEW_OUTPUT_COLS, names(df))
-  if (length(missing_cols) > 0) {
-    warning("Missing columns in year ", yr, ": ", paste(missing_cols, collapse = ", "))
-    # Only keep columns that exist
-    keep_cols <- intersect(QCEW_OUTPUT_COLS, names(df))
-  } else {
-    keep_cols <- QCEW_OUTPUT_COLS
-  }
-
-  df <- df %>% select(all_of(keep_cols))
-
-  # Convert numeric columns
-  num_cols <- c("year", "qtr", "qtrly_estabs",
-                "month1_emplvl", "month2_emplvl", "month3_emplvl",
-                "total_qtrly_wages", "avg_wkly_wage")
-  for (col in intersect(num_cols, names(df))) {
-    df[[col]] <- as.numeric(df[[col]])
-  }
-
   df
+}
+
+write_qcew_year_chunks <- function(zip_path, yr, dir_qcew, overwrite_csv = FALSE,
+                                   chunk_size = 100000) {
+  if (is.null(zip_path) || !file.exists(zip_path)) return(FALSE)
+
+  zip_contents <- tryCatch(
+    unzip(zip_path, list = TRUE),
+    error = function(e) {
+      warning("Error listing zip contents for ", yr, ": ", conditionMessage(e))
+      NULL
+    }
+  )
+
+  if (is.null(zip_contents) || nrow(zip_contents) == 0) return(FALSE)
+
+  csv_name <- grep("\\.csv$", zip_contents$Name, value = TRUE, ignore.case = TRUE)
+  if (length(csv_name) == 0) {
+    warning("No CSV found in zip for year ", yr)
+    return(FALSE)
+  }
+  csv_name <- csv_name[1]
+
+  tmp_dir <- tempdir()
+  ok <- tryCatch(
+    {
+      unzip(zip_path, files = csv_name, exdir = tmp_dir, overwrite = TRUE)
+      TRUE
+    },
+    error = function(e) {
+      warning("Error extracting zip for ", yr, ": ", conditionMessage(e))
+      FALSE
+    }
+  )
+  if (!ok) return(FALSE)
+
+  csv_path <- file.path(tmp_dir, csv_name)
+  if (!file.exists(csv_path)) return(FALSE)
+
+  quarter_files <- setNames(
+    file.path(dir_qcew, sprintf("qcew_%d_Q%d.csv", yr, 1:4)),
+    as.character(1:4)
+  )
+  should_write <- setNames(
+    isTRUE(overwrite_csv) | !file.exists(unname(quarter_files)),
+    names(quarter_files)
+  )
+
+  if (!any(should_write)) {
+    for (q in names(quarter_files)) {
+      message("  Skipping ", yr, "-Q", q, " (file exists)")
+    }
+    return(TRUE)
+  }
+
+  if (isTRUE(overwrite_csv)) {
+    unlink(unname(quarter_files))
+  }
+
+  rows_written <- setNames(integer(4), names(quarter_files))
+  header_written <- setNames(rep(FALSE, 4), names(quarter_files))
+
+  cb <- SideEffectChunkCallback$new(function(x, pos) {
+    chunk <- process_qcew_chunk(x)
+    if (is.null(chunk) || nrow(chunk) == 0) return()
+
+    for (q in names(quarter_files)) {
+      if (!should_write[[q]]) next
+
+      out_path <- quarter_files[[q]]
+      q_chunk <- chunk %>% filter(qtr == as.numeric(q))
+      if (nrow(q_chunk) == 0) next
+
+      if (!header_written[[q]]) {
+        write_csv(q_chunk, out_path, append = FALSE)
+        header_written[[q]] <<- TRUE
+      } else {
+        write_csv(q_chunk, out_path, append = TRUE, col_names = FALSE)
+      }
+      rows_written[[q]] <<- rows_written[[q]] + nrow(q_chunk)
+    }
+  })
+
+  on.exit(unlink(csv_path), add = TRUE)
+  read_csv_chunked(
+    csv_path,
+    callback = cb,
+    chunk_size = chunk_size,
+    col_types = cols(.default = "c"),
+    progress = FALSE
+  )
+
+  for (q in names(quarter_files)) {
+    if (!should_write[[q]]) {
+      message("  Skipping ", yr, "-Q", q, " (file exists)")
+    } else if (rows_written[[q]] > 0) {
+      message("  Saved: ", basename(quarter_files[[q]]),
+              " (", format(rows_written[[q]], big.mark = ","), " rows)")
+    } else {
+      message("  No data for ", yr, "-Q", q)
+    }
+  }
+
+  any(rows_written > 0)
 }
 
 # ---- Main download function -----------------------------------------------
@@ -215,31 +325,15 @@ download_qcew <- function(project_root,
     }
 
     message("  Processing ...")
-    df <- process_qcew_year(zip_path, yr)
+    wrote_any <- write_qcew_year_chunks(
+      zip_path = zip_path,
+      yr = yr,
+      dir_qcew = dir_qcew,
+      overwrite_csv = overwrite_csv
+    )
 
-    if (is.null(df) || nrow(df) == 0) {
+    if (!wrote_any) {
       message("  No data for year ", yr)
-      next
-    }
-
-    # --- Step 2: Split by quarter and write output ---
-    for (q in 1:4) {
-      file_out <- file.path(dir_qcew, sprintf("qcew_%d_Q%d.csv", yr, q))
-
-      if (file.exists(file_out) && !isTRUE(overwrite_csv)) {
-        message("  Skipping ", yr, "-Q", q, " (file exists)")
-        next
-      }
-
-      chunk <- df %>% filter(qtr == q)
-
-      if (nrow(chunk) > 0) {
-        write_csv(chunk, file_out)
-        message("  Saved: ", basename(file_out),
-                " (", format(nrow(chunk), big.mark = ","), " rows)")
-      } else {
-        message("  No data for ", yr, "-Q", q)
-      }
     }
   }
 

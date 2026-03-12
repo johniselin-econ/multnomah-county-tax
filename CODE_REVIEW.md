@@ -200,45 +200,48 @@ Replaced permanent year-specific `.dta` saves with `tempfile` declarations. Both
 ## 13. `qwi_data.R` and `qcew_data.R` hold more data in memory than they need to
 
 - Severity: P2
+- Status: **FIXED**
 - Files:
   - `code/R/qwi_data.R`
   - `code/R/qcew_data.R`
 
 ### Problem
 
-`qwi_data.R` builds a nationwide `combined` object across all states before splitting it back out to quarterly CSVs, and `qcew_data.R` processes full yearly datasets before writing quarter chunks. This raises peak memory use, especially for QWI.
+These download scripts previously held more data in memory than necessary while building quarter-level outputs. That was especially costly on first runs across the full national panel.
 
-### Suggested fix
+### Fix applied
 
-Write quarter outputs incrementally as state/year chunks are processed, or flush completed chunks earlier instead of building a single large combined object first.
+`qwi_data.R` already writes quarter files incrementally as each state's data is processed, avoiding the older nationwide in-memory combine pattern. `qcew_data.R` now uses chunked CSV processing and writes quarter outputs incrementally while scanning each annual file, reducing peak memory pressure during QCEW builds.
 
 ## 14. Property-tax CSV exports appear to be unused downstream
 
 - Severity: P2
+- Status: **FIXED**
 - File:
   - `code/stata/01h_auxiliary.do`
 
 ### Problem
 
-`01h_auxiliary.do` exports `property_tax_rates_overall.csv` and `property_tax_rates_excl_allocated.csv`, but I could not find any downstream code reading those CSVs back in. The `.dta` outputs appear to be the real working artifacts.
+`01h_auxiliary.do` previously exported `property_tax_rates_overall.csv` and `property_tax_rates_excl_allocated.csv`, but I could not find any downstream code reading those CSVs back in. The `.dta` outputs appear to be the real working artifacts.
 
-### Suggested fix
+### Fix applied
 
-Remove those CSV exports, or guard them behind an optional export flag if they are only meant for ad hoc inspection.
+The unused property-tax CSV exports have been removed. The script now keeps only the `.dta` outputs used by the rest of the workflow.
 
 ## 15. ACS yearly imports write tempfiles and then reread them immediately for append
 
 - Severity: P3
+- Status: **PARTIALLY FIXED**
 - File:
   - `code/stata/01e_acs.do`
 
 ### Problem
 
-The ACS loader imports each year to a tempfile in one loop, then appends those tempfiles in a second loop. That is safe, but it writes and rereads each yearly import once before the combined dataset is built.
+The ACS loader originally imported all years into tempfiles and then appended them in a second pass. The current code is already improved: it seeds the combined dataset with the first year and appends remaining years in a single loop. It still relies on a tempfile per additional year because of Stata's `import delimited, clear` behavior, so some temporary I/O remains.
 
-### Suggested fix
+### Status update
 
-Append incrementally inside the import loop, using the first year as the seed dataset, to cut temporary I/O roughly in half.
+No additional low-risk simplification was obvious beyond the current single-loop approach. Further reduction in temporary I/O would likely require a more invasive Stata refactor.
 
 ## First-Time User And README Assessment
 
@@ -247,6 +250,7 @@ These items focus on whether a new downloader could realistically run the repo a
 ## 16. The README does not document the TAXSIM dependency behind the revenue pipeline
 
 - Severity: P1
+- Status: **FIXED**
 - Files:
   - `README.md`
   - `STATA_REQUIREMENTS.txt`
@@ -254,26 +258,27 @@ These items focus on whether a new downloader could realistically run the repo a
 
 ### Problem
 
-The revenue workflow runs `taxsimlocal35`, but the README and Stata requirements file do not explain how to install or configure local TAXSIM. The script does contain a simplified fallback if TAXSIM fails, but a first-time user would not know whether that fallback is acceptable for replication or just a convenience for partial runs.
+The revenue workflow runs `taxsimlocal35`, but the setup docs previously did not explain how to install or configure local TAXSIM. The script does contain a simplified fallback if TAXSIM fails, so the missing documentation created a replication-clarity problem rather than a hard execution blocker.
 
-### Suggested fix
+### Fix applied
 
-Add a dedicated README note for TAXSIM setup, and explicitly state whether the paper's preferred revenue results require a working local TAXSIM installation or whether the fallback path is considered acceptable.
+The setup docs now explain the TAXSIM dependency in both `README.md` and `STATA_REQUIREMENTS.txt`, including installation guidance, the `taxsimlocal35` verification step, and a note that the fallback calculator is functional but not the paper's preferred revenue specification.
 
 ## 17. The minimum supported Stata version is not stated clearly enough for new users
 
 - Severity: P1
+- Status: **FIXED**
 - Files:
   - `README.md`
   - `STATA_REQUIREMENTS.txt`
 
 ### Problem
 
-Multiple scripts declare or assume modern Stata functionality, but the setup docs do not clearly say which Stata version is required. A first-time downloader can install all listed packages and still run into avoidable compatibility issues if they are on an older Stata release.
+Multiple scripts declare or assume modern Stata functionality, but the setup docs previously did not clearly say which Stata version was required. A first-time downloader could therefore install packages successfully and still run into avoidable compatibility issues on an older Stata release.
 
-### Suggested fix
+### Fix applied
 
-Add a short prerequisites block near the top of the README that states the minimum supported Stata version and, ideally, the version the repo was last tested on.
+The setup docs now state the minimum supported Stata version and the tested environment in both `README.md` and `STATA_REQUIREMENTS.txt`.
 
 ## 18. The README does not set expectations for runtime, storage, and download volume on a first run
 
