@@ -120,7 +120,7 @@ set scheme plotplainblind
 
 ** PARALLEL PROCESSING FLAG
 ** Set to 1 to use parallel processing, 0 for sequential processing
-global use_parallel = 1
+if "${use_parallel}" == "" global use_parallel = 1
 global n_clusters = 6
 
 ** Set parameters

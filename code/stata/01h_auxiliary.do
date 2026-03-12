@@ -26,7 +26,7 @@ keep county_fips_code studyyear me 	///
 	mcinfant mctoddler mcpreschool 	///
 	mfccinfant mfcctoddler mfccpreschool
 
-rename county_fips fips
+rename county_fips_code fips
 rename studyyear year
 
 ** Fill-in missing variables

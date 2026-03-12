@@ -18,7 +18,7 @@
 forvalues y = $start_year_acs(1)$end_year_acs {
 
 	** Import CSV
-	import delimited using "${data}acs/acs_`y'", varnames(1) clear case(lower)
+	import delimited using "${data}acs/acs_`y'.csv", varnames(1) clear case(lower)
 
 	** Save as temporary data
 	tempfile acs_`y'

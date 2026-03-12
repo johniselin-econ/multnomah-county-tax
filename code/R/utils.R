@@ -29,15 +29,10 @@ read_api_key <- function(api_codes_path, label) {
   key <- NA_character_
   if (ncol(api_codes) >= 2) {
     col1 <- tolower(trimws(as.character(api_codes[[1]])))
-    idx  <- which(grepl(tolower(label), col1))
+    idx  <- which(col1 == tolower(label))
     if (length(idx) >= 1) {
       key <- as.character(api_codes[idx[1], 2])
     }
-  }
-
-  # Fallback: first row, second column
-  if (is.na(key) && ncol(api_codes) >= 2 && nrow(api_codes) >= 1) {
-    key <- as.character(api_codes[1, 2])
   }
 
   # Strip quotes and trim whitespace

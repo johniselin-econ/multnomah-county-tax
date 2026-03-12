@@ -401,7 +401,9 @@ file write `fh' "Semi-elasticity: pp change in migration rate per pp of tax rate
 file write `fh' "Elasticity: \% change in migration rate per \% change in net-of-tax rate (1$-$t). " _n
 file write `fh' "Stock elasticities accumulate the annual flow effect over $T$ post-treatment years " _n
 file write `fh' "(IRS: $T=2$, ACS: $T=4$). " _n
-file write `fh' "Average effective PFA rate: " string(delta_t * 100, "%5.3f") "\%. " _n
+local pfa_pct : di %5.3f delta_t * 100
+local pfa_pct = strtrim("`pfa_pct'")
+file write `fh' "Average effective PFA rate: `pfa_pct'\%. " _n
 file write `fh' "Standard errors in parentheses, derived from SDID bootstrap SEs." _n
 file write `fh' "\end{tablenotes}" _n
 file write `fh' "\end{threeparttable}" _n

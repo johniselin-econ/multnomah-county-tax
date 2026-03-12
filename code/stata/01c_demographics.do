@@ -125,9 +125,17 @@ save "${data}working/demographics_2020", replace
 // BEA Regional Economic Accounts (CAINC1)
 //--------------------------------------------------
 
-** Load BEA Data
-import delimited "${data}demographic/CAINC1/CAINC1__ALL_AREAS_1969_2024.csv",	///
-	clear
+** Load BEA Data — resolve whichever filename variant BEA provided
+local bea_dir "${data}demographic/CAINC1"
+local bea_file : dir "`bea_dir'" files "CAINC1__ALL_AREAS_*.csv"
+if `"`bea_file'"' == "" {
+	local bea_file : dir "`bea_dir'" files "CAINC1__ALL_STATES_*.csv"
+}
+if `"`bea_file'"' == "" {
+	di as err "ERROR: No CAINC1 CSV found in `bea_dir'"
+	exit 601
+}
+import delimited "`bea_dir'/`bea_file'", clear
 
 ** Drop unnecc variables
 drop region tablename industryclassification unit geoname

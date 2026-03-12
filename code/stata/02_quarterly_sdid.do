@@ -62,6 +62,7 @@ local end_year   = ${end_year_acs}
 ** Fallback defaults for standalone execution (not via 00_multnomah.do)
 if "${use_parallel}" == "" global use_parallel 0
 if "${n_clusters}" == ""   global n_clusters 1
+if "${resume}" == ""       global resume 0
 
 ** Initialize parallel processing if enabled
 if ${use_parallel} == 1 {
@@ -754,6 +755,15 @@ if ${use_parallel} == 1 {
 				if `exl' == 0 local path "`results_path'sdid/quarterly/fig_quarterly_`out'_`c'_`samp_var'_"
 				if `exl' == 1 local path "`results_path'sdid/quarterly/fig_quarterly_`out'_`c'_`samp_var'_excl2020_"
 
+				** ─── Skip if result already exists (resume mode) ───
+				if ${resume} == 1 {
+					capture confirm file "`results_path'sdid/temp_quarterly_results/results_`table_id'_`out'_`c'.dta"
+					if _rc == 0 {
+						dis "RESUME: Skipping table `table_id' `out' c=`c' (result exists)"
+						continue
+					}
+				}
+
 				** Run SDID
 				capture noisily {
 					eststo sdid_`out'_`c': sdid `out' fips yq Treated	///
@@ -944,7 +954,11 @@ if ${use_parallel} == 1 {
 	** PARALLEL ESTIMATION
 	********************************************************************************
 
-	** Create temp directory for results
+	** Create temp directory for results (clean stale files unless resuming)
+	if ${resume} == 0 {
+		capture shell rm -rf "${results}sdid/temp_quarterly_results"
+		if _rc != 0 capture shell rmdir "${results}sdid/temp_quarterly_results" /s /q
+	}
 	capture mkdir "${results}sdid/temp_quarterly_results"
 
 	** Load table grid
@@ -1162,26 +1176,48 @@ else {
 	** SEQUENTIAL ESTIMATION
 	********************************************************************************
 
-	** Set up results dataset
-	preserve
-	clear
-	set obs 0
-	gen sample_data = ""
-	gen sample = ""
-	gen outcome = ""
-	gen controls = .
-	gen exclusion = .
-	gen tau = .
-	gen se = .
-	gen pval = .
-	gen ci_lower = .
-	gen ci_upper = .
-	gen n_counties = .
-	gen pre_mean = .
-	gen significant = .
-	save "${results}sdid/quarterly/quarterly_sdid_results.dta", replace
-	clear
-	restore
+	** Set up results dataset (skip if resuming with existing results)
+	if ${resume} == 0 {
+		preserve
+		clear
+		set obs 0
+		gen sample_data = ""
+		gen sample = ""
+		gen outcome = ""
+		gen controls = .
+		gen exclusion = .
+		gen tau = .
+		gen se = .
+		gen pval = .
+		gen ci_lower = .
+		gen ci_upper = .
+		gen n_counties = .
+		gen pre_mean = .
+		gen significant = .
+		save "${results}sdid/quarterly/quarterly_sdid_results.dta", replace
+		clear
+		restore
+	}
+
+	** ─── CHECKPOINT: load completed specs for resume mode ───
+	local n_done = 0
+	if ${resume} == 1 {
+		capture confirm file "${results}sdid/quarterly/quarterly_sdid_results.dta"
+		if _rc == 0 {
+			preserve
+			use "${results}sdid/quarterly/quarterly_sdid_results.dta", clear
+			qui count
+			local n_done = r(N)
+			if `n_done' > 0 {
+				gen _done_key = sample_data + "|" + sample + "|" + outcome ///
+					+ "|" + string(controls, "%1.0f") + "|" + string(exclusion, "%1.0f")
+				mata: _done_set = asarray_create()
+				mata: for (_i=1; _i<=st_nobs(); _i++) asarray(_done_set, st_sdata(_i, "_done_key"), 1)
+				dis "RESUME MODE: `n_done' specs already completed. Skipping those."
+			}
+			restore
+		}
+	}
 
 	** ============================================================
 	** PHASE 1: QCEW ESTIMATION (SEQUENTIAL)
@@ -1237,6 +1273,16 @@ else {
 					** File Name
 					if `exl' == 0 local path "${results}sdid/quarterly/fig_quarterly_`out'_`c'_`samp'_"
 					if `exl' == 1 local path "${results}sdid/quarterly/fig_quarterly_`out'_`c'_`samp'_excl2020_"
+
+					** ─── Skip if already completed (resume mode) ───
+					if `n_done' > 0 {
+						local _this_key "qcew|`samp'|`out'|`c'|`exl'"
+						mata: st_local("_skip", strofreal(asarray_contains(_done_set, st_local("_this_key"))))
+						if `_skip' == 1 {
+							dis "RESUME: Skipping QCEW `out' c=`c' exl=`exl' samp=`samp'"
+							continue
+						}
+					}
 
 					** Run SDID
 					capture noisily {
@@ -1465,6 +1511,16 @@ else {
 					** File Name
 					if `exl' == 0 local path "${results}sdid/quarterly/fig_quarterly_`out'_`c'_`samp'_"
 					if `exl' == 1 local path "${results}sdid/quarterly/fig_quarterly_`out'_`c'_`samp'_excl2020_"
+
+					** ─── Skip if already completed (resume mode) ───
+					if `n_done' > 0 {
+						local _this_key "qwi|`samp'|`out'|`c'|`exl'"
+						mata: st_local("_skip", strofreal(asarray_contains(_done_set, st_local("_this_key"))))
+						if `_skip' == 1 {
+							dis "RESUME: Skipping QWI `out' c=`c' exl=`exl' samp=`samp'"
+							continue
+						}
+					}
 
 					** Run SDID
 					capture noisily {
