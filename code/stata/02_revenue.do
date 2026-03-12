@@ -972,7 +972,6 @@ save "${data}working/revenue_microsim.dta", replace
 ** (Stata scalars do not persist across do-files)
 ********************************************************************************
 
-preserve
 clear
 set obs 1
 gen double avg_mt_rate = scalar(avg_mt_rate)
@@ -985,7 +984,6 @@ gen double oregon_migration_share = scalar(oregon_migration_share)
 gen double pfa_implied_loss = scalar(pfa_implied_loss)
 gen double oregon_implied_loss = scalar(oregon_implied_loss)
 save "${data}working/revenue_parameters.dta", replace
-restore
 
 dis ""
 dis "Exported revenue_parameters.dta:"
@@ -1017,7 +1015,6 @@ local col_pref    "213 94 0"		// vermillion — preferred line
 capture confirm file "${results}sdid/sdid_results.dta"
 if _rc == 0 {
 
-	preserve
 	use "${results}sdid/sdid_results.dta", clear
 
 	** Parse outcome type and migration direction
@@ -1148,8 +1145,6 @@ if _rc == 0 {
 	** (b) Oregon revenue effect distribution (interstate/out-of-state AGI net)
 	** ================================================================
 
-	preserve
-
 	** Keep AGI net migration specs, out-of-state only
 	keep if outcome_type == "agi" & migration == "net" & outstate == 1
 
@@ -1203,10 +1198,6 @@ if _rc == 0 {
 			graph export "${ol_fig}fig_revenue_dist_oregon.pdf", replace
 		}
 	}
-
-	restore
-
-	restore		// back to revenue_microsim data
 
 }
 else {
