@@ -14,22 +14,17 @@
 // Load and append ACS yearly CSVs
 //--------------------------------------------------
 
-** Load data
-forvalues y = $start_year_acs(1)$end_year_acs {
+** Import first year as seed dataset, then append remaining years
+import delimited using "${data}acs/acs_${start_year_acs}.csv", varnames(1) clear case(lower)
 
-	** Import CSV
-	import delimited using "${data}acs/acs_`y'.csv", varnames(1) clear case(lower)
+local next_year = $start_year_acs + 1
+forvalues y = `next_year'(1)$end_year_acs {
 
-	** Save as temporary data
 	tempfile acs_`y'
+	preserve
+	import delimited using "${data}acs/acs_`y'.csv", varnames(1) clear case(lower)
 	save `acs_`y''
-	clear
-
-} // END YEAR LOOP
-
-** Append data
-forvalues y = $start_year_acs(1)$end_year_acs {
-
+	restore
 	append using `acs_`y''
 
 } // END YEAR LOOP

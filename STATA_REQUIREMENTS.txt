@@ -2,6 +2,9 @@
 Stata Package Requirements for Multnomah County Tax Analysis
 ================================================================================
 
+Minimum Stata version: 16.0 (tested on Stata 18/MP)
+Stata/MP recommended for parallel SDID estimation (optional).
+
 This project requires the following user-written Stata packages. Install them
 before running the analysis scripts.
 

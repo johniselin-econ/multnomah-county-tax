@@ -6,9 +6,6 @@
 *              data/working/irs_county_flow.dta       (county origin-destination)
 *              data/working/irs_county_gross_in.dta
 *              data/working/irs_county_gross_out.dta
-*              data/working/irs_county_flow_YY.dta    (per-year flow files)
-*              data/working/irs_county_gross_in_YY.dta
-*              data/working/irs_county_gross_out_YY.dta
 *              data/working/irs_state_gross.dta       (state in/out/net migration)
 ******************************************************************************/
 
@@ -18,6 +15,11 @@
 // Outflow and inflow share 95% of their logic; only the variable prefixes
 // (y1_/y2_) and save targets differ. We loop over direction to avoid
 // duplicating ~100 lines. The flow-file creation is outflow-only.
+
+** Pre-declare tempfiles for yearly shards
+forvalues y = $start_yy_irs_county(1)$end_yy_irs_county {
+	tempfile gross_out_`y' gross_in_`y' flow_`y'
+}
 
 ** Loop over years (extended back to 2012 for appendix data quality analysis)
 forvalues y = $start_yy_irs_county(1)$end_yy_irs_county {
@@ -136,8 +138,8 @@ forvalues y = $start_yy_irs_county(1)$end_yy_irs_county {
 		label var n2_total "Number of exemptions, county total (`label_geo')"
 		label var agi_total "Adjusted Gross Income, county total (`label_geo')"
 
-		** Save
-		save "${data}working/irs_county_gross_`direction'_`y'", replace
+		** Save to tempfile
+		save `gross_`direction'_`y'', replace
 
 		** --- Outflow only: create merge file and flow file ---
 		if "`direction'" == "out" {
@@ -196,7 +198,7 @@ forvalues y = $start_yy_irs_county(1)$end_yy_irs_county {
 			drop _dup
 			duplicates drop
 
-			save "${data}working/irs_county_flow_`y'", replace
+			save `flow_`y'', replace
 
 		} // END OUTFLOW-ONLY BLOCK
 
@@ -213,12 +215,16 @@ forvalues y = $start_yy_irs_county(1)$end_yy_irs_county {
 ** Loop over datasets
 foreach file in "irs_county_gross_in" "irs_county_gross_out" "irs_county_flow"{
 
+	** Map file name to tempfile prefix
+	if "`file'" == "irs_county_gross_in"  local tf_prefix "gross_in"
+	if "`file'" == "irs_county_gross_out" local tf_prefix "gross_out"
+	if "`file'" == "irs_county_flow"      local tf_prefix "flow"
 
 	** Loop over years (extended back to 2012 for appendix)
 	forvalues y = $start_yy_irs_county(1)$end_yy_irs_county {
 
-		** Append
-		append using "${data}working/`file'_`y'"
+		** Append from tempfile
+		append using ``tf_prefix'_`y''
 
 	} // END YEAR LOOP
 

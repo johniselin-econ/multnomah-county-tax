@@ -12,7 +12,6 @@
 # Outputs:  data/qwi/qwi_YYYY_QN.csv  (one file per quarter, all states)
 #
 # Note: LEHD "op" files contain private-sector data only (ownercode A05).
-#       The previous API-based approach used ownercode A00 (all ownership).
 #       This excludes federal/state/local government employment — a minor
 #       difference for most county-level analyses.
 # =============================================================================
@@ -235,10 +234,40 @@ download_qwi <- function(project_root,
     return(invisible(FALSE))
   }
 
-  # --- Step 2: Process each state file and combine ---
+  # --- Step 2: Determine which year-quarter files need writing ---
+  files_to_write <- list()
+  for (y in years) {
+    for (q in quarters) {
+      file_qwi <- file.path(dir_qwi, sprintf("qwi_%d_Q%d.csv", y, q))
+      if (isTRUE(overwrite_csv) || !file.exists(file_qwi)) {
+        key <- paste0(y, "-Q", q)
+        files_to_write[[key]] <- file_qwi
+      } else {
+        message("  Skipping ", y, "-Q", q, " (file exists)")
+      }
+    }
+  }
+
+  if (length(files_to_write) == 0) {
+    message("All target year-quarter files exist. Nothing to write.")
+    return(invisible(TRUE))
+  }
+
+  # If overwriting, remove existing files so we start fresh
+  if (isTRUE(overwrite_csv)) {
+    for (fp in files_to_write) {
+      unlink(fp)
+    }
+  }
+
+  # --- Step 3: Process each state and append to output CSVs incrementally ---
   message("Processing bulk files ...")
 
-  all_data <- list()
+  total_rows   <- 0L
+  states_ok    <- 0L
+  oc_vals_seen <- character(0)
+  header_written <- character(0)  # track which files have headers
+
   for (st in states) {
     if (raw_paths[st] == "") next
 
@@ -246,59 +275,70 @@ download_qwi <- function(project_root,
     message("  Processing ", st, " (", abbr, ") ...")
 
     df <- process_state_file(raw_paths[st], start_year, end_year)
-    if (!is.null(df) && nrow(df) > 0) {
-      all_data[[st]] <- df
+    if (is.null(df) || nrow(df) == 0) next
+
+    states_ok <- states_ok + 1L
+
+    # Track ownercode values for log message
+    if ("ownercode" %in% names(df)) {
+      oc_vals_seen <- unique(c(oc_vals_seen, unique(df$ownercode)))
+    }
+
+    # Parse year/quarter and split this state's data by year-quarter
+    df <- df %>%
+      mutate(
+        .yr = as.integer(sub("-Q\\d$", "", time)),
+        .qt = as.integer(sub("^\\d{4}-Q", "", time))
+      )
+
+    for (key in names(files_to_write)) {
+      y <- as.integer(sub("-Q\\d$", "", key))
+      q <- as.integer(sub("^\\d{4}-Q", "", key))
+
+      chunk <- df %>%
+        filter(.yr == y, .qt == q) %>%
+        select(-starts_with("."))
+
+      if (nrow(chunk) == 0) next
+
+      fp <- files_to_write[[key]]
+      needs_header <- !(key %in% header_written)
+
+      # Write header row on first state, append-only for subsequent states
+      if (needs_header) {
+        write_csv(chunk, fp, append = FALSE)
+        header_written <- c(header_written, key)
+      } else {
+        write_csv(chunk, fp, append = TRUE, col_names = FALSE)
+      }
+
+      total_rows <- total_rows + nrow(chunk)
     }
   }
 
-  if (length(all_data) == 0) {
+  if (states_ok == 0L) {
     warning("No data after processing. Check year range and file contents.")
     return(invisible(FALSE))
   }
 
-  combined <- bind_rows(all_data)
-
   # Log ownership code difference
-  if ("ownercode" %in% names(combined)) {
-    oc_vals <- unique(combined$ownercode)
-    if (!"A00" %in% oc_vals) {
-      message("NOTE: LEHD bulk files use ownercode ", paste(oc_vals, collapse = "/"),
-              " (private). Previous API used A00 (all ownership).")
-    }
+  if (length(oc_vals_seen) > 0 && !"A00" %in% oc_vals_seen) {
+    message("NOTE: LEHD bulk files use ownercode ", paste(oc_vals_seen, collapse = "/"),
+            " (private-sector only, excludes government).")
   }
 
-  message("  Total rows: ", format(nrow(combined), big.mark = ","))
+  message("  Total rows written: ", format(total_rows, big.mark = ","))
 
-  # --- Step 3: Split by year-quarter and write output ---
-  message("Writing output CSVs ...")
-
-  # Parse year/quarter from time column
-  combined <- combined %>%
-    mutate(
-      .yr = as.integer(sub("-Q\\d$", "", time)),
-      .qt = as.integer(sub("^\\d{4}-Q", "", time))
-    )
-
-  for (y in years) {
-    for (q in quarters) {
-      file_qwi <- file.path(dir_qwi, sprintf("qwi_%d_Q%d.csv", y, q))
-
-      if (file.exists(file_qwi) && !isTRUE(overwrite_csv)) {
-        message("  Skipping ", y, "-Q", q, " (file exists)")
-        next
-      }
-
-      chunk <- combined %>%
-        filter(.yr == y, .qt == q) %>%
-        select(-starts_with("."))
-
-      if (nrow(chunk) > 0) {
-        write_csv(chunk, file_qwi)
-        message("  Saved: ", basename(file_qwi),
-                " (", format(nrow(chunk), big.mark = ","), " rows)")
-      } else {
-        message("  No data for ", y, "-Q", q)
-      }
+  # Log per-file row counts
+  message("Output CSVs:")
+  for (key in names(files_to_write)) {
+    fp <- files_to_write[[key]]
+    if (file.exists(fp)) {
+      # count lines minus header
+      n_lines <- length(readLines(fp, warn = FALSE)) - 1L
+      message("  ", basename(fp), ": ", format(n_lines, big.mark = ","), " rows")
+    } else {
+      message("  ", key, ": no data")
     }
   }
 

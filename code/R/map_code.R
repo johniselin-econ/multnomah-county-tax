@@ -4,7 +4,10 @@
 
 suppressPackageStartupMessages({
   library(sf)
-  library(tidyverse)
+  library(dplyr)
+  library(ggplot2)
+  library(readr)
+  library(stringr)
   library(tigris)
   library(readxl)
   library(here)
@@ -26,6 +29,30 @@ maps_dir    <- file.path(results_dir, "maps")
 if (!dir.exists(maps_dir)) {
   dir.create(maps_dir, recursive = TRUE)
 }
+
+# ---- Layout constants --------------------------------------------------------
+MAP_PAD         <- 50000   # padding around bounding boxes (meters, EPSG:3857/5070)
+NUDGE_CITY_Y    <- 15000   # vertical nudge for city labels (meters)
+NUDGE_CITY_DOWN <- -15000  # downward nudge for city labels below point
+NUDGE_MULT_Y    <- -12000  # Multnomah label vertical nudge
+NUDGE_MULT_X    <- 40000   # Multnomah label horizontal nudge
+NUDGE_STATE_Y   <- -30000  # state label vertical nudge
+
+# Inset layout (fraction of canvas)
+INSET_MAIN_W    <- 0.62
+INSET_X         <- 0.63
+INSET_Y         <- 0.15
+INSET_W         <- 0.36
+INSET_H         <- 0.70
+ZOOM_BOX_RIGHT  <- 0.27
+ZOOM_BOX_TOP    <- 0.595
+ZOOM_BOX_BOTTOM <- 0.4
+
+# Shared theme sizes (legend, line widths)
+LEGEND_KEY_W    <- grid::unit(2, "cm")    # legend colour-bar width
+LEGEND_KEY_H    <- grid::unit(0.3, "cm")  # legend colour-bar height
+LW_STATE        <- 0.25                   # state-border linewidth
+LW_COUNTY_FLOW  <- 0.05                   # county-border linewidth in flow maps
 
 # ------------------------------------------------------------
 # Relative file paths (edit only if your repo layout differs)
@@ -85,18 +112,18 @@ map1 <- ggplot() +
   geom_sf_text(
     data = or_counties |> filter(NAME == "Multnomah"),
     aes(label = NAME),
-    nudge_y = -12000,
-    nudge_x =  40000,
+    nudge_y = NUDGE_MULT_Y,
+    nudge_x = NUDGE_MULT_X,
     size = 2.0,
     fontface = "bold"
   ) +
   geom_sf_text(data = or_counties |> filter(NAME != "Multnomah"), aes(label = NAME), size = 2.0) +
   geom_sf_text(data = wa_counties, aes(label = NAME), size = 2.0) +
-  
+
   # state labels
   geom_sf_text(
     data = or_centroid, aes(label = "OREGON"),
-    nudge_y = -30000,
+    nudge_y = NUDGE_STATE_Y,
     size = 6, fontface = "bold"
   ) +
   geom_sf_text(
@@ -111,14 +138,14 @@ map1 <- ggplot() +
   geom_sf_text(
     data = city_points |> filter(NAME == "Vancouver"),
     aes(label = NAME),
-    nudge_y = 15000,
+    nudge_y = NUDGE_CITY_Y,
     size = 2.4,
     fontface = "bold"
   ) +
   geom_sf_text(
     data = city_points |> filter(NAME != "Vancouver"),
     aes(label = NAME),
-    nudge_y = -15000,
+    nudge_y = NUDGE_CITY_DOWN,
     size = 2.4,
     fontface = "bold"
   ) +
@@ -131,10 +158,9 @@ ggsave(filepath1, map1, width = 10, height = 8, dpi = 300)
 # 4. CREATE MULTNOMAH REGION CLOSE-UP BOUNDING BOX
 # ------------------------------------------------------------
 bb  <- st_bbox(multnomah)
-pad <- 50000
 
-xspan <- (bb["xmax"] - bb["xmin"]) + 2 * pad
-yspan <- (bb["ymax"] - bb["ymin"]) + 2 * pad
+xspan <- (bb["xmax"] - bb["xmin"]) + 2 * MAP_PAD
+yspan <- (bb["ymax"] - bb["ymin"]) + 2 * MAP_PAD
 side  <- max(xspan, yspan) / 2
 
 cx <- (bb["xmin"] + bb["xmax"]) / 2
@@ -259,8 +285,8 @@ map1_with_box <- ggplot() +
   geom_sf_text(
     data = or_counties |> filter(NAME == "Multnomah"),
     aes(label = NAME),
-    nudge_y = -12000,
-    nudge_x =  40000,
+    nudge_y = NUDGE_MULT_Y,
+    nudge_x = NUDGE_MULT_X,
     size = 2.4,
     fontface = "bold"
   ) +
@@ -270,7 +296,7 @@ map1_with_box <- ggplot() +
   # State labels
   geom_sf_text(
     data = or_centroid, aes(label = "OREGON"),
-    nudge_y = -30000,
+    nudge_y = NUDGE_STATE_Y,
     size = 6, fontface = "bold"
   ) +
   geom_sf_text(
@@ -287,19 +313,19 @@ map1_with_box <- ggplot() +
   geom_sf_text(
     data = vancouver_pt,
     aes(label = NAME),
-    nudge_y = 15000,
+    nudge_y = NUDGE_CITY_Y,
     size = 2.8, fontface = "bold"
   ) +
   geom_sf_text(
     data = bend_spokane_nudged,
     aes(label = NAME),
-    nudge_y = 15000,
+    nudge_y = NUDGE_CITY_Y,
     size = 2.8, fontface = "bold"
   ) +
   geom_sf_text(
     data = other_city_pts,
     aes(label = NAME),
-    nudge_y = -15000,
+    nudge_y = NUDGE_CITY_DOWN,
     size = 2.8, fontface = "bold"
   ) +
   theme_void() +
@@ -352,32 +378,22 @@ map2_inset <- ggplot() +
 
 # Combine using cowplot - main map with inset positioned to the side (no overlap)
 # Main map takes left portion, inset on right
-main_map_w <- 0.62   # Main map width (left 62%)
-inset_x <- 0.63      # Inset starts at 63% from left
-inset_y <- 0.15      # Centered vertically
-inset_w <- 0.36      # Inset width (36% of canvas)
-inset_h <- 0.70      # Inset height
-
-# Zoom box approximate position on main map (in 0-1 coordinates)
-# Adjusted for the narrower main map display
-zoom_box_right <- 0.27
-zoom_box_top <- 0.595
-zoom_box_bottom <- 0.4
+# (layout constants defined in the constants block near the top of the file)
 
 map_combined <- ggdraw() +
-  draw_plot(map1_with_box, x = 0, y = 0, width = main_map_w, height = 1) +
-  draw_plot(map2_inset, x = inset_x, y = inset_y, width = inset_w, height = inset_h) +
+  draw_plot(map1_with_box, x = 0, y = 0, width = INSET_MAIN_W, height = 1) +
+  draw_plot(map2_inset, x = INSET_X, y = INSET_Y, width = INSET_W, height = INSET_H) +
   # Connector lines: from zoom box corners to inset corners (dashed)
   # Top-right corner of zoom box to top-left corner of inset
   draw_line(
-    x = c(zoom_box_right, inset_x),
-    y = c(zoom_box_top, inset_y + inset_h - 0.07),
+    x = c(ZOOM_BOX_RIGHT, INSET_X),
+    y = c(ZOOM_BOX_TOP, INSET_Y + INSET_H - 0.07),
     color = PPB_VERMILLION, size = 0.6, linetype = "dashed"
   ) +
   # Bottom-right corner of zoom box to bottom-left corner of inset
   draw_line(
-    x = c(zoom_box_right, inset_x),
-    y = c(zoom_box_bottom, inset_y + 0.07),
+    x = c(ZOOM_BOX_RIGHT, INSET_X),
+    y = c(ZOOM_BOX_BOTTOM, INSET_Y + 0.07),
     color = PPB_VERMILLION, size = 0.6, linetype = "dashed"
   )
 ggsave(filepath_combined, map_combined, width = 16, height = 10, dpi = 300, bg = "white")
@@ -429,7 +445,7 @@ multnomah_us <- us_counties_plot %>% dplyr::filter(GEOID == "41051")
 # Plot 
 map_us_pool <- ggplot() +
   geom_sf(data = us_counties_plot, aes(fill = group), color = NA) +
-  geom_sf(data = us_states, fill = NA, color = "gray25", linewidth = 0.25) +
+  geom_sf(data = us_states, fill = NA, color = "gray25", linewidth = LW_STATE) +
   geom_sf(data = multnomah_us, fill = NA, color = PPB_VERMILLION, linewidth = 0.8) +
   scale_fill_ppb_pool(name = NULL) +
   theme_void() +
@@ -549,8 +565,8 @@ create_flow_map <- function(data, counties_sf, direction, measure, region_name,
 
  # Create the map
  p <- ggplot(map_data) +
-   geom_sf(aes(fill = pct_change_capped), color = "gray80", linewidth = 0.05) +
-   geom_sf(data = us_states, fill = NA, color = "gray25", linewidth = 0.25) +
+   geom_sf(aes(fill = pct_change_capped), color = "gray80", linewidth = LW_COUNTY_FLOW) +
+   geom_sf(data = us_states, fill = NA, color = "gray25", linewidth = LW_STATE) +
    geom_sf(data = multnomah_highlight, fill = col_mult, color = "black", linewidth = 0.5) +
    scale_fill_gradient2(
      low = col_div_low,
@@ -574,8 +590,8 @@ create_flow_map <- function(data, counties_sf, direction, measure, region_name,
      plot.subtitle = element_text(size = 10, hjust = 0.5, color = "black"),
      plot.caption = element_text(size = 8, hjust = 0.5, color = "black"),
      legend.position = "bottom",
-     legend.key.width = grid::unit(2, "cm"),
-     legend.key.height = grid::unit(0.3, "cm"),
+     legend.key.width = LEGEND_KEY_W,
+     legend.key.height = LEGEND_KEY_H,
      legend.text = element_text(color = "black"),
      legend.title = element_text(color = "black"),
      plot.background = element_rect(fill = "white", color = NA),
@@ -643,8 +659,8 @@ create_rate_change_map <- function(data, counties_sf, direction, measure, region
 
  # Create the map
  p <- ggplot(map_data) +
-   geom_sf(aes(fill = rate_change_capped), color = "gray80", linewidth = 0.05) +
-   geom_sf(data = us_states, fill = NA, color = "gray25", linewidth = 0.25) +
+   geom_sf(aes(fill = rate_change_capped), color = "gray80", linewidth = LW_COUNTY_FLOW) +
+   geom_sf(data = us_states, fill = NA, color = "gray25", linewidth = LW_STATE) +
    geom_sf(data = multnomah_highlight, fill = col_mult, color = "black", linewidth = 0.5) +
    scale_fill_gradient2(
      low = col_div_low,
@@ -663,8 +679,8 @@ create_rate_change_map <- function(data, counties_sf, direction, measure, region
      plot.title = element_text(size = 14, face = "bold", hjust = 0.5, color = "black"),
      plot.subtitle = element_text(size = 10, hjust = 0.5, color = "black"),
      legend.position = "bottom",
-     legend.key.width = grid::unit(2, "cm"),
-     legend.key.height = grid::unit(0.3, "cm"),
+     legend.key.width = LEGEND_KEY_W,
+     legend.key.height = LEGEND_KEY_H,
      legend.text = element_text(color = "black"),
      legend.title = element_text(color = "black"),
      plot.background = element_rect(fill = "white", color = NA),
@@ -692,14 +708,14 @@ create_rate_change_map <- function(data, counties_sf, direction, measure, region
 # These coordinates crop to just CA, OR, WA
 wc_bbox <- st_bbox(west_coast_counties)
 wc_coord_limits <- list(
-  xlim = c(wc_bbox["xmin"] - 50000, wc_bbox["xmax"] + 50000),
-  ylim = c(wc_bbox["ymin"] - 50000, wc_bbox["ymax"] + 50000)
+  xlim = c(wc_bbox["xmin"] - MAP_PAD, wc_bbox["xmax"] + MAP_PAD),
+  ylim = c(wc_bbox["ymin"] - MAP_PAD, wc_bbox["ymax"] + MAP_PAD)
 )
 
 orwa_bbox <- st_bbox(orwa_counties)
 orwa_coord_limits <- list(
-  xlim = c(orwa_bbox["xmin"] - 50000, orwa_bbox["xmax"] + 50000),
-  ylim = c(orwa_bbox["ymin"] - 50000, orwa_bbox["ymax"] + 50000)
+  xlim = c(orwa_bbox["xmin"] - MAP_PAD, orwa_bbox["xmax"] + MAP_PAD),
+  ylim = c(orwa_bbox["ymin"] - MAP_PAD, orwa_bbox["ymax"] + MAP_PAD)
 )
 
 # Loop over measures
@@ -944,8 +960,8 @@ create_directional_flow_map <- function(data, counties_sf, direction, measure,
 
   # Create the map
   p <- ggplot(map_data) +
-    geom_sf(aes(fill = rate_change_capped), color = "gray80", linewidth = 0.05) +
-    geom_sf(data = us_states, fill = NA, color = "gray25", linewidth = 0.25)
+    geom_sf(aes(fill = rate_change_capped), color = "gray80", linewidth = LW_COUNTY_FLOW) +
+    geom_sf(data = us_states, fill = NA, color = "gray25", linewidth = LW_STATE)
 
   # Add Multnomah with hatching
   if (nrow(multnomah_poly) > 0) {
@@ -978,8 +994,8 @@ create_directional_flow_map <- function(data, counties_sf, direction, measure,
       plot.subtitle = element_text(size = 10, hjust = 0.5, color = "black"),
       plot.caption = element_text(size = 8, hjust = 0.5, color = "gray40"),
       legend.position = "bottom",
-      legend.key.width = grid::unit(2, "cm"),
-      legend.key.height = grid::unit(0.3, "cm"),
+      legend.key.width = LEGEND_KEY_W,
+      legend.key.height = LEGEND_KEY_H,
       legend.text = element_text(color = "black"),
       legend.title = element_text(color = "black"),
       plot.background = element_rect(fill = "white", color = NA),

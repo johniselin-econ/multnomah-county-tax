@@ -5,6 +5,11 @@
 * Outputs:     data/working/irs_county_all.dta
 ******************************************************************************/
 
+** Pre-declare tempfiles for yearly shards
+forvalues y = $start_yy_irs_download(1)$end_yy_irs_agi {
+	tempfile irs_all_`y'
+}
+
 ** Loop over years (extended back to 2011 for appendix)
 forvalues y = $start_yy_irs_download(1)$end_yy_irs_agi {
 
@@ -77,8 +82,8 @@ forvalues y = $start_yy_irs_download(1)$end_yy_irs_agi {
 	** Order
 	order year state* county* agi_stub
 
-	** Save
-	save "${data}working/irs_county_all_`y'", replace
+	** Save to tempfile
+	save `irs_all_`y'', replace
 
 	clear
 
@@ -89,8 +94,8 @@ forvalues y = $start_yy_irs_download(1)$end_yy_irs_agi {
 ** Loop over years (extended back to 2011 for appendix)
 forvalues y = $start_yy_irs_download(1)$end_yy_irs_agi {
 
-	** Append
-	append using "${data}working/irs_county_all_`y'"
+	** Append from tempfile
+	append using `irs_all_`y''
 
 	} // END YEAR LOOP
 

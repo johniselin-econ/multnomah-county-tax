@@ -25,7 +25,7 @@
 cat("=== 00_multnomah.R ===\n")
 cat("Start time:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n\n")
 
-# Install missing packages
+# Check / install missing packages
 required_packages <- c(
   "here",         # project root detection
   "dplyr",        # data manipulation (api_code, qwi, qcew, census_age_shares)
@@ -39,14 +39,19 @@ required_packages <- c(
   "readxl",       # Excel import (map_code)
   "patchwork",    # plot composition (map_code)
   "cowplot",      # plot composition (map_code)
-  "ggplot2"       # plotting (map_code, via tidyverse)
+  "ggplot2"       # plotting (map_code)
 )
 
 missing_packages <- required_packages[!vapply(required_packages, requireNamespace,
                                               logical(1), quietly = TRUE)]
 if (length(missing_packages) > 0) {
-  cat("Installing missing packages:", paste(missing_packages, collapse = ", "), "\n")
-  install.packages(missing_packages, repos = "https://cloud.r-project.org")
+  if (isTRUE(auto_install_pkgs)) {
+    cat("Installing missing packages:", paste(missing_packages, collapse = ", "), "\n")
+    install.packages(missing_packages, repos = "https://cloud.r-project.org")
+  } else {
+    stop("Missing required packages: ", paste(missing_packages, collapse = ", "), "\n",
+         "  Install them manually or set auto_install_pkgs <- TRUE.", call. = FALSE)
+  }
 }
 
 # Project root (uses .Rproj / .git as anchor)
@@ -61,9 +66,10 @@ dir_data_acs   <- file.path(dir_data, "acs")
 api_codes_path <- file.path(project_root, "api_codes.txt")
 
 # Parameters (match 00_multnomah.do)
-start_year     <- 2012L
-end_year       <- 2024L
-overwrite_csv  <- FALSE
+start_year        <- 2012L
+end_year          <- 2024L
+overwrite_csv     <- FALSE
+auto_install_pkgs <- TRUE     # set FALSE to skip automatic package installation
 
 # Flag to prevent auto-execution when sourcing sub-scripts
 .sourced_by_main <- TRUE
