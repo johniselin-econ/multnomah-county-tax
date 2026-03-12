@@ -121,6 +121,13 @@ compress
 ** Save
 save "${data}working/acs_migration_file", replace
 
+** Save slim property-tax subset for 01h_auxiliary.do
+preserve
+keep year relate fips_d proptx99 valueh qprotx99 qvalueh hhwt
+compress
+save "${data}working/acs_proptx_slim", replace
+restore
+
 //--------------------------------------------------
 // Build county-level flow file
 //--------------------------------------------------

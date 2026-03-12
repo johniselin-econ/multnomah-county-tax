@@ -3,9 +3,10 @@
 * Purpose:     Clean DOL childcare cost data and calculate county-level
 *              property tax rates from ACS microdata
 * Called by:   01_clean_data.do
+* Inputs:      data/working/acs_proptx_slim.dta (slim subset from 01e_acs.do)
 * Outputs:     data/working/dol_childcare.dta
-*              data/working/property_tax_rates_overall.dta  (+ .csv)
-*              data/working/property_tax_rates_excl_allocated.dta (+ .csv)
+*              data/working/property_tax_rates_overall.dta
+*              data/working/property_tax_rates_excl_allocated.dta
 ******************************************************************************/
 
 //--------------------------------------------------
@@ -98,8 +99,8 @@ save "${data}working/dol_childcare", replace
 // County-Level Property Tax Rates from ACS Data
 //--------------------------------------------------
 
-** Load ACS migration file (contains proptx99, valueh, qprotx99, qvalueh)
-use "${data}working/acs_migration_file", clear
+** Load slim ACS property-tax subset (8 columns from 01e_acs.do, ~200 MB vs 4.3 GB)
+use "${data}working/acs_proptx_slim", clear
 
 ** Keep household heads only (relate == 1 for household reference person)
 keep if relate == 1
@@ -226,9 +227,6 @@ sort fips year
 ** Save overall version
 save "${data}working/property_tax_rates_overall", replace
 
-** Export to CSV
-export delimited using "${data}working/property_tax_rates_overall.csv", replace
-
 restore
 
 ********************************************************************************
@@ -269,9 +267,6 @@ sort fips year
 
 ** Save version excluding allocated
 save "${data}working/property_tax_rates_excl_allocated", replace
-
-** Export to CSV
-export delimited using "${data}working/property_tax_rates_excl_allocated.csv", replace
 
 ** Display summary
 dis "Property tax rate calculation complete."

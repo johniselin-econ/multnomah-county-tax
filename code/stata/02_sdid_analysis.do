@@ -994,28 +994,17 @@ else {
 	** SEQUENTIAL ESTIMATION
 	********************************************************************************
 
-	** Set up treatment effects dataset (skip if resuming from checkpoint)
-	if ${resume} == 0 {
-		preserve
-		clear
-		set obs 0
-		gen sample_data = ""
-		gen sample = ""
-		gen outcome = ""
-		gen controls = .
-		gen exclusion = .
-		gen tau = .
-		gen se = .
-		gen pval = .
-		gen ci_lower = .
-		gen ci_upper = .
-		gen n_counties = .
-		gen pre_mean = .
-		gen significant = .
-		save "${results}sdid/sdid_results.dta", replace
-		clear
-		restore
+	** Open postfile for results accumulation (O(1) per spec)
+	local pf_path "${results}sdid/sdid_results.dta"
+	if ${resume} == 1 {
+		local pf_path "${results}sdid/sdid_results_new.dta"
 	}
+	capture postclose pf_results
+	tempname pf_results
+	postfile `pf_results' str40(sample_data sample) str60(outcome) ///
+		controls exclusion tau se pval ci_lower ci_upper            ///
+		n_counties pre_mean significant                             ///
+		using "`pf_path'", replace
 
 	** ─── CHECKPOINT: load completed specs for resume mode ───
 	local n_done = 0
@@ -1148,30 +1137,15 @@ else {
 								local tmp_ncounties = r(N)
 								estadd scalar count = r(N)
 
-								** Preserve ATE / SE
-								preserve
-								clear
-								qui set obs 1
-								gen sample_data = "`out_txt'"
-								gen sample = "`samp'"
-								gen outcome = "`out'"
-								gen controls = `c'
-								gen exclusion = `exl'
-								gen tau = `tmp_tau'
-								gen se = `tmp_se'
-								gen pval = 2 * (1 - normal(abs(tau/se)))
-								gen ci_lower = tau - 1.96 * se
-								gen ci_upper = tau + 1.96 * se
-								gen n_counties = `tmp_ncounties'
-								gen pre_mean = `tmp_premean'
-								gen significant = abs(tau/se) > 1.96
-								order sample_data sample outcome controls exclusion	///
-									tau se pval ci_lower ci_upper n_counties pre_mean significant
-								append using "${results}sdid/sdid_results.dta"
-								compress
-								save "${results}sdid/sdid_results.dta", replace
-								clear
-								restore
+								** Post results to postfile (O(1) append)
+								local tmp_pval = 2 * (1 - normal(abs(`tmp_tau'/`tmp_se')))
+								local tmp_ci_lo = `tmp_tau' - 1.96 * `tmp_se'
+								local tmp_ci_hi = `tmp_tau' + 1.96 * `tmp_se'
+								local tmp_sig = abs(`tmp_tau'/`tmp_se') > 1.96
+								post `pf_results' ("`out_txt'") ("`samp'") ("`out'") ///
+									(`c') (`exl') (`tmp_tau') (`tmp_se') (`tmp_pval') ///
+									(`tmp_ci_lo') (`tmp_ci_hi') (`tmp_ncounties')     ///
+									(`tmp_premean') (`tmp_sig')
 
 								** Run event-study
 								capture noisily {
@@ -1317,6 +1291,17 @@ else {
 
 	} // END DATA LOOP
 
+
+	** Close postfile and finalize results
+	postclose `pf_results'
+
+	** Resume mode: merge new results into existing file
+	if ${resume} == 1 {
+		use "${results}sdid/sdid_results.dta", clear
+		append using "${results}sdid/sdid_results_new.dta"
+		save "${results}sdid/sdid_results.dta", replace
+		capture erase "${results}sdid/sdid_results_new.dta"
+	}
 
 	** Clean up mata checkpoint lookup
 	if `n_done' > 0 {
