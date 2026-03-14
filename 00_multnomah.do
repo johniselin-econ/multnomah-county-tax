@@ -117,6 +117,10 @@ set scheme plotplainblind
 if "${use_parallel}" == "" global use_parallel = 1
 global n_clusters = 6
 
+** Event study mode: "all" = every spec, "preferred" = only preferred specs
+** Set to "all" for full replication, "preferred" for fast runs (~99% fewer event studies)
+global event_study_mode "preferred"
+
 ** Year ranges
 global start_year_irs_data     = 2012   // Extended back for appendix (2011-12 flows)
 global start_year_irs_analysis = 2016   // Main analysis start
@@ -180,8 +184,8 @@ do "${code}02_revenue.do"
 ** Flow and stock elasticities (depends on 02_revenue + 02_sdid_analysis)
 do "${code}02_elasticities.do"
 
-** Observation count table (optional — uncomment to run)
-* do "${code}02_diagnostics.do"
+** Observation count table
+do "${code}02_diagnostics.do"
 
 
 ** ============================================================================

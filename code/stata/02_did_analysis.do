@@ -23,10 +23,13 @@ log using "${logs}02_log_did_${date}", replace text name(log_02)
 ** plotplainblind palette (RGB) — consistent across all figures
 local col_out   "0 114 178"    // sea (p7) — out-migration
 local col_in    "213 94 0"     // vermillion (p6) — in-migration
-local col_green "0 158 115"    // turquoise (p4) — in-migration (48) / age 45-64
+local col_green "86 180 233"   // sky blue - ordered age palette middle tone
 local col_state "204 121 167"  // reddish (p5) — out-of-state
-local col_mult  "230 159 0"    // orangebrown (p8) — age 65+ / highlight
+local col_mult  "0 68 136"     // dark blue - ordered age palette oldest group
 local col_ref   "153 153 153"  // gs10 (p2) — reference lines
+local col_age1  "158 202 225"  // light blue - age 25-44
+local col_age2  "`col_green'"  // medium blue - age 45-64
+local col_age3  "`col_mult'"   // dark blue - age 65+
 
 
 ********************************************************************************
@@ -577,12 +580,12 @@ estimates store es_age_out_state
 	gen year_age3 = year + 0.15
 
 	** Plot 1: Out-migration event study by age
-	twoway 	(rcap out_ci_lo_age1 out_ci_hi_age1 year_age1, lc("`col_in'")) 				///
-			(scatter out_coef_age1 year_age1, mc("`col_in'") ms(O)) 			///
-			(rcap out_ci_lo_age2 out_ci_hi_age2 year_age2, lc("`col_green'")) 			///
-			(scatter out_coef_age2 year_age2, mc("`col_green'") ms(T)) 	///
-			(rcap out_ci_lo_age3 out_ci_hi_age3 year_age3, lc("`col_mult'")) 				///
-			(scatter out_coef_age3 year_age3, mc("`col_mult'") ms(S)),		///
+	twoway 	(rcap out_ci_lo_age1 out_ci_hi_age1 year_age1, lc("`col_age1'")) 				///
+			(scatter out_coef_age1 year_age1, mc("`col_age1'") ms(O)) 			///
+			(rcap out_ci_lo_age2 out_ci_hi_age2 year_age2, lc("`col_age2'")) 			///
+			(scatter out_coef_age2 year_age2, mc("`col_age2'") ms(T)) 	///
+			(rcap out_ci_lo_age3 out_ci_hi_age3 year_age3, lc("`col_age3'")) 				///
+			(scatter out_coef_age3 year_age3, mc("`col_age3'") ms(S)),		///
 		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
@@ -592,7 +595,7 @@ estimates store es_age_out_state
 		title("Out-Migration from Multnomah County by Age")								///
 		subtitle("College Degree vs. No College Degree")								///
 		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
-		graphregion(color(white))
+		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_age_out_migration.png", replace
 	if ${overleaf} == 1 {
@@ -600,12 +603,12 @@ estimates store es_age_out_state
 	}
 
 	** Plot 2: In-migration (West Coast) event study by age
-	twoway 	(rcap in_west_ci_lo_age1 in_west_ci_hi_age1 year_age1, lc("`col_in'")) 		///
-			(scatter in_west_coef_age1 year_age1, mc("`col_in'") ms(O)) 		///
-			(rcap in_west_ci_lo_age2 in_west_ci_hi_age2 year_age2, lc("`col_green'")) 	///
-			(scatter in_west_coef_age2 year_age2, mc("`col_green'") ms(T)) ///
-			(rcap in_west_ci_lo_age3 in_west_ci_hi_age3 year_age3, lc("`col_mult'")) 		///
-			(scatter in_west_coef_age3 year_age3, mc("`col_mult'") ms(S)),	///
+	twoway 	(rcap in_west_ci_lo_age1 in_west_ci_hi_age1 year_age1, lc("`col_age1'")) 		///
+			(scatter in_west_coef_age1 year_age1, mc("`col_age1'") ms(O)) 		///
+			(rcap in_west_ci_lo_age2 in_west_ci_hi_age2 year_age2, lc("`col_age2'")) 	///
+			(scatter in_west_coef_age2 year_age2, mc("`col_age2'") ms(T)) ///
+			(rcap in_west_ci_lo_age3 in_west_ci_hi_age3 year_age3, lc("`col_age3'")) 		///
+			(scatter in_west_coef_age3 year_age3, mc("`col_age3'") ms(S)),	///
 		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
@@ -615,7 +618,7 @@ estimates store es_age_out_state
 		title("In-Migration to Multnomah (West Coast) by Age")							///
 		subtitle("College Degree vs. No College Degree")								///
 		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
-		graphregion(color(white))
+		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_age_in_migration_west.png", replace
 	if ${overleaf} == 1 {
@@ -623,12 +626,12 @@ estimates store es_age_out_state
 	}
 
 	** Plot 3: In-migration (Lower 48 + DC) event study by age
-	twoway 	(rcap in_48_ci_lo_age1 in_48_ci_hi_age1 year_age1, lc("`col_in'")) 			///
-			(scatter in_48_coef_age1 year_age1, mc("`col_in'") ms(O)) 		///
-			(rcap in_48_ci_lo_age2 in_48_ci_hi_age2 year_age2, lc("`col_green'")) 		///
-			(scatter in_48_coef_age2 year_age2, mc("`col_green'") ms(T)) ///
-			(rcap in_48_ci_lo_age3 in_48_ci_hi_age3 year_age3, lc("`col_mult'")) 			///
-			(scatter in_48_coef_age3 year_age3, mc("`col_mult'") ms(S)),	///
+	twoway 	(rcap in_48_ci_lo_age1 in_48_ci_hi_age1 year_age1, lc("`col_age1'")) 			///
+			(scatter in_48_coef_age1 year_age1, mc("`col_age1'") ms(O)) 		///
+			(rcap in_48_ci_lo_age2 in_48_ci_hi_age2 year_age2, lc("`col_age2'")) 		///
+			(scatter in_48_coef_age2 year_age2, mc("`col_age2'") ms(T)) ///
+			(rcap in_48_ci_lo_age3 in_48_ci_hi_age3 year_age3, lc("`col_age3'")) 			///
+			(scatter in_48_coef_age3 year_age3, mc("`col_age3'") ms(S)),	///
 		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
@@ -638,7 +641,7 @@ estimates store es_age_out_state
 		title("In-Migration to Multnomah (Lower 48 + DC) by Age")						///
 		subtitle("College Degree vs. No College Degree")								///
 		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
-		graphregion(color(white))
+		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_age_in_migration_48.png", replace
 	if ${overleaf} == 1 {
@@ -646,12 +649,12 @@ estimates store es_age_out_state
 	}
 
 	** Plot 4: Out-of-state migration event study by age
-	twoway 	(rcap out_state_ci_lo_age1 out_state_ci_hi_age1 year_age1, lc("`col_in'")) 			///
-			(scatter out_state_coef_age1 year_age1, mc("`col_in'") ms(O)) 		///
-			(rcap out_state_ci_lo_age2 out_state_ci_hi_age2 year_age2, lc("`col_green'")) 		///
-			(scatter out_state_coef_age2 year_age2, mc("`col_green'") ms(T)) ///
-			(rcap out_state_ci_lo_age3 out_state_ci_hi_age3 year_age3, lc("`col_mult'")) 			///
-			(scatter out_state_coef_age3 year_age3, mc("`col_mult'") ms(S)),	///
+	twoway 	(rcap out_state_ci_lo_age1 out_state_ci_hi_age1 year_age1, lc("`col_age1'")) 			///
+			(scatter out_state_coef_age1 year_age1, mc("`col_age1'") ms(O)) 		///
+			(rcap out_state_ci_lo_age2 out_state_ci_hi_age2 year_age2, lc("`col_age2'")) 		///
+			(scatter out_state_coef_age2 year_age2, mc("`col_age2'") ms(T)) ///
+			(rcap out_state_ci_lo_age3 out_state_ci_hi_age3 year_age3, lc("`col_age3'")) 			///
+			(scatter out_state_coef_age3 year_age3, mc("`col_age3'") ms(S)),	///
 		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
@@ -661,7 +664,7 @@ estimates store es_age_out_state
 		title("Out-of-State Migration from Multnomah County by Age")					///
 		subtitle("College Degree vs. No College Degree")								///
 		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
-		graphregion(color(white))
+		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_age_out_state_migration.png", replace
 	if ${overleaf} == 1 {
@@ -747,6 +750,16 @@ estimates store did_agep_out_state
 ********************************************************************************
 ** TABLE: DiD BY AGE (NO EDUCATION) (individual panel -- kept for reference)
 ********************************************************************************
+
+** Framing note for manuscript/slides:
+** - Treat Panel C as the main age heterogeneity result; it is the closest match
+**   to the substantive question of whether the college-proxy treatment effect
+**   differs by age.
+** - Reframe Panel B as a differential post-period age-pattern/composition check,
+**   not as a treatment proxy result, or move it to an appendix.
+** - If the text makes a heterogeneity claim, add explicit cross-age tests (for
+**   example, 25-44 vs. 45-64 and 45-64 vs. 65+) or clarify that Panel C reports
+**   age-specific treatment effects rather than tested differences between ages.
 
 esttab did_agep_out did_agep_out_state did_agep_in_west did_agep_in_48 	///
 	using "${results}did/tab_did_by_age_post.tex",						///
@@ -991,10 +1004,10 @@ preserve
 	gen year_age3 = year + 0.1
 
 	** Plot 1: Out-migration event study by age (no education)
-	twoway 	(rcap out_ci_lo_age1 out_ci_hi_age1 year_age1, lc("`col_in'")) 				///
-			(scatter out_coef_age1 year_age1, mc("`col_in'") ms(O)) 						///
-			(rcap out_ci_lo_age3 out_ci_hi_age3 year_age3, lc("`col_mult'")) 				///
-			(scatter out_coef_age3 year_age3, mc("`col_mult'") ms(S)),						///
+	twoway 	(rcap out_ci_lo_age1 out_ci_hi_age1 year_age1, lc("`col_age1'")) 				///
+			(scatter out_coef_age1 year_age1, mc("`col_age1'") ms(O)) 						///
+			(rcap out_ci_lo_age3 out_ci_hi_age3 year_age3, lc("`col_age3'")) 				///
+			(scatter out_coef_age3 year_age3, mc("`col_age3'") ms(S)),						///
 		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
@@ -1004,7 +1017,7 @@ preserve
 		title("Out-Migration from Multnomah County by Age")								///
 		subtitle("Relative to Age 45-64")												///
 		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
-		graphregion(color(white))
+		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_out_migration.png", replace
 	if ${overleaf} == 1 {
@@ -1012,10 +1025,10 @@ preserve
 	}
 
 	** Plot 2: In-migration (West Coast) event study by age (no education)
-	twoway 	(rcap in_west_ci_lo_age1 in_west_ci_hi_age1 year_age1, lc("`col_in'")) 		///
-			(scatter in_west_coef_age1 year_age1, mc("`col_in'") ms(O)) 					///
-			(rcap in_west_ci_lo_age3 in_west_ci_hi_age3 year_age3, lc("`col_mult'")) 		///
-			(scatter in_west_coef_age3 year_age3, mc("`col_mult'") ms(S)),					///
+	twoway 	(rcap in_west_ci_lo_age1 in_west_ci_hi_age1 year_age1, lc("`col_age1'")) 		///
+			(scatter in_west_coef_age1 year_age1, mc("`col_age1'") ms(O)) 					///
+			(rcap in_west_ci_lo_age3 in_west_ci_hi_age3 year_age3, lc("`col_age3'")) 		///
+			(scatter in_west_coef_age3 year_age3, mc("`col_age3'") ms(S)),					///
 		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
@@ -1025,7 +1038,7 @@ preserve
 		title("In-Migration to Multnomah (West Coast) by Age")							///
 		subtitle("Relative to Age 45-64")												///
 		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
-		graphregion(color(white))
+		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_in_migration_west.png", replace
 	if ${overleaf} == 1 {
@@ -1033,10 +1046,10 @@ preserve
 	}
 
 	** Plot 3: In-migration (Lower 48 + DC) event study by age (no education)
-	twoway 	(rcap in_48_ci_lo_age1 in_48_ci_hi_age1 year_age1, lc("`col_in'")) 			///
-			(scatter in_48_coef_age1 year_age1, mc("`col_in'") ms(O)) 						///
-			(rcap in_48_ci_lo_age3 in_48_ci_hi_age3 year_age3, lc("`col_mult'")) 			///
-			(scatter in_48_coef_age3 year_age3, mc("`col_mult'") ms(S)),					///
+	twoway 	(rcap in_48_ci_lo_age1 in_48_ci_hi_age1 year_age1, lc("`col_age1'")) 			///
+			(scatter in_48_coef_age1 year_age1, mc("`col_age1'") ms(O)) 						///
+			(rcap in_48_ci_lo_age3 in_48_ci_hi_age3 year_age3, lc("`col_age3'")) 			///
+			(scatter in_48_coef_age3 year_age3, mc("`col_age3'") ms(S)),					///
 		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
@@ -1046,7 +1059,7 @@ preserve
 		title("In-Migration to Multnomah (Lower 48 + DC) by Age")						///
 		subtitle("Relative to Age 45-64")												///
 		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
-		graphregion(color(white))
+		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_in_migration_48.png", replace
 	if ${overleaf} == 1 {
@@ -1054,10 +1067,10 @@ preserve
 	}
 
 	** Plot 4: Out-of-state migration event study by age (no education)
-	twoway 	(rcap out_state_ci_lo_age1 out_state_ci_hi_age1 year_age1, lc("`col_in'")) 	///
-			(scatter out_state_coef_age1 year_age1, mc("`col_in'") ms(O)) 					///
-			(rcap out_state_ci_lo_age3 out_state_ci_hi_age3 year_age3, lc("`col_mult'")) 	///
-			(scatter out_state_coef_age3 year_age3, mc("`col_mult'") ms(S)),				///
+	twoway 	(rcap out_state_ci_lo_age1 out_state_ci_hi_age1 year_age1, lc("`col_age1'")) 	///
+			(scatter out_state_coef_age1 year_age1, mc("`col_age1'") ms(O)) 					///
+			(rcap out_state_ci_lo_age3 out_state_ci_hi_age3 year_age3, lc("`col_age3'")) 	///
+			(scatter out_state_coef_age3 year_age3, mc("`col_age3'") ms(S)),				///
 		yline(0, lc("`col_ref'") lp(dash)) 													///
 		xline(2020.5, lc(black) lp(solid))												///
 		xlabel(2016(1)2024) 															///
@@ -1067,7 +1080,7 @@ preserve
 		title("Out-of-State Migration from Multnomah County by Age")					///
 		subtitle("Relative to Age 45-64")												///
 		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
-		graphregion(color(white))
+		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_out_state_migration.png", replace
 	if ${overleaf} == 1 {

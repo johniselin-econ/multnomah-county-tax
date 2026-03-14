@@ -47,6 +47,9 @@ if "${use_parallel}" == "" global use_parallel 0
 if "${n_clusters}" == ""   global n_clusters 1
 if "${resume}" == ""       global resume 0
 
+** Event study mode: "all" = every spec, "preferred" = only preferred specs
+if "${event_study_mode}" == "" global event_study_mode "preferred"
+
 ** Initialize parallel processing if enabled
 if ${use_parallel} == 1 {
 	parallel initialize ${n_clusters}, force
@@ -644,6 +647,19 @@ if ${use_parallel} == 1 {
 				save "`results_path'sdid/temp_results/results_`table_id'_`outvar'_`c'.dta", replace
 				restore
 
+				** Check if this spec qualifies for event study
+				local run_event = 1
+				if "${event_study_mode}" == "preferred" {
+					local run_event = 0
+					if inlist("`samp_var'", "sample_all", "sample_stringency") & `c' == 1 & `exl' == 1 {
+						if "`out_txt'" == "irs_full_16_22" | "`out_txt'" == "acs_16_24_col" {
+							local run_event = 1
+						}
+					}
+				}
+
+				if `run_event' == 1 {
+
 				** Run event study
 				capture noisily {
 					sdid_event `outcome' fips year Treated	///
@@ -716,6 +732,8 @@ if ${use_parallel} == 1 {
 
 				** Clean up sdid_event internal variables
 				capture drop ever_treated*
+
+				} // END event study conditional
 
 			} // END COVAR LOOP
 
@@ -1147,6 +1165,19 @@ else {
 									(`tmp_ci_lo') (`tmp_ci_hi') (`tmp_ncounties')     ///
 									(`tmp_premean') (`tmp_sig')
 
+								** Check if this spec qualifies for event study
+								local run_event = 1
+								if "${event_study_mode}" == "preferred" {
+									local run_event = 0
+									if inlist("`samp'", "sample_all", "sample_stringency") & `c' == 1 & `exl' == 1 {
+										if "`out_txt'" == "irs_full_16_22" | "`out_txt'" == "acs_16_24_col" {
+											local run_event = 1
+										}
+									}
+								}
+
+								if `run_event' == 1 {
+
 								** Run event-study
 								capture noisily {
 									sdid_event `out' fips year Treated			///
@@ -1216,6 +1247,8 @@ else {
 								restore
 
 								} // END event_rc == 0
+
+								} // END event study conditional
 
 							} // END COVAR LOOP
 
@@ -1366,7 +1399,7 @@ replace period_type = "16-24" if strpos(sample_data, "16_24") > 0
 ** Create specification indicators for bottom panel
 gen spec_all = sample == "sample_all"
 gen spec_urban95 = sample == "sample_urban95"
-gen spec_covid = sample == "sample_urban75_covid"
+gen spec_covid = sample == "sample_stringency"
 gen spec_demog = sample == "sample_demog"
 gen spec_stringency = sample == "sample_stringency"
 gen spec_16_22 = period_type == "16-22"
@@ -1405,7 +1438,7 @@ gen preferred = 0
 replace preferred = 1 if 									///
 	data_type == "IRS" & 									///
 	spec_16_22 == 1	& 										///
-	inlist(sample, "sample_all", "sample_urban75_covid") &	///
+	inlist(sample, "sample_all", "sample_stringency") &		///
 	controls == 1 &											///
 	exclusion == 1 											//
 
@@ -1413,7 +1446,7 @@ replace preferred = 1 if 									///
 replace preferred = 1 if 									///
 	data_type == "ACS College" & 							///
 	spec_16_24 == 1	& 										///
-	inlist(sample, "sample_all", "sample_urban75_covid") &	///
+	inlist(sample, "sample_all", "sample_stringency") &		///
 	controls == 1 &											///
 	exclusion == 1 											//
 
@@ -1421,7 +1454,7 @@ replace preferred = 1 if 									///
 replace preferred = 1 if 									///
 	data_type == "ACS College (Out-of-State)" & 			///
 	spec_16_24 == 1	& 										///
-	inlist(sample, "sample_all", "sample_urban75_covid") &	///
+	inlist(sample, "sample_all", "sample_stringency") &		///
 	controls == 1 &											///
 	exclusion == 1 											//
 

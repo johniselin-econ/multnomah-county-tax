@@ -142,7 +142,7 @@ gen preferred = 0
 replace preferred = 1 if 									///
 	data_type == "IRS" & 									///
 	period_type == "16-22" &								///
-	inlist(sample, "sample_all", "sample_urban95_covid") &	///
+	inlist(sample, "sample_all", "sample_stringency") &		///
 	controls == 1 &											///
 	exclusion == 1 											//
 
@@ -150,7 +150,7 @@ replace preferred = 1 if 									///
 replace preferred = 1 if 									///
 	data_type == "ACS College" & 							///
 	period_type == "16-24" &								///
-	inlist(sample, "sample_all", "sample_urban95_covid") &	///
+	inlist(sample, "sample_all", "sample_stringency") &		///
 	controls == 1 &											///
 	exclusion == 1 											//
 
@@ -158,7 +158,7 @@ replace preferred = 1 if 									///
 replace preferred = 1 if 									///
 	data_type == "ACS College (Out-of-State)" & 			///
 	period_type == "16-24" &								///
-	inlist(sample, "sample_all", "sample_urban95_covid") &	///
+	inlist(sample, "sample_all", "sample_stringency") &		///
 	controls == 1 &											///
 	exclusion == 1 											//
 

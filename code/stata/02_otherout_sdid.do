@@ -1027,7 +1027,7 @@ use "${results}sdid/otherout/otherout_sdid_results.dta", clear
 ** Create specification indicators for bottom panel
 gen spec_all = sample == "sample_all"
 gen spec_urban95 = sample == "sample_urban95"
-gen spec_covid = sample == "sample_urban75_covid"
+gen spec_covid = sample == "sample_stringency"
 gen spec_demog = sample == "sample_demog"
 gen spec_stringency = sample == "sample_stringency"
 gen spec_covars = controls == 1
@@ -1044,9 +1044,9 @@ replace significant = pval < 0.05 if missing(significant)
 
 gen preferred = 0
 
-** Preferred: Urban 95% COVID match + covariates + excl 2020
+** Preferred: stringency-matched + covariates + excl 2020
 replace preferred = 1 if 									///
-	sample == "sample_urban75_covid" &						///
+	sample == "sample_stringency" &							///
 	controls == 1 &											///
 	exclusion == 1
 
