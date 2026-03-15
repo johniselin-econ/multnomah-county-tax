@@ -384,7 +384,7 @@ if ${use_parallel} == 1 {
 
 				** Covariates for sdid
 				if `c' == 0 local covars ""
-				else if `c' == 1 local covars "covariates(`covariates', projected)"
+				else if `c' == 1 local covars "covariates(`covariates')"
 
 				** Covariates for sdid_event
 				if `c' == 0 local covars_event ""
@@ -814,7 +814,7 @@ else {
 
 					** Covariates
 					if `c' == 0 local covars ""
-					else if `c' == 1 local covars "covariates(`covariates', projected)"
+					else if `c' == 1 local covars "covariates(`covariates')"
 
 					** Covariates for sdid_event
 					if `c' == 0 local covars_event ""

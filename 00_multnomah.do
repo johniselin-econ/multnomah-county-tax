@@ -117,6 +117,9 @@ set scheme plotplainblind
 if "${use_parallel}" == "" global use_parallel = 1
 global n_clusters = 6
 
+** Resume mode: skip specs with existing temp_results files (set to 0 for fresh run)
+if "${resume}" == "" global resume = 1
+
 ** Event study mode: "all" = every spec, "preferred" = only preferred specs
 ** Set to "all" for full replication, "preferred" for fast runs (~99% fewer event studies)
 global event_study_mode "preferred"
@@ -139,13 +142,13 @@ global end_yy_irs_county       = 22     // County data processing end
 ** STAGE 1: DATA CLEANING
 ** ============================================================================
 ** Calls 01a_programs through 01h_auxiliary; see 01_clean_data.do for details.
-do "${code}01_clean_data.do"
+*do "${code}01_clean_data.do"
 
 
 ** ============================================================================
 ** STAGE 2: DESCRIPTIVE ANALYSIS
 ** ============================================================================
-do "${code}02_descriptives.do"
+*do "${code}02_descriptives.do"
 
 
 ** ============================================================================
@@ -153,10 +156,10 @@ do "${code}02_descriptives.do"
 ** ============================================================================
 
 ** IRS county-level flow regressions
-do "${code}02_flow_analysis.do"
+*do "${code}02_flow_analysis.do"
 
 ** ACS individual-level difference-in-differences
-do "${code}02_did_analysis.do"
+*do "${code}02_did_analysis.do"
 
 ** Synthetic difference-in-differences (main specification)
 ** Produces sdid_results.dta used by downstream scripts

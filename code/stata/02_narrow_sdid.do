@@ -332,7 +332,7 @@ foreach data of varlist irs_sample_1 acs_period_1 acs_period_2 {
 
 						** Covariates
 						if `c' == 0 local covars ""
-						else if `c' == 1 local covars "covariates(`covariates', projected)"
+						else if `c' == 1 local covars "covariates(`covariates')"
 
 						** Covariates for sdid_event
 						if `c' == 0 local covars_event ""
