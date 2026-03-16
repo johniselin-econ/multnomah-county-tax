@@ -12,11 +12,27 @@ Authors:         John Iselin
 For more information, contact john.iselin@yale.edu
 *******************************************************************************/
 
+** Load shared project defaults and helper programs
+local cwd = subinstr("`c(pwd)'", "\", "/", .)
+local suffix "/code/stata"
+if "${dir}" == "" {
+	if length("`cwd'") >= length("`suffix'") & ///
+		substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
+		global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
+	}
+	else {
+		global dir "`cwd'"
+	}
+}
+if "${code}" == "" global code "${dir}/code/stata/"
+do "${code}00_stata_config.do"
+
 ********************************************************************************
 ** Start log file
 ********************************************************************************
 capture log close log_02
 log using "${logs}02_log_individual_${date}", replace text name(log_02)
+project_set_seed, context("02_indiv_analysis.do") offset(80)
 
 
 ********************************************************************************

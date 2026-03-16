@@ -58,8 +58,14 @@ LW_COUNTY_FLOW  <- 0.05                   # county-border linewidth in flow maps
 # Relative file paths (edit only if your repo layout differs)
 # ------------------------------------------------------------
 filepath1   <- file.path(maps_dir, "map1.png")
+filepath1_minimal <- file.path(maps_dir, "map1_minimal.png")
+filepath1_full <- file.path(maps_dir, "map1_full.png")
 filepath2   <- file.path(maps_dir, "map2.png")
+filepath2_minimal <- file.path(maps_dir, "map2_minimal.png")
+filepath2_full <- file.path(maps_dir, "map2_full.png")
 filepath_combined <- file.path(maps_dir, "map_combined.png")
+filepath_combined_minimal <- file.path(maps_dir, "map_combined_minimal.png")
+filepath_combined_full <- file.path(maps_dir, "map_combined_full.png")
 filepath_us <- file.path(maps_dir, "map_us_pool.png")
 
 metro_path  <- file.path(data_dir, "mapping", "Metro_District_Boundary", "Metro_District_Boundary.shp")
@@ -100,59 +106,127 @@ wa_state <- st_union(wa_counties)
 or_centroid <- st_centroid(or_state)
 wa_centroid <- st_centroid(wa_state)
 
-# ============================================================
-# MAP 1 — Oregon + Washington (counties + selected cities)
-# ============================================================
-map1 <- ggplot() +
-  geom_sf(data = or_counties, fill = "gray92", color = "white", size = 0.3) +
-  geom_sf(data = wa_counties, fill = "gray88", color = "white", size = 0.3) +
-  geom_sf(data = multnomah, fill = col_mult, color = "black", size = 0.5) +
-  
-  # county labels
-  geom_sf_text(
-    data = or_counties |> filter(NAME == "Multnomah"),
-    aes(label = NAME),
-    nudge_y = NUDGE_MULT_Y,
-    nudge_x = NUDGE_MULT_X,
-    size = 2.0,
-    fontface = "bold"
-  ) +
-  geom_sf_text(data = or_counties |> filter(NAME != "Multnomah"), aes(label = NAME), size = 2.0) +
-  geom_sf_text(data = wa_counties, aes(label = NAME), size = 2.0) +
+map_bg_theme <- function(border = FALSE, border_color = PPB_VERMILLION) {
+  base <- theme_void() +
+    theme(
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "white", color = NA)
+    )
 
-  # state labels
-  geom_sf_text(
-    data = or_centroid, aes(label = "OREGON"),
-    nudge_y = NUDGE_STATE_Y,
-    size = 6, fontface = "bold"
-  ) +
-  geom_sf_text(
-    data = wa_centroid, aes(label = "WASHINGTON"),
-    size = 6, fontface = "bold"
-  ) +
-  
-  # city points
-  geom_sf(data = city_points, color = PPB_VERMILLION, size = 2) +
-  
-  # city labels: Vancouver above; others below
-  geom_sf_text(
-    data = city_points |> filter(NAME == "Vancouver"),
-    aes(label = NAME),
-    nudge_y = NUDGE_CITY_Y,
-    size = 2.4,
-    fontface = "bold"
-  ) +
-  geom_sf_text(
-    data = city_points |> filter(NAME != "Vancouver"),
-    aes(label = NAME),
-    nudge_y = NUDGE_CITY_DOWN,
-    size = 2.4,
-    fontface = "bold"
-  ) +
-  theme_void() +
-  coord_sf(expand = FALSE)
+  if (border) {
+    base <- base + theme(
+      panel.border = element_rect(color = border_color, fill = NA, linewidth = 1.5)
+    )
+  }
 
-ggsave(filepath1, map1, width = 10, height = 8, dpi = 300)
+  base
+}
+
+save_map <- function(plot_obj, path, width, height) {
+  ggsave(path, plot_obj, width = width, height = height, dpi = 300, bg = "white")
+  message("Saved: ", path)
+}
+
+build_overview_map <- function(label_mode = c("balanced", "minimal", "full"), show_zoom = FALSE) {
+  label_mode <- match.arg(label_mode)
+
+  p <- ggplot() +
+    geom_sf(data = or_counties, fill = "gray92", color = "white", size = 0.3) +
+    geom_sf(data = wa_counties, fill = "gray88", color = "white", size = 0.3) +
+    geom_sf(data = multnomah, fill = col_mult, color = "black", size = 0.5)
+
+  if (show_zoom) {
+    p <- p +
+      geom_sf(data = square_box, fill = NA, color = PPB_VERMILLION, linewidth = 1.2)
+  }
+
+  if (label_mode == "full") {
+    p <- p +
+      geom_sf_text(
+        data = or_counties |> filter(NAME == "Multnomah"),
+        aes(label = NAME),
+        nudge_y = NUDGE_MULT_Y,
+        nudge_x = NUDGE_MULT_X,
+        size = 2.4,
+        fontface = "bold"
+      ) +
+      geom_sf_text(data = or_counties |> filter(NAME != "Multnomah"), aes(label = NAME), size = 2.4) +
+      geom_sf_text(data = wa_counties, aes(label = NAME), size = 2.4)
+  } else {
+    p <- p +
+      geom_sf_text(
+        data = or_counties |> filter(NAME == "Multnomah"),
+        aes(label = NAME),
+        nudge_y = NUDGE_MULT_Y,
+        nudge_x = NUDGE_MULT_X,
+        size = 2.6,
+        fontface = "bold"
+      )
+  }
+
+  if (label_mode != "minimal") {
+    p <- p +
+      geom_sf_text(
+        data = or_centroid, aes(label = "OREGON"),
+        nudge_y = NUDGE_STATE_Y,
+        size = 6, fontface = "bold"
+      ) +
+      geom_sf_text(
+        data = wa_centroid, aes(label = "WASHINGTON"),
+        size = 6, fontface = "bold"
+      )
+  }
+
+  if (label_mode == "minimal") {
+    key_cities <- city_points |> filter(NAME %in% c("Portland", "Vancouver"))
+    p <- p +
+      geom_sf(data = key_cities, color = PPB_VERMILLION, size = 2.2) +
+      geom_sf_text(
+        data = key_cities |> filter(NAME == "Vancouver"),
+        aes(label = NAME),
+        nudge_y = NUDGE_CITY_Y,
+        size = 2.6,
+        fontface = "bold"
+      ) +
+      geom_sf_text(
+        data = key_cities |> filter(NAME != "Vancouver"),
+        aes(label = NAME),
+        nudge_y = NUDGE_CITY_DOWN,
+        size = 2.6,
+        fontface = "bold"
+      )
+  } else {
+    p <- p +
+      geom_sf(data = city_points, color = PPB_VERMILLION, size = 2) +
+      geom_sf_text(
+        data = city_points |> filter(NAME == "Vancouver"),
+        aes(label = NAME),
+        nudge_y = NUDGE_CITY_Y,
+        size = 2.4,
+        fontface = "bold"
+      ) +
+      geom_sf_text(
+        data = city_points |> filter(NAME != "Vancouver"),
+        aes(label = NAME),
+        nudge_y = NUDGE_CITY_DOWN,
+        size = 2.4,
+        fontface = "bold"
+      )
+  }
+
+  p + map_bg_theme() + coord_sf(expand = FALSE)
+}
+
+# ============================================================
+# MAP 1 — Oregon + Washington variants
+# ============================================================
+map1 <- build_overview_map("balanced")
+map1_minimal <- build_overview_map("minimal")
+map1_full <- build_overview_map("full")
+
+save_map(map1, filepath1, width = 10, height = 8)
+save_map(map1_minimal, filepath1_minimal, width = 10, height = 8)
+save_map(map1_full, filepath1_full, width = 10, height = 8)
 
 # ------------------------------------------------------------
 # 4. CREATE MULTNOMAH REGION CLOSE-UP BOUNDING BOX
@@ -214,167 +288,78 @@ metro_outline <- metro |>
   st_boundary()
 
 
+build_closeup_map <- function(label_mode = c("balanced", "minimal", "full"), inset = FALSE) {
+  label_mode <- match.arg(label_mode)
+
+  p <- ggplot() +
+    geom_sf(data = or_cty_reg, fill = "gray90", color = "white", size = 0.4) +
+    geom_sf(data = wa_cty_reg, fill = "gray85", color = "white", size = 0.4) +
+    geom_sf(data = multnomah, fill = col_mult, color = "black", size = 0.6) +
+    geom_sf(data = port_reg, color = col_portland, fill = col_portland, alpha = if (inset) 0.4 else 1) +
+    geom_sf(data = van_reg, color = col_vancouver, fill = col_vancouver, alpha = if (inset) 0.4 else 1) +
+    geom_sf(data = metro_outline, color = col_metro_bdy, linetype = "dashed", linewidth = if (inset) 0.7 else 0.9)
+
+  if (label_mode == "full") {
+    p <- p +
+      geom_sf_text(data = county_centroids, aes(label = NAME), size = if (inset) 3.5 else 3)
+  }
+
+  p <- p +
+    geom_sf_text(
+      data = multnomah_centroid, aes(label = NAME),
+      nudge_x = 10000, nudge_y = -5000,
+      size = if (inset) 4.5 else 4,
+      fontface = "bold"
+    ) +
+    geom_sf_text(
+      data = portland_centroid, aes(label = NAME),
+      nudge_x = 2000, nudge_y = -1000,
+      size = if (inset) 3.5 else 3,
+      fontface = "bold"
+    ) +
+    geom_sf_text(
+      data = st_centroid(van_reg), aes(label = "Vancouver"),
+      size = if (inset) 3.5 else 3,
+      fontface = "bold"
+    ) +
+    geom_sf_text(
+      data = st_centroid(metro_outline), aes(label = "METRO"),
+      color = col_metro_bdy,
+      size = if (inset) 3.5 else 3,
+      fontface = "bold"
+    )
+
+  if (label_mode == "balanced") {
+    p <- p +
+      geom_sf_text(data = county_centroids |> filter(NAME %in% c("Clark", "Washington", "Clackamas")),
+                   aes(label = NAME), size = if (inset) 3.2 else 2.8)
+  }
+
+  p + map_bg_theme(border = inset) + coord_sf(expand = FALSE)
+}
+
 # ============================================================
-# MAP 2 — CLOSE-UP WITH PORTLAND + VANCOUVER + METRO
+# MAP 2 — CLOSE-UP VARIANTS
 # ============================================================
-map2 <- ggplot() +
-  geom_sf(data = or_cty_reg, fill = "gray90", color = "white", size = 0.4) +
-  geom_sf(data = wa_cty_reg, fill = "gray85", color = "white", size = 0.4) +
-  geom_sf(data = multnomah, fill = col_mult, color = "black", size = 0.6) +
+map2 <- build_closeup_map("balanced")
+map2_minimal <- build_closeup_map("minimal")
+map2_full <- build_closeup_map("full")
 
-  # Portland + Vancouver
-  geom_sf(data = port_reg, color = col_portland, fill = col_portland, size = 4) +
-  geom_sf(data = van_reg,  color = col_vancouver, fill = col_vancouver, size = 4) +
-
-  # Metro Boundary (official)
-  geom_sf(data = metro_outline, color = col_metro_bdy,
-          linetype = "dashed", linewidth = 0.9) +
-  
-  # labels
-  geom_sf_text(data = county_centroids, aes(label = NAME), size = 3) +
-  geom_sf_text(
-    data = multnomah_centroid, aes(label = NAME),
-    nudge_x = 10000, nudge_y = -5000,
-    size = 4, fontface = "bold"
-  ) +
-  geom_sf_text(
-    data = portland_centroid, aes(label = NAME),
-    nudge_x = 2000, nudge_y = -1000,
-    size = 3, fontface = "bold"
-  ) +
-  geom_sf_text(
-    data = st_centroid(van_reg), aes(label = "Vancouver"),
-    size = 3, fontface = "bold"
-  ) +
-  geom_sf_text(
-    data = st_centroid(metro_outline), aes(label = "METRO"),
-    color = col_metro_bdy,
-    size = 3, fontface = "bold"
-  ) +
-  theme_void() +
-  coord_sf(expand = FALSE)
-
-ggsave(filepath2, map2, width = 10, height = 8, dpi = 300)
+save_map(map2, filepath2, width = 10, height = 8)
+save_map(map2_minimal, filepath2_minimal, width = 10, height = 8)
+save_map(map2_full, filepath2_full, width = 10, height = 8)
 
 # ============================================================
 # COMBINED MAP — Overview with inset close-up
 # ============================================================
 
-# Use the square_box directly as the zoom rectangle (already an sfc object)
-zoom_rect <- square_box
+map1_with_box <- build_overview_map("balanced", show_zoom = TRUE)
+map1_with_box_minimal <- build_overview_map("minimal", show_zoom = TRUE)
+map1_with_box_full <- build_overview_map("full", show_zoom = TRUE)
 
-# Create nudged points for Bend and Spokane (move up ~1mm in print)
-bend_spokane_pts <- city_points |> filter(NAME %in% c("Bend", "Spokane"))
-bend_spokane_nudged <- bend_spokane_pts |>
-  mutate(geometry = geometry + c(0, 8000)) |>  # Nudge up ~1mm
-
-  st_set_crs(st_crs(city_points))
-other_city_pts <- city_points |> filter(!NAME %in% c("Bend", "Spokane", "Vancouver"))
-vancouver_pt <- city_points |> filter(NAME == "Vancouver")
-
-# Modified Map 1 with zoom rectangle indicator
-map1_with_box <- ggplot() +
-  geom_sf(data = or_counties, fill = "gray92", color = "white", size = 0.3) +
-  geom_sf(data = wa_counties, fill = "gray88", color = "white", size = 0.3) +
-  geom_sf(data = multnomah, fill = col_mult, color = "black", size = 0.5) +
-
-  # Zoom area rectangle
-  geom_sf(data = zoom_rect, fill = NA, color = PPB_VERMILLION, linewidth = 1.2, linetype = "solid") +
-
-  # County labels (restored)
-  geom_sf_text(
-    data = or_counties |> filter(NAME == "Multnomah"),
-    aes(label = NAME),
-    nudge_y = NUDGE_MULT_Y,
-    nudge_x = NUDGE_MULT_X,
-    size = 2.4,
-    fontface = "bold"
-  ) +
-  geom_sf_text(data = or_counties |> filter(NAME != "Multnomah"), aes(label = NAME), size = 2.4) +
-  geom_sf_text(data = wa_counties, aes(label = NAME), size = 2.4) +
-
-  # State labels
-  geom_sf_text(
-    data = or_centroid, aes(label = "OREGON"),
-    nudge_y = NUDGE_STATE_Y,
-    size = 6, fontface = "bold"
-  ) +
-  geom_sf_text(
-    data = wa_centroid, aes(label = "WASHINGTON"),
-    size = 6, fontface = "bold"
-  ) +
-
-  # City points (Bend & Spokane nudged up, others at original position)
-  geom_sf(data = other_city_pts, color = PPB_VERMILLION, size = 2) +
-  geom_sf(data = vancouver_pt, color = PPB_VERMILLION, size = 2) +
-  geom_sf(data = bend_spokane_nudged, color = PPB_VERMILLION, size = 2) +
-
-  # City labels: Vancouver, Bend, Spokane above; others below
-  geom_sf_text(
-    data = vancouver_pt,
-    aes(label = NAME),
-    nudge_y = NUDGE_CITY_Y,
-    size = 2.8, fontface = "bold"
-  ) +
-  geom_sf_text(
-    data = bend_spokane_nudged,
-    aes(label = NAME),
-    nudge_y = NUDGE_CITY_Y,
-    size = 2.8, fontface = "bold"
-  ) +
-  geom_sf_text(
-    data = other_city_pts,
-    aes(label = NAME),
-    nudge_y = NUDGE_CITY_DOWN,
-    size = 2.8, fontface = "bold"
-  ) +
-  theme_void() +
-  coord_sf(expand = FALSE)
-
-# Modified Map 2 (inset) - with all labels restored
-map2_inset <- ggplot() +
-  geom_sf(data = or_cty_reg, fill = "gray90", color = "white", size = 0.3) +
-  geom_sf(data = wa_cty_reg, fill = "gray85", color = "white", size = 0.3) +
-  geom_sf(data = multnomah, fill = col_mult, color = "black", size = 0.5) +
-
-  # Portland + Vancouver
-  geom_sf(data = port_reg, color = col_portland, fill = col_portland, alpha = 0.4) +
-  geom_sf(data = van_reg,  color = col_vancouver, fill = col_vancouver, alpha = 0.4) +
-
-  # Metro Boundary
-  geom_sf(data = metro_outline, color = col_metro_bdy,
-          linetype = "dashed", linewidth = 0.7) +
-
-  # County labels
-  geom_sf_text(data = county_centroids, aes(label = NAME), size = 3.5) +
-  geom_sf_text(
-    data = multnomah_centroid, aes(label = NAME),
-    nudge_x = 10000, nudge_y = -5000,
-    size = 4.5, fontface = "bold"
-  ) +
-  # Portland label
-  geom_sf_text(
-    data = portland_centroid, aes(label = NAME),
-    nudge_x = 2000, nudge_y = -1000,
-    size = 3.5, fontface = "bold"
-  ) +
-  # Vancouver label
-  geom_sf_text(
-    data = st_centroid(van_reg), aes(label = "Vancouver"),
-    size = 3.5, fontface = "bold"
-  ) +
-  # Metro label
-  geom_sf_text(
-    data = st_centroid(metro_outline), aes(label = "METRO"),
-    color = col_metro_bdy,
-    size = 3.5, fontface = "bold"
-  ) +
-  theme_void() +
-  theme(
-    panel.border = element_rect(color = PPB_VERMILLION, fill = NA, linewidth = 1.5),
-    plot.background = element_rect(fill = "white", color = NA)
-  ) +
-  coord_sf(expand = FALSE)
+map2_inset <- build_closeup_map("balanced", inset = TRUE)
+map2_inset_minimal <- build_closeup_map("minimal", inset = TRUE)
+map2_inset_full <- build_closeup_map("full", inset = TRUE)
 
 # Combine using cowplot - main map with inset positioned to the side (no overlap)
 # Main map takes left portion, inset on right
@@ -396,8 +381,38 @@ map_combined <- ggdraw() +
     y = c(ZOOM_BOX_BOTTOM, INSET_Y + 0.07),
     color = PPB_VERMILLION, size = 0.6, linetype = "dashed"
   )
-ggsave(filepath_combined, map_combined, width = 16, height = 10, dpi = 300, bg = "white")
-message("Saved: ", filepath_combined)
+
+map_combined_minimal <- ggdraw() +
+  draw_plot(map1_with_box_minimal, x = 0, y = 0, width = INSET_MAIN_W, height = 1) +
+  draw_plot(map2_inset_minimal, x = INSET_X, y = INSET_Y, width = INSET_W, height = INSET_H) +
+  draw_line(
+    x = c(ZOOM_BOX_RIGHT, INSET_X),
+    y = c(ZOOM_BOX_TOP, INSET_Y + INSET_H - 0.07),
+    color = PPB_VERMILLION, size = 0.6, linetype = "dashed"
+  ) +
+  draw_line(
+    x = c(ZOOM_BOX_RIGHT, INSET_X),
+    y = c(ZOOM_BOX_BOTTOM, INSET_Y + 0.07),
+    color = PPB_VERMILLION, size = 0.6, linetype = "dashed"
+  )
+
+map_combined_full <- ggdraw() +
+  draw_plot(map1_with_box_full, x = 0, y = 0, width = INSET_MAIN_W, height = 1) +
+  draw_plot(map2_inset_full, x = INSET_X, y = INSET_Y, width = INSET_W, height = INSET_H) +
+  draw_line(
+    x = c(ZOOM_BOX_RIGHT, INSET_X),
+    y = c(ZOOM_BOX_TOP, INSET_Y + INSET_H - 0.07),
+    color = PPB_VERMILLION, size = 0.6, linetype = "dashed"
+  ) +
+  draw_line(
+    x = c(ZOOM_BOX_RIGHT, INSET_X),
+    y = c(ZOOM_BOX_BOTTOM, INSET_Y + 0.07),
+    color = PPB_VERMILLION, size = 0.6, linetype = "dashed"
+  )
+
+save_map(map_combined, filepath_combined, width = 16, height = 10)
+save_map(map_combined_minimal, filepath_combined_minimal, width = 16, height = 10)
+save_map(map_combined_full, filepath_combined_full, width = 16, height = 10)
 
 # ============================================================
 # MAP 3 — Contiguous US counties by in/out sample status + state borders
@@ -455,11 +470,7 @@ map_us_pool <- ggplot() +
         panel.background = element_rect(fill = "white", color = NA))
 
 
-ggsave(filepath_us, map_us_pool, width = 12, height = 7, dpi = 300, bg = "white")
-
-message("Saved: ", filepath1)
-message("Saved: ", filepath2)
-message("Saved: ", filepath_us)
+save_map(map_us_pool, filepath_us, width = 12, height = 7)
 
 
 # ============================================================

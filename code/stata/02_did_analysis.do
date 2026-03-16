@@ -15,9 +15,25 @@ For more information, contact john.iselin@yale.edu
 *******************************************************************************/
 
 
+** Load shared project defaults and helper programs
+local cwd = subinstr("`c(pwd)'", "\", "/", .)
+local suffix "/code/stata"
+if "${dir}" == "" {
+	if length("`cwd'") >= length("`suffix'") & ///
+		substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
+		global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
+	}
+	else {
+		global dir "`cwd'"
+	}
+}
+if "${code}" == "" global code "${dir}/code/stata/"
+do "${code}00_stata_config.do"
+
 ** Start log file
 capture log close log_02
 log using "${logs}02_log_did_${date}", replace text name(log_02)
+project_set_seed, context("02_did_analysis.do") offset(60)
 
 
 ** plotplainblind palette (RGB) — consistent across all figures
@@ -318,9 +334,8 @@ preserve
 		ytitle("Effect on Out-Migration (pp)") 						///
 		xtitle("Year")												///
 		legend(off) 												///
-		title("Out-Migration from Multnomah County")				///
-		subtitle("College Degree vs. No College Degree")			///
-		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
+		title("Out-Migration")										///
+		subtitle("College vs. No College")							///
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_out_migration.png", replace
@@ -337,9 +352,8 @@ preserve
 		ytitle("Effect on In-Migration (pp)") 						///
 		xtitle("Year")												///
 		legend(off) 												///
-		title("In-Migration to Multnomah County (West Coast)")		///
-		subtitle("College Degree vs. No College Degree")			///
-		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
+		title("In-Migration (West Coast)")							///
+		subtitle("College vs. No College")							///
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_in_migration_west.png", replace
@@ -356,9 +370,8 @@ preserve
 		ytitle("Effect on In-Migration (pp)") 						///
 		xtitle("Year")												///
 		legend(off) 												///
-		title("In-Migration to Multnomah County (Lower 48 + DC)")	///
-		subtitle("College Degree vs. No College Degree")			///
-		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
+		title("In-Migration (Lower 48 + DC)")						///
+		subtitle("College vs. No College")							///
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_in_migration_48.png", replace
@@ -375,9 +388,8 @@ preserve
 		ytitle("Effect on Out-of-State Migration (pp)") 					///
 		xtitle("Year")														///
 		legend(off) 														///
-		title("Out-of-State Migration from Multnomah County")				///
-		subtitle("College Degree vs. No College Degree")					///
-		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
+		title("Out-of-State Migration")										///
+		subtitle("College vs. No College")									///
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_out_state_migration.png", replace
@@ -402,9 +414,8 @@ preserve
 		legend(order(2 "Out-migration" 4 "Out-of-state" 					///
 			6 "In-migration (West Coast)" 									///
 			8 "In-migration (Lower 48 + DC)") pos(6) rows(1)) 				///
-		title("Migration Effects: Multnomah County Tax")					///
-		subtitle("College Degree vs. No College Degree")					///
-		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
+		title("Migration Effects")											///
+		subtitle("College vs. No College")									///
 		graphregion(color(white))
 
 	graph export "${results}did/fig_es_combined.png", replace
@@ -592,9 +603,8 @@ estimates store es_age_out_state
 		ytitle("Effect on Out-Migration (pp)") 											///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "45-64" 6 "65+") pos(6) rows(1)) 						///
-		title("Out-Migration from Multnomah County by Age")								///
-		subtitle("College Degree vs. No College Degree")								///
-		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
+		title("Out-Migration by Age")												///
+		subtitle("College vs. No College")											///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_age_out_migration.png", replace
@@ -615,9 +625,8 @@ estimates store es_age_out_state
 		ytitle("Effect on In-Migration (pp)") 											///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "45-64" 6 "65+") pos(6) rows(1)) 						///
-		title("In-Migration to Multnomah (West Coast) by Age")							///
-		subtitle("College Degree vs. No College Degree")								///
-		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
+		title("In-Migration by Age (West Coast)")										///
+		subtitle("College vs. No College")											///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_age_in_migration_west.png", replace
@@ -638,9 +647,8 @@ estimates store es_age_out_state
 		ytitle("Effect on In-Migration (pp)") 											///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "45-64" 6 "65+") pos(6) rows(1)) 						///
-		title("In-Migration to Multnomah (Lower 48 + DC) by Age")						///
-		subtitle("College Degree vs. No College Degree")								///
-		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
+		title("In-Migration by Age (Lower 48 + DC)")									///
+		subtitle("College vs. No College")											///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_age_in_migration_48.png", replace
@@ -661,9 +669,8 @@ estimates store es_age_out_state
 		ytitle("Effect on Out-of-State Migration (pp)") 								///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "45-64" 6 "65+") pos(6) rows(1)) 						///
-		title("Out-of-State Migration from Multnomah County by Age")					///
-		subtitle("College Degree vs. No College Degree")								///
-		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
+		title("Out-of-State Migration by Age")										///
+		subtitle("College vs. No College")											///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_age_out_state_migration.png", replace
@@ -1014,9 +1021,8 @@ preserve
 		ytitle("Effect on Out-Migration (pp)") 											///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "65+") pos(6) rows(1)) 								///
-		title("Out-Migration from Multnomah County by Age")								///
+		title("Out-Migration by Age")													///
 		subtitle("Relative to Age 45-64")												///
-		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_out_migration.png", replace
@@ -1035,9 +1041,8 @@ preserve
 		ytitle("Effect on In-Migration (pp)") 											///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "65+") pos(6) rows(1)) 								///
-		title("In-Migration to Multnomah (West Coast) by Age")							///
+		title("In-Migration by Age (West Coast)")										///
 		subtitle("Relative to Age 45-64")												///
-		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_in_migration_west.png", replace
@@ -1056,9 +1061,8 @@ preserve
 		ytitle("Effect on In-Migration (pp)") 											///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "65+") pos(6) rows(1)) 								///
-		title("In-Migration to Multnomah (Lower 48 + DC) by Age")						///
+		title("In-Migration by Age (Lower 48 + DC)")									///
 		subtitle("Relative to Age 45-64")												///
-		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_in_migration_48.png", replace
@@ -1077,9 +1081,8 @@ preserve
 		ytitle("Effect on Out-of-State Migration (pp)") 								///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "65+") pos(6) rows(1)) 								///
-		title("Out-of-State Migration from Multnomah County by Age")					///
+		title("Out-of-State Migration by Age")										///
 		subtitle("Relative to Age 45-64")												///
-		note("Base year: 2019. 2020 excluded. Vertical line indicates tax implementation.")	///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_out_state_migration.png", replace

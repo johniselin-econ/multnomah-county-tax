@@ -32,9 +32,25 @@ For more information, contact john.iselin@yale.edu
 
 *******************************************************************************/
 
+** Load shared project defaults and helper programs
+local cwd = subinstr("`c(pwd)'", "\", "/", .)
+local suffix "/code/stata"
+if "${dir}" == "" {
+	if length("`cwd'") >= length("`suffix'") & ///
+		substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
+		global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
+	}
+	else {
+		global dir "`cwd'"
+	}
+}
+if "${code}" == "" global code "${dir}/code/stata/"
+do "${code}00_stata_config.do"
+
 ** Start log file
 capture log close log_dq
 log using "${logs}02_log_appendix_data_quality_${date}", replace text name(log_dq)
+project_set_seed, context("02_appendix_data_quality.do") offset(130)
 
 ** plotplainblind palette (RGB) — consistent across all figures
 local col_out  "0 114 178"    // sea (p7) — out-migration

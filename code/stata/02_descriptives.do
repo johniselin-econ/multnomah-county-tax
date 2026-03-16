@@ -32,9 +32,25 @@ For more information, contact john.iselin@yale.edu
 
 *******************************************************************************/
 
+** Load shared project defaults and helper programs
+local cwd = subinstr("`c(pwd)'", "\", "/", .)
+local suffix "/code/stata"
+if "${dir}" == "" {
+    if length("`cwd'") >= length("`suffix'") & ///
+        substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
+        global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
+    }
+    else {
+        global dir "`cwd'"
+    }
+}
+if "${code}" == "" global code "${dir}/code/stata/"
+do "${code}00_stata_config.do"
+
 ** Start log file 
 capture log close log_02
 log using "${logs}02_log_descriptives_${date}", replace text name(log_02)
+project_set_seed, context("02_descriptives.do") offset(20)
 
 ** plotplainblind palette (RGB) — consistent across all figures
 local col_out  "0 114 178"    // sea (p7) — out-migration
@@ -983,7 +999,7 @@ replace group = 5 if direction == 3 & period == "pre"
 replace group = 6 if direction == 3 & period == "post"
 
 ** Jittered x-position for scatter dots (Version B)
-set seed 56403
+project_set_seed, context("02_descriptives.do panel scatter") offset(20)
 gen group_jit = group + (uniform() - 0.5) * 0.4
 
 ** Endpoints for median line segments (match barwidth of 0.5)
@@ -1041,8 +1057,8 @@ foreach x in "n1" "n2" "agi" {
 			lcolor(gs2) lwidth(medthick)) ///
 		(scatter `x'_rate group if multnomah == 1, ///
 			mcolor("`col_mult'") msize(med) msymbol(D)) ///
-		, title("County Migration Rates: `mtitle'") ///
-		  subtitle("Multnomah County vs. National Distribution") ///
+		, title("County Rates: `mtitle'") ///
+		subtitle("Multnomah vs. U.S. counties") ///
 		  ytitle("Migration rate (% of base population)") ///
 		  xtitle("") ///
 		  xlabel(1 `""Out" "2018-19""' 2 `""Out" "2021-22""' ///
@@ -1070,8 +1086,8 @@ foreach x in "n1" "n2" "agi" {
 			lcolor(gs2) lwidth(medthick)) ///
 		(scatter `x'_rate group if multnomah == 1, ///
 			mcolor("`col_mult'") msize(med) msymbol(D)) ///
-		, title("County Migration Rates: `mtitle'") ///
-		  subtitle("Multnomah County vs. All U.S. Counties") ///
+		, title("County Rates: `mtitle'") ///
+		subtitle("Multnomah vs. all U.S. counties") ///
 		  ytitle("Migration rate (% of base population)") ///
 		  xtitle("") ///
 		  xlabel(1 `""Out" "2018-19""' 2 `""Out" "2021-22""' ///
@@ -1260,7 +1276,7 @@ replace group = 5 if direction == 3 & period == "pre"
 replace group = 6 if direction == 3 & period == "post"
 
 ** Jittered x-position for scatter dots (Version B)
-set seed 56403
+project_set_seed, context("02_descriptives.do appendix scatter") offset(21)
 gen group_jit = group + (uniform() - 0.5) * 0.4
 
 ** Endpoints for median line segments (match barwidth of 0.5)
@@ -1318,8 +1334,8 @@ foreach x in "n1" "n2" "agi" {
 			lcolor(gs2) lwidth(medthick)) ///
 		(scatter `x'_rate group if oregon == 1, ///
 			mcolor("`col_mult'") msize(med) msymbol(D)) ///
-		, title("State Migration Rates: `mtitle'") ///
-		  subtitle("Oregon vs. National Distribution") ///
+		, title("State Rates: `mtitle'") ///
+		subtitle("Oregon vs. U.S. states") ///
 		  ytitle("Migration rate (% of base population)") ///
 		  xtitle("") ///
 		  xlabel(1 `""Out" "2018-19""' 2 `""Out" "2021-22""' ///
@@ -1347,8 +1363,8 @@ foreach x in "n1" "n2" "agi" {
 			lcolor(gs2) lwidth(medthick)) ///
 		(scatter `x'_rate group if oregon == 1, ///
 			mcolor("`col_mult'") msize(med) msymbol(D)) ///
-		, title("State Migration Rates: `mtitle'") ///
-		  subtitle("Oregon vs. All U.S. States") ///
+		, title("State Rates: `mtitle'") ///
+		subtitle("Oregon vs. all U.S. states") ///
 		  ytitle("Migration rate (% of base population)") ///
 		  xtitle("") ///
 		  xlabel(1 `""Out" "2018-19""' 2 `""Out" "2021-22""' ///
@@ -1507,7 +1523,7 @@ forvalues i = 1/5 {
 		xline(`mult_`v'', lc("`col_mult'") lp(dash) lw(medthick))				///
 		xtitle("`l'")															///
 		ytitle("Density")														///
-		subtitle("Multnomah: `mult_`v'' days (`pctile_`v''th pctile)")			///
+		subtitle("Multnomah: `mult_`v'' days | `pctile_`v''th pctile")		///
 		graphregion(color(white))												///
 		name(kd_`v', replace)
 
@@ -1519,7 +1535,7 @@ forvalues i = 1/5 {
 graph combine kd_msahodays kd_restclosedays kd_gatherbandays					///
 	kd_strictgatherbandays kd_maskpubdays,										///
 	cols(3)																		///
-	title("COVID Policy Stringency: Multnomah County vs. All U.S. Counties")	///
+	title("COVID Policy Stringency")											///
 	graphregion(color(white))													///
 	name(kd_combined, replace)
 

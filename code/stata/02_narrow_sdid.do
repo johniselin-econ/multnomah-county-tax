@@ -26,9 +26,25 @@ For more information, contact john.iselin@yale.edu
 *******************************************************************************/
 
 
+** Load shared project defaults and helper programs
+local cwd = subinstr("`c(pwd)'", "\", "/", .)
+local suffix "/code/stata"
+if "${dir}" == "" {
+	if length("`cwd'") >= length("`suffix'") & ///
+		substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
+		global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
+	}
+	else {
+		global dir "`cwd'"
+	}
+}
+if "${code}" == "" global code "${dir}/code/stata/"
+do "${code}00_stata_config.do"
+
 ** Start log file
 capture log close log_02_narrow
 log using "${logs}02_log_narrow_sdid_${date}", replace text name(log_02_narrow)
+project_set_seed, context("02_narrow_sdid.do") offset(70)
 
 ** plotplainblind palette (RGB) — consistent across all figures
 local col_sig_notpref  "0 114 178"    // sea (p7) — sig, not preferred
@@ -178,7 +194,7 @@ gen irs_sample_1 = inrange(year, 2016, 2022)
 
 ** Generate ACS Period Indicators
 gen acs_period_1 = merge_acs_1 != 1 & inrange(year, 2016, 2022)
-gen acs_period_2 = merge_acs_1 != 1
+gen acs_period_2 = merge_acs_1 != 1 & inrange(year, 2016, 2024)
 
 ** Make sure we have a balanced panel of ACS counties
 gen tmp = merge_acs_1 != 1
@@ -692,7 +708,7 @@ foreach otype in "n1" "n2" "agi" {
 			yline(0, lc("`col_zero'") lp(dash)) 							///
 			xlabel(none) 													///
 			xscale(range(0.5 `=`n_specs'+0.5'))						///
-			plotregion(margin(l+12))										///
+			plotregion(margin(l+2))										///
 			name(coef_`otype'_`migr', replace)
 
 		********************************************************************************

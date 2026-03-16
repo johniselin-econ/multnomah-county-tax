@@ -1,15 +1,15 @@
 /*******************************************************************************
 	File Name:    00_multnomah.do
 	Creator:      John Iselin
-	Date Updated: March 12, 2026
+	Date Updated: March 15, 2026
 
 	Purpose:      Orchestrator for the Stata analysis pipeline examining the
 	              effect of Multnomah County's Preschool for All tax on
 	              migration. Calls data-cleaning scripts (01_*) and analysis
 	              scripts (02_*) in dependency order.
 
-	Prerequisite: Run 00_ipums_api.R first to download ACS, QWI, QCEW, and
-	              Census age-share data and generate R-based figures.
+	Prerequisite: Run 00_download_data.R (or 00_multnomah.R) first to
+	              download the R-managed inputs used below.
 
 	Author:       John Iselin (john.iselin@yale.edu)
 *******************************************************************************/
@@ -41,6 +41,21 @@ clear matrix
 clear all
 set more off
 
+** Load shared project defaults and helper programs
+local cwd = subinstr("`c(pwd)'", "\", "/", .)
+local suffix "/code/stata"
+if "${dir}" == "" {
+    if length("`cwd'") >= length("`suffix'") & ///
+        substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
+        global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
+    }
+    else {
+        global dir "`cwd'"
+    }
+}
+if "${code}" == "" global code "${dir}/code/stata/"
+do "${code}00_stata_config.do"
+
 ** Verify all required packages are installed
 local pkg_missing = 0
 foreach pkg in reghdfe ftools ppmlhdfe sdid sdid_event estout coefplot fre distinct taxsimlocal35 {
@@ -71,21 +86,12 @@ if `pkg_missing' {
 ** ============================================================================
 ** PROJECT GLOBALS
 ** ============================================================================
-global pr_name "multnomah"
-global date "`: di %tdCY-N-D daily("$S_DATE", "DMY")'"
+** Defaults are defined in 00_stata_config.do. Override below only when needed.
 
 ** Directories — set working directory to project root before running
-global dir      = subinstr("`c(pwd)'", "\", "/", .)
-global code     "${dir}/code/stata/"
-global rcode    "${dir}/code/R/"
-global data     "${dir}/data/"
-global results  "${dir}/results/"
-global logs     "${code}logs/"
 cd "${dir}"
 
-** Overleaf sync (optional) — set oth_path in profile.do (gitignored)
-global overleaf = 0
-global oth_path ""
+** Overleaf sync (optional) — set oth_path and overleaf=1 in profile.do (gitignored)
 global ol_fig   ""
 global ol_tab   ""
 capture do "${dir}/profile.do"
@@ -105,50 +111,29 @@ capture mkdir "${logs}"
 log using "${logs}00_log_${pr_name}_${date}", replace text
 
 ** Seed and scheme
-set seed 56403
-set scheme plotplainblind
+project_set_seed, context("00_multnomah.do") offset(0)
 
 
 ** ============================================================================
 ** PARAMETERS
 ** ============================================================================
 
-** Parallel processing (set to 0 for sequential)
-if "${use_parallel}" == "" global use_parallel = 1
-global n_clusters = 6
-
-** Resume mode: skip specs with existing temp_results files (set to 0 for fresh run)
-if "${resume}" == "" global resume = 1
-
-** Event study mode: "all" = every spec, "preferred" = only preferred specs
-** Set to "all" for full replication, "preferred" for fast runs (~99% fewer event studies)
-global event_study_mode "preferred"
-
-** Year ranges
-global start_year_irs_data     = 2012   // Extended back for appendix (2011-12 flows)
-global start_year_irs_analysis = 2016   // Main analysis start
-global start_year_acs          = 2012   // Extended back for appendix comparison
-global end_year_acs            = 2024
-
-** IRS file year ranges (2-digit)
-global start_yy_irs_download   = 11     // IRS file download start (2011-12 flows)
-global end_yy_irs_migration    = 21     // IRS migration file end (2021-22 flows)
-global end_yy_irs_agi          = 22     // IRS AGI file end (2022 data)
-global start_yy_irs_county     = 12     // County data processing start
-global end_yy_irs_county       = 22     // County data processing end
+** Shared defaults live in 00_stata_config.do.
+** Override specific globals here only for intentionally custom runs.
+project_export_run_manifest
 
 
 ** ============================================================================
 ** STAGE 1: DATA CLEANING
 ** ============================================================================
 ** Calls 01a_programs through 01h_auxiliary; see 01_clean_data.do for details.
-*do "${code}01_clean_data.do"
+do "${code}01_clean_data.do"
 
 
 ** ============================================================================
 ** STAGE 2: DESCRIPTIVE ANALYSIS
 ** ============================================================================
-*do "${code}02_descriptives.do"
+do "${code}02_descriptives.do"
 
 
 ** ============================================================================
@@ -156,10 +141,10 @@ global end_yy_irs_county       = 22     // County data processing end
 ** ============================================================================
 
 ** IRS county-level flow regressions
-*do "${code}02_flow_analysis.do"
+do "${code}02_flow_analysis.do"
 
 ** ACS individual-level difference-in-differences
-*do "${code}02_did_analysis.do"
+do "${code}02_did_analysis.do"
 
 ** Synthetic difference-in-differences (main specification)
 ** Produces sdid_results.dta used by downstream scripts

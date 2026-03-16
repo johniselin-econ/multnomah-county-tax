@@ -35,10 +35,26 @@ For more information, contact john.iselin@yale.edu
 
 *******************************************************************************/
 
+** Load shared project defaults and helper programs
+local cwd = subinstr("`c(pwd)'", "\", "/", .)
+local suffix "/code/stata"
+if "${dir}" == "" {
+	if length("`cwd'") >= length("`suffix'") & ///
+		substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
+		global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
+	}
+	else {
+		global dir "`cwd'"
+	}
+}
+if "${code}" == "" global code "${dir}/code/stata/"
+do "${code}00_stata_config.do"
+
 
 ** Start log file
 capture log close log_02_otherout
 log using "${logs}02_log_otherout_sdid_${date}", replace text name(log_02_otherout)
+project_set_seed, context("02_otherout_sdid.do") offset(100)
 
 ** plotplainblind palette (RGB) — consistent across all figures
 local col_sig_notpref  "0 114 178"    // sea (p7) — sig, not preferred
@@ -50,11 +66,6 @@ local col_ref          "153 153 153"  // gs10 (p2) — reference lines
 
 ** Number of bootstrap replications
 local reps = 100
-
-** Fallback defaults for standalone execution (not via 00_multnomah.do)
-if "${use_parallel}" == "" global use_parallel 0
-if "${n_clusters}" == ""   global n_clusters 1
-if "${resume}" == ""       global resume 0
 
 ** Initialize parallel processing if enabled
 if ${use_parallel} == 1 {
@@ -1018,7 +1029,7 @@ Coefficient colors:
 - Vermillion (p6): Statistically significant (p<0.05), preferred specification
 - Orangebrown (p8): Statistically insignificant, preferred specification
 
-Preferred specifications: Urban 95% COVID match + covariates + excl 2020
+Preferred specifications: Stringency match + covariates + excl 2020
 *******************************************************************************/
 
 ** Load treatment effects
@@ -1027,7 +1038,7 @@ use "${results}sdid/otherout/otherout_sdid_results.dta", clear
 ** Create specification indicators for bottom panel
 gen spec_all = sample == "sample_all"
 gen spec_urban95 = sample == "sample_urban95"
-gen spec_covid = sample == "sample_stringency"
+gen spec_covid = sample == "sample_urban75_covid"
 gen spec_demog = sample == "sample_demog"
 gen spec_stringency = sample == "sample_stringency"
 gen spec_covars = controls == 1
@@ -1137,7 +1148,7 @@ foreach out of local outcomes {
 		yline(0, lc("`col_zero'") lp(dash)) 							///
 		xlabel(none) 													///
 		xscale(range(0.5 `=`n_specs'+0.5'))								///
-		plotregion(margin(l+12))										///
+		plotregion(margin(l+2))										///
 		name(coef_`out', replace)
 
 	********************************************************************************
@@ -1162,10 +1173,10 @@ foreach out of local outcomes {
 		ytitle("")														///
 		xtitle("Specification (ranked by effect size)")					///
 		ylabel(	-1 "All Counties"										///
-				-2 "Urban 95%"											///
+				-2 "Urban (Top 5%)"										///
 				-3 "COVID Match"										///
-				-4 "Demog. Match"										///
-				-5 "Stringency"											///
+				-4 "Demographic Match"									///
+				-5 "Stringency Match"									///
 				-6 "Covariates"											///
 				-7 "Excl. 2020",										///
 			angle(0) labsize(vsmall))									///

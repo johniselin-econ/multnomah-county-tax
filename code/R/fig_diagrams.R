@@ -117,9 +117,11 @@ draw_empirical_approach <- function(out_file) {
   tx(65, 128.5, "Synthetic Difference\u2013in\u2013Differences (SDID)",
      sz = 12, face = "bold", col = sd_txt)
   tx(65, 125,
-     "One treated unit (Multnomah) | Donor pools: All, Urban (top 5%), Urban\u2013Covid",
-     sz = 8, col = desc_col)
-  tx(65, 122.5, "With/without covariates | Excl. 2020", sz = 8, col = desc_col)
+     "One treated unit (Multnomah) | Donor pools: All, Urban (top 5%), Urban\u2013COVID",
+      sz = 8, col = desc_col)
+  tx(65, 122.5,
+     "Top 25% COVID match, demographic match, stringency match | Covariates | Excl. 2020",
+     sz = 7.5, col = desc_col)
 
   ar(48, 119, 42, 115.5)
   ar(82, 119, 88, 115.5)
@@ -229,17 +231,19 @@ draw_empirical_approach <- function(out_file) {
   tx(48, 20,   "\u2022  Median property tax (ACS counties)",
      sz = 9, col = desc_col, j = "left")
   tx(48, 17.5, "\u2022  Covid-19 severity matching (donor pool)",
-     sz = 9, col = desc_col, j = "left")
+      sz = 9, col = desc_col, j = "left")
 
   tx(90, 28, "Donor Pool Restrictions:",
      sz = 10, face = "bold", col = dark_col, j = "left")
   tx(90, 25,   "\u2022  Exclude AK, HI, CA, WA, OR",
      sz = 9, col = desc_col, j = "left")
   tx(90, 22.5, "\u2022  All remaining counties",
-     sz = 9, col = desc_col, j = "left")
+      sz = 9, col = desc_col, j = "left")
   tx(90, 20,   "\u2022  Top 5% urban by population",
-     sz = 9, col = desc_col, j = "left")
-  tx(90, 17.5, "\u2022  Urban + Covid\u2013matched",
+      sz = 9, col = desc_col, j = "left")
+  tx(90, 17.5, "\u2022  Top 25% urban + COVID / stringency match",
+      sz = 9, col = desc_col, j = "left")
+  tx(90, 15,   "\u2022  Demographic k-means match",
      sz = 9, col = desc_col, j = "left")
 
   popViewport()

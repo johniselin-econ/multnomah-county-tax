@@ -16,6 +16,21 @@ Authors: John Iselin
 For more information, contact john.iselin@yale.edu
 *******************************************************************************/
 
+** Load shared project defaults and helper programs
+local cwd = subinstr("`c(pwd)'", "\", "/", .)
+local suffix "/code/stata"
+if "${dir}" == "" {
+	if length("`cwd'") >= length("`suffix'") & ///
+		substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
+		global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
+	}
+	else {
+		global dir "`cwd'"
+	}
+}
+if "${code}" == "" global code "${dir}/code/stata/"
+do "${code}00_stata_config.do"
+
 ********************************************************************************
 ** SECTION 0: Setup & Parameters
 ********************************************************************************
@@ -23,6 +38,8 @@ For more information, contact john.iselin@yale.edu
 ** Start log file
 capture log close log_02rev
 log using "${logs}02_log_revenue_${date}", name(log_02rev) replace text
+
+project_set_seed, context("02_revenue.do") offset(40)
 
 ** Parameters
 scalar effect_agi = 0.02			// estimated net out-migration effect on AGI
@@ -55,6 +72,8 @@ dis "=============================================="
 ** Check if SDID panel data exists
 capture confirm file "${data}working/sdid_analysis_data.dta"
 if _rc == 0 {
+	project_assert_manifest using "${data}working/sdid_analysis_data_manifest.dta", ///
+		artifact("sdid_analysis_data")
 
 	** Save current data state
 	preserve
@@ -984,6 +1003,10 @@ gen double oregon_migration_share = scalar(oregon_migration_share)
 gen double pfa_implied_loss = scalar(pfa_implied_loss)
 gen double oregon_implied_loss = scalar(oregon_implied_loss)
 save "${data}working/revenue_parameters.dta", replace
+project_build_signature, artifact("sdid_results")
+project_write_manifest using "${data}working/revenue_parameters_manifest.dta", ///
+	artifact("revenue_parameters") script("02_revenue.do") ///
+	upstream("`r(signature)'")
 
 dis ""
 dis "Exported revenue_parameters.dta:"
@@ -1014,6 +1037,8 @@ local col_pref    "213 94 0"		// vermillion — preferred line
 
 capture confirm file "${results}sdid/sdid_results.dta"
 if _rc == 0 {
+	project_assert_manifest using "${results}sdid/sdid_results_manifest.dta", ///
+		artifact("sdid_results")
 
 	use "${results}sdid/sdid_results.dta", clear
 
@@ -1046,32 +1071,7 @@ if _rc == 0 {
 	replace period_type = "16-22" if strpos(outcome, "_irs") > 0 & period_type == ""
 	replace period_type = "16-24" if strpos(sample_data, "16_24") > 0
 
-	** Define preferred specs (must match 02_sdid_analysis.do)
-	gen preferred = 0
-
-	** IRS preferred
-	replace preferred = 1 if 									///
-		data_type == "IRS" & 									///
-		period_type == "16-22" &								///
-		inlist(sample, "sample_all", "sample_stringency") &		///
-		controls == 1 &											///
-		exclusion == 1
-
-	** ACS College preferred
-	replace preferred = 1 if 									///
-		data_type == "ACS College" & 							///
-		period_type == "16-24" &								///
-		inlist(sample, "sample_all", "sample_stringency") &		///
-		controls == 1 &											///
-		exclusion == 1
-
-	** ACS College Out-of-State preferred
-	replace preferred = 1 if 									///
-		data_type == "ACS College (Out-of-State)" & 			///
-		period_type == "16-24" &								///
-		inlist(sample, "sample_all", "sample_stringency") &		///
-		controls == 1 &											///
-		exclusion == 1
+	project_mark_preferred_main
 
 	** ================================================================
 	** (a) PFA revenue effect distribution (domestic/county-level AGI net)

@@ -17,9 +17,25 @@
 * Data sources documented in data/README.md
 ******************************************************************************/
 
+** Load shared project defaults and helper programs
+local cwd = subinstr("`c(pwd)'", "\", "/", .)
+local suffix "/code/stata"
+if "${dir}" == "" {
+    if length("`cwd'") >= length("`suffix'") & ///
+        substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
+        global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
+    }
+    else {
+        global dir "`cwd'"
+    }
+}
+if "${code}" == "" global code "${dir}/code/stata/"
+do "${code}00_stata_config.do"
+
 ** Start log file
 capture log close log_01
 log using "${logs}01_log_data_clean_${pr_name}_${date}", replace text name(log_01)
+project_set_seed, context("01_clean_data.do") offset(5)
 
 //--------------------------------------------------
 // STEP 0: Labels and programs

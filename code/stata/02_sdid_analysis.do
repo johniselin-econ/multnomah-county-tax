@@ -23,6 +23,21 @@ For more information, contact john.iselin@yale.edu
 *******************************************************************************/
 
 
+** Load shared project defaults and helper programs
+local cwd = subinstr("`c(pwd)'", "\", "/", .)
+local suffix "/code/stata"
+if "${dir}" == "" {
+	if length("`cwd'") >= length("`suffix'") & ///
+		substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
+		global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
+	}
+	else {
+		global dir "`cwd'"
+	}
+}
+if "${code}" == "" global code "${dir}/code/stata/"
+do "${code}00_stata_config.do"
+
 ** Start log file
 capture log close log_02
 log using "${logs}02_log_sdid_${date}", replace text name(log_02)
@@ -42,13 +57,11 @@ local col_ref          "153 153 153"  // gs10 (p2) — reference lines
 ** Number of bootstrap replications for SDID
 local reps = 100
 
-** Fallback defaults for standalone execution (not via 00_multnomah.do)
-if "${use_parallel}" == "" global use_parallel 0
-if "${n_clusters}" == ""   global n_clusters 1
-if "${resume}" == ""       global resume 0
+project_set_seed, context("02_sdid_analysis.do") offset(10)
 
-** Event study mode: "all" = every spec, "preferred" = only preferred specs
-if "${event_study_mode}" == "" global event_study_mode "preferred"
+** Optional: rerun only a subset of data blocks (e.g., "acs_period_2")
+local data_vars "irs_sample_1 irs_sample_2 acs_period_1 acs_period_2"
+if "${sdid_data_filter}" != "" local data_vars "${sdid_data_filter}"
 
 ** Initialize parallel processing if enabled
 if ${use_parallel} == 1 {
@@ -173,7 +186,7 @@ gen irs_sample_2 = inrange(year, 2016, 2022) & merge_acs_1 != 1
 
 ** Generate ACS Period Indicators
 gen acs_period_1 = merge_acs_1 != 1 & inrange(year, 2016, 2022)
-gen acs_period_2 = merge_acs_1 != 1
+gen acs_period_2 = merge_acs_1 != 1 & inrange(year, 2016, 2024)
 
 ** Make sure we have a balanced panel of ACS counties
 gen tmp = merge_acs_1 != 1
@@ -210,7 +223,7 @@ gen sample_urban95 = percent_urban >= `cutoff' // All counties
 label var sample_urban95 "Urban counties (top 5%) (excluding AK, CA, HI OR, WA)"
 tab sample_urban95 if year == 2020
 
-** Compute top-10% urban threshold for stringency clustering base
+** Compute top-25% urban threshold for clustered donor pools
 ** Note: must be computed before state drops (like sample_urban95) so
 **       Multnomah is evaluated against the full county distribution
 qui summ percent_urban if year == 2020, de
@@ -234,7 +247,7 @@ gen tmp1 = kmean if urban_top75 == 1 & year == 2020 & covid_merge == 3 & multnom
 egen tmp2 = mean(tmp1)
 gen sample_urban75_covid = urban_top75 == 1 & kmean_group == tmp2
 drop tmp1 tmp2
-label var sample_urban75_covid "Urban counties (top 25%) w. Kmean Covid Match  (excluding AK, CA, HI OR, WA)"
+label var sample_urban75_covid "Urban counties (top 25%) w. COVID k-means match (excluding AK, CA, HI OR, WA)"
 tab sample_urban75_covid if year == 2020
 
 ** Define sample 4: Demographic k-means
@@ -424,6 +437,8 @@ xtset fips year
 label var year "Year (destination)"
 
 save "${data}working/sdid_analysis_data.dta", replace
+project_write_manifest using "${data}working/sdid_analysis_data_manifest.dta", ///
+	artifact("sdid_analysis_data") script("02_sdid_analysis.do")
 
 
 ********************************************************************************
@@ -458,7 +473,7 @@ if ${use_parallel} == 1 {
 	save "${data}working/table_grid.dta", replace
 
 	** Build table grid
-	foreach data in "irs_sample_1" "irs_sample_2" "acs_period_1" "acs_period_2" {
+	foreach data in `data_vars' {
 
 		** Different sets of outcome variable types
 		if "`data'" == "irs_sample_1" | "`data'" == "irs_sample_2" {
@@ -851,7 +866,7 @@ if ${use_parallel} == 1 {
 	** Note: use numeric index to avoid Stata's 32-char macro name limit
 	local _idx = 0
 	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
-		foreach data_v in "irs_sample_1" "irs_sample_2" "acs_period_1" "acs_period_2" {
+		foreach data_v in `data_vars' {
 			local _idx = `_idx' + 1
 			qui count if `samp' == 1 & `data_v' == 1 & year == 2021
 			local nc_`_idx' = r(N)
@@ -860,7 +875,8 @@ if ${use_parallel} == 1 {
 
 	** Build cost lookup table from stored counts
 	clear
-	local n_combos = 20  // 5 samples x 4 data types
+	local n_data : word count `data_vars'
+	local n_combos = 5 * `n_data'
 	qui set obs `n_combos'
 	gen samp_var = ""
 	gen data_var = ""
@@ -870,7 +886,7 @@ if ${use_parallel} == 1 {
 	local _idx = 0
 	local row = 0
 	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
-		foreach data_v in "irs_sample_1" "irs_sample_2" "acs_period_1" "acs_period_2" {
+		foreach data_v in `data_vars' {
 			local _idx = `_idx' + 1
 			local row = `row' + 1
 			qui replace samp_var = "`samp'" in `row'
@@ -993,13 +1009,14 @@ if ${use_parallel} == 1 {
 	order sample_data sample outcome controls exclusion tau se pval ci_lower ci_upper n_counties pre_mean significant
 	compress
 	save "${results}sdid/sdid_results.dta", replace
+	project_write_manifest using "${results}sdid/sdid_results_manifest.dta", ///
+		artifact("sdid_results") script("02_sdid_analysis.do")
 	export excel using "${results}sdid/sdid_results.xlsx", firstrow(variables) replace
 
 	** Clean up temp directory
 	shell rmdir "${results}sdid/temp_results" /s /q
 
 	** Clean up temporary files
-	capture erase "${data}working/sdid_analysis_data.dta"
 	capture erase "${data}working/table_grid.dta"
 	capture erase "${data}working/table_ids.dta"
 
@@ -1046,7 +1063,7 @@ else {
 	}
 
 	** Loop over IRS and ACS Samples
-	foreach data of varlist irs_sample_1 irs_sample_2 acs_period_1 acs_period_2  {
+	foreach data in `data_vars' {
 
 		** Define covariates based on data type
 		** irs_sample_1 uses basic covariates; all others add property tax rate
@@ -1343,6 +1360,8 @@ else {
 
 	** Export treatment effects
 	use "${results}sdid/sdid_results.dta", clear
+	project_write_manifest using "${results}sdid/sdid_results_manifest.dta", ///
+		artifact("sdid_results") script("02_sdid_analysis.do")
 	export excel using "${results}sdid/sdid_results.xlsx", firstrow(variables) replace
 
 } // END SEQUENTIAL ESTIMATION
@@ -1399,7 +1418,7 @@ replace period_type = "16-24" if strpos(sample_data, "16_24") > 0
 ** Create specification indicators for bottom panel
 gen spec_all = sample == "sample_all"
 gen spec_urban95 = sample == "sample_urban95"
-gen spec_covid = sample == "sample_stringency"
+gen spec_covid = sample == "sample_urban75_covid"
 gen spec_demog = sample == "sample_demog"
 gen spec_stringency = sample == "sample_stringency"
 gen spec_16_22 = period_type == "16-22"
@@ -1420,43 +1439,11 @@ replace significant = pval < 0.05 if missing(significant)
 
 ********************************************************************************
 ** DEFINE PREFERRED SPECIFICATIONS
-** Modify these conditions to change which specifications are highlighted
-** as "preferred" in the specification curve plots.
+** Shared preferred-spec logic lives in 00_stata_config.do so downstream
+** scripts use the exact same highlighted specifications.
 ********************************************************************************
 
-gen preferred = 0
-
-** Example preferred specification criteria:
-** - ACS data (full period 2016-2024)
-** - Urban counties (top 5%)
-** - With covariates
-** - Not excluding 2020
-** Modify these conditions as needed for your analysis.
-
-
-** IRS FULL SAMPLE
-replace preferred = 1 if 									///
-	data_type == "IRS" & 									///
-	spec_16_22 == 1	& 										///
-	inlist(sample, "sample_all", "sample_stringency") &		///
-	controls == 1 &											///
-	exclusion == 1 											//
-
-** ACS COLLEGE SAMPLE
-replace preferred = 1 if 									///
-	data_type == "ACS College" & 							///
-	spec_16_24 == 1	& 										///
-	inlist(sample, "sample_all", "sample_stringency") &		///
-	controls == 1 &											///
-	exclusion == 1 											//
-
-** ACS COLLEGE OUT-OF-STATE SAMPLE
-replace preferred = 1 if 									///
-	data_type == "ACS College (Out-of-State)" & 			///
-	spec_16_24 == 1	& 										///
-	inlist(sample, "sample_all", "sample_stringency") &		///
-	controls == 1 &											///
-	exclusion == 1 											//
+project_mark_preferred_main
 
 ** Display count of preferred specifications
 dis "Number of preferred specifications: "
@@ -1582,7 +1569,7 @@ foreach otype in "n1" "n2" "agi" {
 			yline(0, lc("`col_zero'") lp(dash)) 							///
 			xlabel(none) 													///
 			xscale(range(0.5 `=`n_specs'+0.5'))						///
-			plotregion(margin(l+12))										///
+			plotregion(margin(l+2))										///
 			name(coef_`otype'_`migr', replace)
 
 		********************************************************************************
@@ -1623,10 +1610,10 @@ foreach otype in "n1" "n2" "agi" {
 			ytitle("")														///
 			xtitle("Specification (ranked by effect size)")					///
 			ylabel(	-1 "All Counties"										///
-					-2 "Urban 95%"											///
+					-2 "Urban (Top 5%)"										///
 					-3 "COVID Match"										///
-					-4 "Demog. Match"										///
-					-5 "Stringency"											///
+					-4 "Demographic Match"									///
+					-5 "Stringency Match"									///
 					-6 "Covariates"											///
 					-7 "Excl. 2020"											///
 					-8 "IRS (all counties)"									///
@@ -1671,10 +1658,10 @@ foreach otype in "n1" "n2" "agi" {
 			ytitle("")														///
 			xtitle("Specification (ranked by effect size)")					///
 			ylabel(	-1 "All Counties"										///
-					-2 "Urban 95%"											///
+					-2 "Urban (Top 5%)"										///
 					-3 "COVID Match"										///
-					-4 "Demog. Match"										///
-					-5 "Stringency"											///
+					-4 "Demographic Match"									///
+					-5 "Stringency Match"									///
 					-6 "Covariates"											///
 					-7 "Excl. 2020"											///
 					-8 "IRS Out-of-State (all counties)"					///
@@ -1728,7 +1715,9 @@ drive the most variation in estimated treatment effects.
 */
 
 ** Palette for influence coefplots
-local col_main    "0 114 178"     // sea (p7)
+local col_pool    "0 114 178"     // sea (p7)
+local col_data    "213 94 0"      // vermillion (p6)
+local col_other   "0 158 115"     // bluish green
 local col_zero    "153 153 153"   // gs10 (p2)
 
 ** Create output subdirectory
@@ -1854,40 +1843,75 @@ foreach otype in "n1" "n2" "agi" {
 					controls 			///
 					exclusion, 			///
 					robust
+		estimates store meta_full
 
 		** Store regression stats for subtitle
 		local r2 : di %4.3f e(r2)
 		local n  : di %4.0f e(N)
 
-		** Coefplot
-		coefplot, drop(_cons) noomitted 							///
+		** Panel 1: donor-pool choices
+		coefplot meta_full, drop(_cons) noomitted 					///
+			keep(2.donor_pool 3.donor_pool 4.donor_pool 5.donor_pool) ///
 			xline(0, lc("`col_zero'") lp(dash)) 					///
-			headings( 												///
-				2.donor_pool = "{bf:Donor Pool (vs. All Counties)}" 	///
-				2.data_src = "{bf:Data Source (vs. IRS Full)}" 		///
-				period_1624 = "{bf:Other Specification Choices}" 	///
-			) 														///
 			coeflabels( 											///
-				2.donor_pool = "Urban 95%" 							///
+				2.donor_pool = "Urban (Top 5%)" 					///
 				3.donor_pool = "COVID Match" 						///
-				4.donor_pool = "Demog. Match" 						///
+				4.donor_pool = "Demographic Match" 				///
 				5.donor_pool = "Stringency Match" 					///
-				2.data_src   = "IRS (ACS Counties)" 				///
-				3.data_src   = "ACS (All 25+)" 						///
-				4.data_src   = "ACS (College)" 						///
-				period_1624  = "Extended Period (16-24)" 			///
-				controls     = "With Covariates" 					///
-				exclusion    = "Exclude 2020" 						///
 			) 														///
-			msymbol(D) mcolor("`col_main'") 						///
-			ciopts(lcolor("`col_main'")) 							///
-			graphregion(color(white)) 								///
-			title("`otype_label': `migr_label' (`geo_label')", 		///
-				size(medium)) 										///
-			subtitle("N = `n' specifications, R-sq = `r2'", 		///
-				size(small)) 										///
-			xtitle("Effect on SDID Estimate (pp)", size(small)) 	///
-			note("OLS with robust SEs. Each observation is one SDID specification." , size(vsmall))
+			msymbol(D) mcolor("`col_pool'") 						///
+			ciopts(lcolor("`col_pool'")) 							///
+			graphregion(color(white)) plotregion(color(white)) 		///
+			title("Donor Pool", size(small)) 						///
+			subtitle("", size(vsmall)) 								///
+			xtitle("Effect on SDID estimate (pp)", size(vsmall)) 	///
+			legend(off)												///
+			name(inf_pool_`otype'_`migr'_`geo', replace)
+
+		** Panel 2: data-source choices
+		coefplot meta_full, drop(_cons) noomitted 					///
+			keep(2.data_src 3.data_src 4.data_src) 				///
+			xline(0, lc("`col_zero'") lp(dash)) 					///
+			coeflabels( 											///
+				2.data_src = "IRS (ACS sample)" 					///
+				3.data_src = "ACS (All 25+)" 						///
+				4.data_src = "ACS (College)" 						///
+			) 														///
+			msymbol(D) mcolor("`col_data'") 						///
+			ciopts(lcolor("`col_data'")) 							///
+			graphregion(color(white)) plotregion(color(white)) 		///
+			title("Data Source", size(small)) 						///
+			subtitle("", size(vsmall)) 								///
+			xtitle("Effect on SDID estimate (pp)", size(vsmall)) 	///
+			legend(off)												///
+			name(inf_data_`otype'_`migr'_`geo', replace)
+
+		** Panel 3: other specification choices
+		coefplot meta_full, drop(_cons) noomitted 					///
+			keep(period_1624 controls exclusion) 					///
+			xline(0, lc("`col_zero'") lp(dash)) 					///
+			coeflabels( 											///
+				period_1624 = "Extended Period (16-24)" 			///
+				controls    = "Covariates" 							///
+				exclusion   = "Exclude 2020" 						///
+			) 														///
+			msymbol(D) mcolor("`col_other'") 						///
+			ciopts(lcolor("`col_other'")) 							///
+			graphregion(color(white)) plotregion(color(white)) 		///
+			title("Other Choices", size(small)) 					///
+			subtitle("", size(vsmall)) 								///
+			xtitle("Effect on SDID estimate (pp)", size(vsmall)) 	///
+			legend(off)												///
+			name(inf_other_`otype'_`migr'_`geo', replace)
+
+		graph combine 												///
+			inf_pool_`otype'_`migr'_`geo' 							///
+			inf_data_`otype'_`migr'_`geo' 							///
+			inf_other_`otype'_`migr'_`geo', 						///
+			cols(3) xcommon imargin(2 2 2 2) 						///
+			title("`otype_label': `migr_label'", size(medium)) 		///
+			subtitle("`geo_label' | N = `n', R-sq = `r2'", size(small)) ///
+			graphregion(color(white))
 
 		** Export
 		graph export "${results}sdid/influence/fig_sdid_influence_`otype'_`migr'`geo_suffix'.pdf", replace

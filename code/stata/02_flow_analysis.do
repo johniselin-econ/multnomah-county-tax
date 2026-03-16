@@ -41,10 +41,26 @@ For more information, contact john.iselin@yale.edu
 
 *******************************************************************************/
 
+** Load shared project defaults and helper programs
+local cwd = subinstr("`c(pwd)'", "\", "/", .)
+local suffix "/code/stata"
+if "${dir}" == "" {
+    if length("`cwd'") >= length("`suffix'") & ///
+        substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
+        global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
+    }
+    else {
+        global dir "`cwd'"
+    }
+}
+if "${code}" == "" global code "${dir}/code/stata/"
+do "${code}00_stata_config.do"
+
 
 ** Start log file
 capture log close log_02
 log using "${logs}02_log_flow_${date}", replace text name(log_02)
+project_set_seed, context("02_flow_analysis.do") offset(30)
 
 ** plotplainblind palette (RGB) — consistent across all figures
 local col_out  "0 114 178"    // sea (p7) — out-migration
@@ -54,10 +70,6 @@ local col_ref  "153 153 153"  // gs10 (p2) — reference lines
 
 ** Parameters
 local reps = 100
-
-** Fallback defaults for standalone execution (not via 00_multnomah.do)
-if "${use_parallel}" == "" global use_parallel 0
-if "${n_clusters}" == ""   global n_clusters 1
 
 ** Debug mode: set to 1 to run on a random subset of counties for faster testing
 ** Set to 0 for full production run
@@ -334,7 +346,7 @@ foreach sample in "acs" "all" {
 			ytitle("Coefficient") 										///
 			xtitle("")													///
 			legend(pos(6) rows(1)) 										///
-			title("Migration Flows: Multnomah County x Post`title_suffix'")	///
+		title("Flow Effects`title_suffix'")								///
 			subtitle("`outcome_label'")									///
 			graphregion(color(white))
 
@@ -379,7 +391,7 @@ foreach sample in "acs" "all" {
 		gen multnomah = (fips == 41051)
 
 		** Generate random number for sampling
-		set seed 12345  // For reproducibility; change or remove for different random samples
+		project_set_seed, context("02_flow_analysis.do debug sample") offset(31)
 		gen random = runiform()
 
 		** Sort: Multnomah first, then random order
@@ -635,8 +647,8 @@ foreach sample in "acs" "all" {
 			xline(`multnomah_`x'_out', lcolor("`col_mult'") lwidth(thick) lpattern(solid)) ///
 			xtitle("Out-migration `txt' (County x Post)") 			///
 			ytitle("Frequency") 											///
-			title("Distribution of Out-Migration `txt'`title_suffix'") 		///
-			subtitle("Vertical line = Multnomah County (percentile: `: display %4.1f `multnomah_pctile_out'')") ///
+		title("Out-Migration Distribution`title_suffix'") 				///
+		subtitle("Multnomah percentile: `: display %4.1f `multnomah_pctile_out''") ///
 			graphregion(color(white))
 
 		graph export "${results}flows/fig_hist_out_`x'`file_suffix'`debug_txt'.png", replace
@@ -648,8 +660,8 @@ foreach sample in "acs" "all" {
 			xline(`multnomah_`x'_in', lcolor("`col_mult'") lwidth(thick) lpattern(solid)) ///
 			xtitle("In-migration `txt' (County x Post)") 				///
 			ytitle("Frequency") 											///
-			title("Distribution of In-Migration `txt'`title_suffix'") 		///
-			subtitle("Vertical line = Multnomah County (percentile: `: display %4.1f `multnomah_pctile_in'')") ///
+		title("In-Migration Distribution`title_suffix'") 				///
+		subtitle("Multnomah percentile: `: display %4.1f `multnomah_pctile_in''") ///
 			graphregion(color(white))
 
 		graph export "${results}flows/fig_hist_in_`x'`file_suffix'`debug_txt'.png", replace
@@ -663,7 +675,7 @@ foreach sample in "acs" "all" {
 			yline(0, lc(gs10) lp(dash)) 									///
 			xtitle("Out-migration `txt'") 							///
 			ytitle("In-migration `txt'") 								///
-			title("Out- vs In-Migration Effects by County`title_suffix'") 	///
+		title("Out- vs. In-Migration Effects`title_suffix'") 			///
 			legend(order(1 "Other Counties" 2 "Multnomah County") pos(6) rows(1)) ///
 			graphregion(color(white))
 
@@ -1231,7 +1243,7 @@ foreach sample in "acs" "all" {
 			xtitle("Year")														///
 			legend(order(2 "With Covariates" 4 "Without Covariates") 			///
 				pos(6) rows(1)) 												///
-			title("Out-Migration from Multnomah County`title_suffix'")			///
+			title("Out-Migration`title_suffix'")								///
 			subtitle("`outcome_label'")											///
 			graphregion(color(white))
 
@@ -1249,7 +1261,7 @@ foreach sample in "acs" "all" {
 			xtitle("Year")														///
 			legend(order(2 "With Covariates" 4 "Without Covariates") 			///
 				pos(6) rows(1)) 												///
-			title("In-Migration to Multnomah County`title_suffix'")				///
+			title("In-Migration`title_suffix'")								///
 			subtitle("`outcome_label'")											///
 			graphregion(color(white))
 
@@ -1267,7 +1279,7 @@ foreach sample in "acs" "all" {
 			xtitle("Year")														///
 			legend(order(2 "Out-migration" 4 "In-migration") 					///
 				pos(6) rows(1)) 												///
-			title("Migration Flows: Multnomah County`title_suffix'")			///
+			title("Migration Flows`title_suffix'")								///
 			subtitle("`outcome_label'")											///
 			graphregion(color(white))
 

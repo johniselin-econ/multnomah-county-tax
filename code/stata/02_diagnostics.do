@@ -13,8 +13,24 @@
 *              02_diagnostics_supp.do (runs after those scripts).
 ******************************************************************************/
 
+** Load shared project defaults and helper programs
+local cwd = subinstr("`c(pwd)'", "\", "/", .)
+local suffix "/code/stata"
+if "${dir}" == "" {
+	if length("`cwd'") >= length("`suffix'") & ///
+		substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
+		global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
+	}
+	else {
+		global dir "`cwd'"
+	}
+}
+if "${code}" == "" global code "${dir}/code/stata/"
+do "${code}00_stata_config.do"
+
 capture log close log_diag
 log using "${logs}02_log_diagnostics_${pr_name}_${date}", replace text name(log_diag)
+project_set_seed, context("02_diagnostics.do") offset(90)
 
 ** Initialize results dataset
 clear

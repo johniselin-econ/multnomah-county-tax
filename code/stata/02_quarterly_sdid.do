@@ -39,10 +39,26 @@ For more information, contact john.iselin@yale.edu
 
 *******************************************************************************/
 
+** Load shared project defaults and helper programs
+local cwd = subinstr("`c(pwd)'", "\", "/", .)
+local suffix "/code/stata"
+if "${dir}" == "" {
+	if length("`cwd'") >= length("`suffix'") & ///
+		substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
+		global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
+	}
+	else {
+		global dir "`cwd'"
+	}
+}
+if "${code}" == "" global code "${dir}/code/stata/"
+do "${code}00_stata_config.do"
+
 
 ** Start log file
 capture log close log_02_quarterly
 log using "${logs}02_log_quarterly_sdid_${date}", replace text name(log_02_quarterly)
+project_set_seed, context("02_quarterly_sdid.do") offset(110)
 
 ** plotplainblind palette (RGB) — consistent across all figures
 local col_sig_notpref  "0 114 178"    // sea (p7) — sig, not preferred
@@ -58,11 +74,6 @@ local reps = 100
 ** Analysis window
 local start_year = ${start_year_irs_analysis}
 local end_year   = ${end_year_acs}
-
-** Fallback defaults for standalone execution (not via 00_multnomah.do)
-if "${use_parallel}" == "" global use_parallel 0
-if "${n_clusters}" == ""   global n_clusters 1
-if "${resume}" == ""       global resume 0
 
 ** Initialize parallel processing if enabled
 if ${use_parallel} == 1 {
@@ -222,16 +233,21 @@ drop if state_name == "California"
 drop if state_name == "Washington"
 drop if state_name == "Oregon" & multnomah == 0
 
+** Compute top-25% urban threshold for clustered donor pools
+qui summ percent_urban if yq == tq(2020q1), de
+local p75 = r(p75)
+gen urban_top75 = percent_urban >= `p75'
+
 ** Define sample 3: COVID k-means match
 cluster kmeans cases_cum* deaths_cum* if ///
-	sample_urban95 == 1 & yq == tq(2020q1) & covid_merge == 3, k(5) gen(kmean)
+	urban_top75 == 1 & yq == tq(2020q1) & covid_merge == 3, k(5) gen(kmean)
 bysort fips: egen kmean_group = mean(kmean)
 
-gen tmp1 = kmean if sample_urban95 == 1 & yq == tq(2020q1) & covid_merge == 3 & multnomah == 1
+gen tmp1 = kmean if urban_top75 == 1 & yq == tq(2020q1) & covid_merge == 3 & multnomah == 1
 egen tmp2 = mean(tmp1)
-gen sample_urban95_covid = sample_urban95 == 1 & kmean_group == tmp2
+gen sample_urban75_covid = urban_top75 == 1 & kmean_group == tmp2
 drop tmp1 tmp2
-label var sample_urban95_covid "Urban counties (top 5%) w. COVID k-means match"
+label var sample_urban75_covid "Urban counties (top 25%) w. COVID k-means match"
 
 ** Define sample 4: Demographic k-means match
 gen pci_pre = per_capita_income if yq == tq(2020q1)
@@ -254,24 +270,20 @@ drop tmp1 tmp2 std_* pci_pre
 label var sample_demog "Counties with Demographic Kmean Match (excluding AK, CA, HI OR, WA)"
 
 ** Define sample 5: COVID stringency k-means match (JII restriction-duration)
-qui summ percent_urban if yq == tq(2020q1), de
-local p90 = r(p90)
-gen urban_top10 = percent_urban >= `p90'
-
 foreach v in msahodays restclosedays gatherbandays strictgatherbandays maskpubdays {
-	egen std_`v' = std(`v') if urban_top10 == 1 & yq == tq(2020q1) & jii_merge == 3
+	egen std_`v' = std(`v') if urban_top75 == 1 & yq == tq(2020q1) & jii_merge == 3
 }
 
 cluster kmeans std_msahodays std_restclosedays std_gatherbandays 	///
 	std_strictgatherbandays std_maskpubdays if 						///
-	urban_top10 == 1 & yq == tq(2020q1) & jii_merge == 3, k(5) gen(kmean_string)
+	urban_top75 == 1 & yq == tq(2020q1) & jii_merge == 3, k(5) gen(kmean_string)
 bysort fips: egen kmean_string_group = mean(kmean_string)
 
-gen tmp1 = kmean_string if urban_top10 == 1 & yq == tq(2020q1) & jii_merge == 3 & multnomah == 1
+gen tmp1 = kmean_string if urban_top75 == 1 & yq == tq(2020q1) & jii_merge == 3 & multnomah == 1
 egen tmp2 = mean(tmp1)
-gen sample_stringency = urban_top10 == 1 & kmean_string_group == tmp2
-drop tmp1 tmp2 std_* urban_top10 kmean_string kmean_string_group
-label var sample_stringency "Urban counties (top 10%) w. COVID stringency k-means match"
+gen sample_stringency = urban_top75 == 1 & kmean_string_group == tmp2
+drop tmp1 tmp2 std_* urban_top75 kmean_string kmean_string_group
+label var sample_stringency "Urban counties (top 25%) w. COVID stringency k-means match"
 
 ********************************************************************************
 ** QCEW OUTCOME SETUP
@@ -499,16 +511,21 @@ drop if state_name == "California"
 drop if state_name == "Washington"
 drop if state_name == "Oregon" & multnomah == 0
 
+** Compute top-25% urban threshold for clustered donor pools
+qui summ percent_urban if yq == tq(2020q1), de
+local p75 = r(p75)
+gen urban_top75 = percent_urban >= `p75'
+
 ** Define sample 3: COVID k-means match
 cluster kmeans cases_cum* deaths_cum* if ///
-	sample_urban95 == 1 & yq == tq(2020q1) & covid_merge == 3, k(5) gen(kmean)
+	urban_top75 == 1 & yq == tq(2020q1) & covid_merge == 3, k(5) gen(kmean)
 bysort fips: egen kmean_group = mean(kmean)
 
-gen tmp1 = kmean if sample_urban95 == 1 & yq == tq(2020q1) & covid_merge == 3 & multnomah == 1
+gen tmp1 = kmean if urban_top75 == 1 & yq == tq(2020q1) & covid_merge == 3 & multnomah == 1
 egen tmp2 = mean(tmp1)
-gen sample_urban95_covid = sample_urban95 == 1 & kmean_group == tmp2
+gen sample_urban75_covid = urban_top75 == 1 & kmean_group == tmp2
 drop tmp1 tmp2
-label var sample_urban95_covid "Urban counties (top 5%) w. COVID k-means match"
+label var sample_urban75_covid "Urban counties (top 25%) w. COVID k-means match"
 
 ** Define sample 4: Demographic k-means match
 gen pci_pre = per_capita_income if yq == tq(2020q1)
@@ -531,24 +548,20 @@ drop tmp1 tmp2 std_* pci_pre
 label var sample_demog "Counties with Demographic Kmean Match (excluding AK, CA, HI OR, WA)"
 
 ** Define sample 5: COVID stringency k-means match (JII restriction-duration)
-qui summ percent_urban if yq == tq(2020q1), de
-local p90 = r(p90)
-gen urban_top10 = percent_urban >= `p90'
-
 foreach v in msahodays restclosedays gatherbandays strictgatherbandays maskpubdays {
-	egen std_`v' = std(`v') if urban_top10 == 1 & yq == tq(2020q1) & jii_merge == 3
+	egen std_`v' = std(`v') if urban_top75 == 1 & yq == tq(2020q1) & jii_merge == 3
 }
 
 cluster kmeans std_msahodays std_restclosedays std_gatherbandays 	///
 	std_strictgatherbandays std_maskpubdays if 						///
-	urban_top10 == 1 & yq == tq(2020q1) & jii_merge == 3, k(5) gen(kmean_string)
+	urban_top75 == 1 & yq == tq(2020q1) & jii_merge == 3, k(5) gen(kmean_string)
 bysort fips: egen kmean_string_group = mean(kmean_string)
 
-gen tmp1 = kmean_string if urban_top10 == 1 & yq == tq(2020q1) & jii_merge == 3 & multnomah == 1
+gen tmp1 = kmean_string if urban_top75 == 1 & yq == tq(2020q1) & jii_merge == 3 & multnomah == 1
 egen tmp2 = mean(tmp1)
-gen sample_stringency = urban_top10 == 1 & kmean_string_group == tmp2
-drop tmp1 tmp2 std_* urban_top10 kmean_string kmean_string_group
-label var sample_stringency "Urban counties (top 10%) w. COVID stringency k-means match"
+gen sample_stringency = urban_top75 == 1 & kmean_string_group == tmp2
+drop tmp1 tmp2 std_* urban_top75 kmean_string kmean_string_group
+label var sample_stringency "Urban counties (top 25%) w. COVID stringency k-means match"
 
 ********************************************************************************
 ** QWI OUTCOME SETUP
@@ -624,7 +637,7 @@ if ${use_parallel} == 1 {
 	save "${data}working/quarterly_table_grid.dta", replace
 
 	** Build QCEW tables
-	foreach samp in "sample_all" "sample_urban95" "sample_urban95_covid" "sample_demog" "sample_stringency" {
+	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
 		forvalues exl = 0/1 {
 
 			local table_id = `table_id' + 1
@@ -644,7 +657,7 @@ if ${use_parallel} == 1 {
 
 	** Build QWI tables (only if data available)
 	if `skip_qwi' == 0 {
-		foreach samp in "sample_all" "sample_urban95" "sample_urban95_covid" "sample_demog" "sample_stringency" {
+		foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
 			forvalues exl = 0/1 {
 
 				local table_id = `table_id' + 1
@@ -974,7 +987,7 @@ if ${use_parallel} == 1 {
 	** QCEW counts
 	use "${data}working/quarterly_qcew_sdid_data.dta", clear
 
-	foreach samp in "sample_all" "sample_urban95" "sample_urban95_covid" "sample_demog" "sample_stringency" {
+	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
 		qui count if `samp' == 1 & yq == tq(2021q1)
 		local nc_qcew_`samp' = r(N)
 	}
@@ -983,7 +996,7 @@ if ${use_parallel} == 1 {
 	if `skip_qwi' == 0 {
 		use "${data}working/quarterly_qwi_sdid_data.dta", clear
 
-		foreach samp in "sample_all" "sample_urban95" "sample_urban95_covid" "sample_demog" "sample_stringency" {
+		foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
 			qui count if `samp' == 1 & yq == tq(2021q1)
 			local nc_qwi_`samp' = r(N)
 		}
@@ -1000,7 +1013,7 @@ if ${use_parallel} == 1 {
 	gen cost = .
 
 	local row = 0
-	foreach samp in "sample_all" "sample_urban95" "sample_urban95_covid" "sample_demog" "sample_stringency" {
+	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
 		local row = `row' + 1
 		qui replace phase = "qcew" in `row'
 		qui replace samp_var = "`samp'" in `row'
@@ -1010,7 +1023,7 @@ if ${use_parallel} == 1 {
 	}
 
 	if `skip_qwi' == 0 {
-		foreach samp in "sample_all" "sample_urban95" "sample_urban95_covid" "sample_demog" "sample_stringency" {
+		foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
 			local row = `row' + 1
 			qui replace phase = "qwi" in `row'
 			qui replace samp_var = "`samp'" in `row'
@@ -1230,7 +1243,7 @@ else {
 	local covariates "population per_capita_income"
 
 	** Loop over samples
-	foreach samp of varlist sample_all sample_urban95 sample_urban95_covid sample_demog sample_stringency {
+	foreach samp of varlist sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency {
 
 		** Loop over exclusion of 2020
 		forvalues exl = 1(-1)0 {
@@ -1453,7 +1466,7 @@ else {
 	local covariates "population per_capita_income"
 
 	** Loop over samples
-	foreach samp of varlist sample_all sample_urban95 sample_urban95_covid sample_demog sample_stringency {
+	foreach samp of varlist sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency {
 
 		** Loop over exclusion of 2020
 		forvalues exl = 1(-1)0 {
@@ -1693,7 +1706,7 @@ Coefficient colors:
 - Vermillion (p6): Statistically significant (p<0.05), preferred specification
 - Orangebrown (p8): Statistically insignificant, preferred specification
 
-Preferred specifications: Urban 95% COVID match + covariates + excl 2020
+Preferred specifications: Stringency match + covariates + excl 2020
 *******************************************************************************/
 
 ** Load treatment effects
@@ -1702,7 +1715,7 @@ use "${results}sdid/quarterly/quarterly_sdid_results.dta", clear
 ** Create specification indicators for bottom panel
 gen spec_all = sample == "sample_all"
 gen spec_urban95 = sample == "sample_urban95"
-gen spec_covid = sample == "sample_stringency"
+gen spec_covid = sample == "sample_urban75_covid"
 gen spec_demog = sample == "sample_demog"
 gen spec_stringency = sample == "sample_stringency"
 gen spec_covars = controls == 1
@@ -1800,7 +1813,7 @@ foreach out of local all_outcomes {
 		yline(0, lc("`col_zero'") lp(dash)) 							///
 		xlabel(none) 													///
 		xscale(range(0.5 `=`n_specs'+0.5'))								///
-		plotregion(margin(l+12))										///
+		plotregion(margin(l+2))										///
 		name(coef_`out', replace)
 
 	** Lower panel: Specification indicators
@@ -1823,10 +1836,10 @@ foreach out of local all_outcomes {
 		ytitle("")														///
 		xtitle("Specification (ranked by effect size)")					///
 		ylabel(	-1 "All Counties"										///
-				-2 "Urban 95%"											///
+				-2 "Urban (Top 5%)"										///
 				-3 "COVID Match"										///
-				-4 "Demog. Match"										///
-				-5 "Stringency"											///
+				-4 "Demographic Match"									///
+				-5 "Stringency Match"									///
 				-6 "Covariates"											///
 				-7 "Excl. 2020",										///
 			angle(0) labsize(vsmall))									///

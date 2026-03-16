@@ -12,8 +12,24 @@
 *              sections depend on data prep that runs later in the pipeline.
 ******************************************************************************/
 
+** Load shared project defaults and helper programs
+local cwd = subinstr("`c(pwd)'", "\", "/", .)
+local suffix "/code/stata"
+if "${dir}" == "" {
+    if length("`cwd'") >= length("`suffix'") & ///
+        substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
+        global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
+    }
+    else {
+        global dir "`cwd'"
+    }
+}
+if "${code}" == "" global code "${dir}/code/stata/"
+do "${code}00_stata_config.do"
+
 capture log close log_diag_supp
 log using "${logs}02_log_diagnostics_supp_${pr_name}_${date}", replace text name(log_diag_supp)
+project_set_seed, context("02_diagnostics_supp.do") offset(120)
 
 ** Initialize results dataset
 clear
