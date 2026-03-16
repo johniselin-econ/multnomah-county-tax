@@ -1540,9 +1540,58 @@ foreach otype in "n1" "n2" "agi" {
 		local n_insig_pref = r(N)
 
 		********************************************************************************
-		** Create upper panel: Coefficient plot with CIs colored by significance
-		** and preferred status
+		** Single unified specification curve plot
+		** Coefficients in upper zone, specification indicators in lower zone.
+		** Using a single twoway guarantees perfect x-axis alignment.
 		********************************************************************************
+
+		** Compute dynamic placement for indicator zone below coefficients
+		qui su ci_lower
+		local ci_min = r(min)
+		qui su ci_upper
+		local ci_max = r(max)
+
+		** Separator between coefficient and indicator zones
+		local sep_y = floor(`ci_min') - 1.5
+
+		** Indicator y-positions start below separator
+		local ind_top = floor(`ci_min') - 3
+
+		** Coefficient y-axis tick range
+		local tick_lo = floor(`ci_min')
+		local tick_hi = ceil(`ci_max')
+
+		if "`pset'" == "main" {
+
+		** 13 indicator rows for main plot set
+		local yp1  = `ind_top'
+		local yp2  = `ind_top' - 1
+		local yp3  = `ind_top' - 2
+		local yp4  = `ind_top' - 3
+		local yp5  = `ind_top' - 4
+		local yp6  = `ind_top' - 5
+		local yp7  = `ind_top' - 6
+		local yp8  = `ind_top' - 7
+		local yp9  = `ind_top' - 8
+		local yp10 = `ind_top' - 9
+		local yp11 = `ind_top' - 10
+		local yp12 = `ind_top' - 11
+		local yp13 = `ind_top' - 12
+
+		gen y_all        = `yp1'  if spec_all == 1
+		gen y_urban      = `yp2'  if spec_urban95 == 1
+		gen y_covid      = `yp3'  if spec_covid == 1
+		gen y_demog      = `yp4'  if spec_demog == 1
+		gen y_stringency = `yp5'  if spec_stringency == 1
+		gen y_covars     = `yp6'  if spec_covars == 1
+		gen y_excl       = `yp7'  if spec_excl2020 == 1
+		gen y_irs        = `yp8'  if spec_irs == 1
+		gen y_irs_389    = `yp9'  if spec_irs_389 == 1
+		gen y_acs_all    = `yp10' if spec_acs_all == 1
+		gen y_acs_col    = `yp11' if spec_acs_col == 1
+		gen y_16_22      = `yp12' if spec_16_22 == 1
+		gen y_16_24      = `yp13' if spec_16_24 == 1
+
 		twoway 	(rcap ci_lo_sig_notpref ci_hi_sig_notpref spec_rank, 		///
 					lc("`col_sig_notpref'") lw(vthin)) 						///
 				(rcap ci_lo_insig_notpref ci_hi_insig_notpref spec_rank, 	///
@@ -1558,135 +1607,161 @@ foreach otype in "n1" "n2" "agi" {
 				(scatter tau_sig_pref spec_rank, 							///
 					mc("`col_sig_pref'") ms(D) msize(small)) 				///
 				(scatter tau_insig_pref spec_rank, 							///
-					mc("`col_insig_pref'") ms(D) msize(small)), 			///
+					mc("`col_insig_pref'") ms(D) msize(small)) 			///
+				(scatter y_all spec_rank, 									///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_urban spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_covid spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_demog spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_stringency spec_rank, 							///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_covars spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_excl spec_rank, 									///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_irs spec_rank, 									///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_irs_389 spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_acs_all spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_acs_col spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_16_22 spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_16_24 spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)), 			///
+			yline(`sep_y', lc(gs12) lp(solid) lw(vthin)) 					///
+			yline(0, lc("`col_zero'") lp(dash)) 							///
+			ylabel(`tick_lo'(1)`tick_hi', labsize(vsmall) nogrid) 			///
+			ylabel(`yp1'  "All Counties" 									///
+				   `yp2'  "Urban (Top 5%)" 									///
+				   `yp3'  "COVID Match" 									///
+				   `yp4'  "Demographic Match" 								///
+				   `yp5'  "Stringency Match" 								///
+				   `yp6'  "Covariates" 										///
+				   `yp7'  "Excl. 2020" 										///
+				   `yp8'  "IRS (all counties)" 								///
+				   `yp9'  "IRS (ACS counties)" 								///
+				   `yp10' "ACS All" 										///
+				   `yp11' "ACS College" 									///
+				   `yp12' "16-22" 											///
+				   `yp13' "16-24", 											///
+				labsize(vsmall) angle(0) notick nogrid add) 				///
 			legend(order(5 "Sig. (p<0.05)" 6 "Insig." 						///
 						 7 "Sig., Preferred" 8 "Insig., Preferred") 		///
 				   rows(1) pos(6) size(vsmall)) 							///
 			ytitle("Treatment Effect (pp)", size(vsmall)) 					///
-			ylabel(, labsize(vsmall))										///
-			xtitle("") 														///
+			xtitle("Specification (ranked by effect size)", size(vsmall)) 	///
 			title("`otype_label': `migr_label'`pset_title'", size(medium)) 	///
-			yline(0, lc("`col_zero'") lp(dash)) 							///
 			xlabel(none) 													///
-			xscale(range(0.5 `=`n_specs'+0.5'))						///
-			plotregion(margin(l+2))										///
-			name(coef_`otype'_`migr', replace)
+			xscale(range(0.5 `=`n_specs'+0.5')) 							///
+			graphregion(color(white)) 										///
+			name(speccurve_`otype'_`migr', replace)
 
-		********************************************************************************
-		** Create lower panel: Specification indicators
-		** (different indicators depending on main vs outstate plot set)
-		********************************************************************************
-
-		if "`pset'" == "main" {
-
-		gen y_all = -1 if spec_all == 1
-		gen y_urban = -2 if spec_urban95 == 1
-		gen y_covid = -3 if spec_covid == 1
-		gen y_demog = -4 if spec_demog == 1
-		gen y_stringency = -5 if spec_stringency == 1
-		gen y_covars = -6 if spec_covars == 1
-		gen y_excl = -7 if spec_excl2020 == 1
-		gen y_irs = -8 if spec_irs == 1
-		gen y_irs_389 = -9 if spec_irs_389 == 1
-		gen y_acs_all = -10 if spec_acs_all == 1
-		gen y_acs_col = -11 if spec_acs_col == 1
-		gen y_16_22 = -12 if spec_16_22 == 1
-		gen y_16_24 = -13 if spec_16_24 == 1
-
-		twoway 	(scatter y_all spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))		///
-				(scatter y_urban spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_covid spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_demog spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_stringency spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_covars spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_excl spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_irs spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))		///
-				(scatter y_irs_389 spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_acs_all spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_acs_col spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall)) ///
-				(scatter y_16_22 spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall)) 	///
-				(scatter y_16_24 spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall)),	///
-			legend(off)														///
-			ytitle("")														///
-			xtitle("Specification (ranked by effect size)")					///
-			ylabel(	-1 "All Counties"										///
-					-2 "Urban (Top 5%)"										///
-					-3 "COVID Match"										///
-					-4 "Demographic Match"									///
-					-5 "Stringency Match"									///
-					-6 "Covariates"											///
-					-7 "Excl. 2020"											///
-					-8 "IRS (all counties)"									///
-					-9 "IRS (ACS counties)"									///
-					-10 "ACS All"											///
-					-11 "ACS College"										///
-					-12 "16-22"												///
-					-13 "16-24",											///
-				angle(0) labsize(vsmall))									///
-			xlabel(none)													///
-			xscale(range(0.5 `=`n_specs'+0.5'))						///
-			name(spec_`otype'_`migr', replace)
-
-		} // END main lower panel
+		} // END main
 
 		else if "`pset'" == "outstate" {
 
-		gen y_all = -1 if spec_all == 1
-		gen y_urban = -2 if spec_urban95 == 1
-		gen y_covid = -3 if spec_covid == 1
-		gen y_demog = -4 if spec_demog == 1
-		gen y_stringency = -5 if spec_stringency == 1
-		gen y_covars = -6 if spec_covars == 1
-		gen y_excl = -7 if spec_excl2020 == 1
-		gen y_irs_outstate = -8 if spec_irs_outstate == 1
-		gen y_irs_outstate_389 = -9 if spec_irs_outstate_389 == 1
-		gen y_acs_all_outstate = -10 if spec_acs_all_outstate == 1
-		gen y_acs_col_outstate = -11 if spec_acs_col_outstate == 1
+		** 11 indicator rows for outstate plot set
+		local yp1  = `ind_top'
+		local yp2  = `ind_top' - 1
+		local yp3  = `ind_top' - 2
+		local yp4  = `ind_top' - 3
+		local yp5  = `ind_top' - 4
+		local yp6  = `ind_top' - 5
+		local yp7  = `ind_top' - 6
+		local yp8  = `ind_top' - 7
+		local yp9  = `ind_top' - 8
+		local yp10 = `ind_top' - 9
+		local yp11 = `ind_top' - 10
 
-		twoway 	(scatter y_all spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))		///
-				(scatter y_urban spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_covid spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_demog spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_stringency spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_covars spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_excl spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_irs_outstate spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_irs_outstate_389 spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_acs_all_outstate spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-				(scatter y_acs_col_outstate spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall)), ///
-			legend(off)														///
-			ytitle("")														///
-			xtitle("Specification (ranked by effect size)")					///
-			ylabel(	-1 "All Counties"										///
-					-2 "Urban (Top 5%)"										///
-					-3 "COVID Match"										///
-					-4 "Demographic Match"									///
-					-5 "Stringency Match"									///
-					-6 "Covariates"											///
-					-7 "Excl. 2020"											///
-					-8 "IRS Out-of-State (all counties)"					///
-					-9 "IRS Out-of-State (ACS counties)"					///
-					-10 "ACS All (Out-of-State)"							///
-					-11 "ACS College (Out-of-State)",						///
-				angle(0) labsize(vsmall))									///
-			xlabel(none)													///
-			xscale(range(0.5 `=`n_specs'+0.5'))						///
-			name(spec_`otype'_`migr', replace)
+		gen y_all              = `yp1'  if spec_all == 1
+		gen y_urban            = `yp2'  if spec_urban95 == 1
+		gen y_covid            = `yp3'  if spec_covid == 1
+		gen y_demog            = `yp4'  if spec_demog == 1
+		gen y_stringency       = `yp5'  if spec_stringency == 1
+		gen y_covars           = `yp6'  if spec_covars == 1
+		gen y_excl             = `yp7'  if spec_excl2020 == 1
+		gen y_irs_outstate     = `yp8'  if spec_irs_outstate == 1
+		gen y_irs_outstate_389 = `yp9'  if spec_irs_outstate_389 == 1
+		gen y_acs_all_outstate = `yp10' if spec_acs_all_outstate == 1
+		gen y_acs_col_outstate = `yp11' if spec_acs_col_outstate == 1
 
-		} // END outstate lower panel
+		twoway 	(rcap ci_lo_sig_notpref ci_hi_sig_notpref spec_rank, 		///
+					lc("`col_sig_notpref'") lw(vthin)) 						///
+				(rcap ci_lo_insig_notpref ci_hi_insig_notpref spec_rank, 	///
+					lc("`col_insig_notpref'") lw(vthin)) 					///
+				(rcap ci_lo_sig_pref ci_hi_sig_pref spec_rank, 				///
+					lc("`col_sig_pref'") lw(thin)) 							///
+				(rcap ci_lo_insig_pref ci_hi_insig_pref spec_rank, 			///
+					lc("`col_insig_pref'") lw(thin)) 						///
+				(scatter tau_sig_notpref spec_rank, 						///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter tau_insig_notpref spec_rank, 						///
+					mc("`col_insig_notpref'") ms(O) msize(vsmall)) 		///
+				(scatter tau_sig_pref spec_rank, 							///
+					mc("`col_sig_pref'") ms(D) msize(small)) 				///
+				(scatter tau_insig_pref spec_rank, 							///
+					mc("`col_insig_pref'") ms(D) msize(small)) 			///
+				(scatter y_all spec_rank, 									///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_urban spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_covid spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_demog spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_stringency spec_rank, 							///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_covars spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_excl spec_rank, 									///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_irs_outstate spec_rank, 							///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_irs_outstate_389 spec_rank, 						///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_acs_all_outstate spec_rank, 						///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_acs_col_outstate spec_rank, 						///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)), 			///
+			yline(`sep_y', lc(gs12) lp(solid) lw(vthin)) 					///
+			yline(0, lc("`col_zero'") lp(dash)) 							///
+			ylabel(`tick_lo'(1)`tick_hi', labsize(vsmall) nogrid) 			///
+			ylabel(`yp1'  "All Counties" 									///
+				   `yp2'  "Urban (Top 5%)" 									///
+				   `yp3'  "COVID Match" 									///
+				   `yp4'  "Demographic Match" 								///
+				   `yp5'  "Stringency Match" 								///
+				   `yp6'  "Covariates" 										///
+				   `yp7'  "Excl. 2020" 										///
+				   `yp8'  "IRS Out-of-State (all counties)" 				///
+				   `yp9'  "IRS Out-of-State (ACS counties)" 				///
+				   `yp10' "ACS All (Out-of-State)" 							///
+				   `yp11' "ACS College (Out-of-State)", 					///
+				labsize(vsmall) angle(0) notick nogrid add) 				///
+			legend(order(5 "Sig. (p<0.05)" 6 "Insig." 						///
+						 7 "Sig., Preferred" 8 "Insig., Preferred") 		///
+				   rows(1) pos(6) size(vsmall)) 							///
+			ytitle("Treatment Effect (pp)", size(vsmall)) 					///
+			xtitle("Specification (ranked by effect size)", size(vsmall)) 	///
+			title("`otype_label': `migr_label'`pset_title'", size(medium)) 	///
+			xlabel(none) 													///
+			xscale(range(0.5 `=`n_specs'+0.5')) 							///
+			graphregion(color(white)) 										///
+			name(speccurve_`otype'_`migr', replace)
 
-		** Combine panels
-		graph combine coef_`otype'_`migr' spec_`otype'_`migr',				///
-			cols(1)															///
-			xcommon					///
-			imargin(zero)
-			
-			
+		} // END outstate
+
 		** File suffix for out-of-state plots
 		if "`pset'" == "outstate" local fsuffix "_outstate"
 		else local fsuffix ""
 
-		** Export combined figure
+		** Export figure
 		graph export "${results}sdid/spec_curves/fig_speccurve_`otype'_`migr'`fsuffix'.pdf", replace
 		graph export "${results}sdid/spec_curves/fig_speccurve_`otype'_`migr'`fsuffix'.jpg", as(jpg) quality(100) replace
 		if ${overleaf} == 1 {
@@ -1694,7 +1769,7 @@ foreach otype in "n1" "n2" "agi" {
 		}
 
 		** Clean up
-		graph drop coef_`otype'_`migr' spec_`otype'_`migr'
+		graph drop speccurve_`otype'_`migr'
 
 		restore
 
@@ -1854,10 +1929,10 @@ foreach otype in "n1" "n2" "agi" {
 			keep(2.donor_pool 3.donor_pool 4.donor_pool 5.donor_pool) ///
 			xline(0, lc("`col_zero'") lp(dash)) 					///
 			coeflabels( 											///
-				2.donor_pool = "Urban (Top 5%)" 					///
-				3.donor_pool = "COVID Match" 						///
-				4.donor_pool = "Demographic Match" 				///
-				5.donor_pool = "Stringency Match" 					///
+				2.donor_pool = `""Urban" "(Top 5%)""' 				///
+				3.donor_pool = `""COVID" "Match""' 					///
+				4.donor_pool = `""Demographic" "Match""' 			///
+				5.donor_pool = `""Stringency" "Match""' 			///
 			) 														///
 			msymbol(D) mcolor("`col_pool'") 						///
 			ciopts(lcolor("`col_pool'")) 							///
@@ -1873,9 +1948,9 @@ foreach otype in "n1" "n2" "agi" {
 			keep(2.data_src 3.data_src 4.data_src) 				///
 			xline(0, lc("`col_zero'") lp(dash)) 					///
 			coeflabels( 											///
-				2.data_src = "IRS (ACS sample)" 					///
-				3.data_src = "ACS (All 25+)" 						///
-				4.data_src = "ACS (College)" 						///
+				2.data_src = `""IRS" "(ACS sample)""' 				///
+				3.data_src = `""ACS" "(All 25+)""' 					///
+				4.data_src = `""ACS" "(College)""' 					///
 			) 														///
 			msymbol(D) mcolor("`col_data'") 						///
 			ciopts(lcolor("`col_data'")) 							///
@@ -1891,9 +1966,9 @@ foreach otype in "n1" "n2" "agi" {
 			keep(period_1624 controls exclusion) 					///
 			xline(0, lc("`col_zero'") lp(dash)) 					///
 			coeflabels( 											///
-				period_1624 = "Extended Period (16-24)" 			///
+				period_1624 = `""Extended Period" "(16-24)""' 		///
 				controls    = "Covariates" 							///
-				exclusion   = "Exclude 2020" 						///
+				exclusion   = `""Exclude" "2020""' 					///
 			) 														///
 			msymbol(D) mcolor("`col_other'") 						///
 			ciopts(lcolor("`col_other'")) 							///

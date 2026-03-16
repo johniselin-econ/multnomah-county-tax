@@ -682,6 +682,34 @@ foreach otype in "n1" "n2" "agi" {
 		********************************************************************************
 		** Upper panel: Coefficient plot with CIs
 		********************************************************************************
+		** Compute dynamic placement for indicator zone
+		qui su ci_lower
+		local ci_min = r(min)
+		qui su ci_upper
+		local ci_max = r(max)
+		local sep_y = floor(`ci_min') - 1.5
+		local ind_top = floor(`ci_min') - 3
+		local tick_lo = floor(`ci_min')
+		local tick_hi = ceil(`ci_max')
+
+		** 7 indicator rows
+		local yp1 = `ind_top'
+		local yp2 = `ind_top' - 1
+		local yp3 = `ind_top' - 2
+		local yp4 = `ind_top' - 3
+		local yp5 = `ind_top' - 4
+		local yp6 = `ind_top' - 5
+		local yp7 = `ind_top' - 6
+
+		gen y_covars  = `yp1' if spec_covars == 1
+		gen y_excl    = `yp2' if spec_excl2020 == 1
+		gen y_irs     = `yp3' if spec_irs == 1
+		gen y_acs_all = `yp4' if spec_acs_all == 1
+		gen y_acs_col = `yp5' if spec_acs_col == 1
+		gen y_16_22   = `yp6' if spec_16_22 == 1
+		gen y_16_24   = `yp7' if spec_16_24 == 1
+
+		** Single unified specification curve
 		twoway 	(rcap ci_lo_sig_notpref ci_hi_sig_notpref spec_rank, 		///
 					lc("`col_sig_notpref'") lw(vthin)) 						///
 				(rcap ci_lo_insig_notpref ci_hi_insig_notpref spec_rank, 	///
@@ -697,60 +725,44 @@ foreach otype in "n1" "n2" "agi" {
 				(scatter tau_sig_pref spec_rank, 							///
 					mc("`col_sig_pref'") ms(D) msize(small)) 				///
 				(scatter tau_insig_pref spec_rank, 							///
-					mc("`col_insig_pref'") ms(D) msize(small)), 			///
+					mc("`col_insig_pref'") ms(D) msize(small)) 			///
+				(scatter y_covars spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_excl spec_rank, 									///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_irs spec_rank, 									///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_acs_all spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_acs_col spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_16_22 spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_16_24 spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)), 			///
+			yline(`sep_y', lc(gs12) lp(solid) lw(vthin)) 					///
+			yline(0, lc("`col_zero'") lp(dash)) 							///
+			ylabel(`tick_lo'(1)`tick_hi', labsize(vsmall) nogrid) 			///
+			ylabel(`yp1' "Covariates" 										///
+				   `yp2' "Excl. 2020" 										///
+				   `yp3' "IRS" 												///
+				   `yp4' "ACS All" 											///
+				   `yp5' "ACS College" 										///
+				   `yp6' "16-22" 											///
+				   `yp7' "16-24", 											///
+				labsize(vsmall) angle(0) notick nogrid add) 				///
 			legend(order(5 "Sig. (p<0.05)" 6 "Insig." 						///
 						 7 "Sig., Preferred" 8 "Insig., Preferred") 		///
 				   rows(1) pos(6) size(vsmall)) 							///
 			ytitle("Treatment Effect (pp)", size(vsmall)) 					///
-			ylabel(, labsize(vsmall))										///
-			xtitle("") 														///
+			xtitle("Specification (ranked by effect size)", size(vsmall)) 	///
 			title("`otype_label': `migr_label' (Narrow Sample)", size(medium)) ///
-			yline(0, lc("`col_zero'") lp(dash)) 							///
 			xlabel(none) 													///
-			xscale(range(0.5 `=`n_specs'+0.5'))						///
-			plotregion(margin(l+2))										///
-			name(coef_`otype'_`migr', replace)
+			xscale(range(0.5 `=`n_specs'+0.5')) 							///
+			graphregion(color(white)) 										///
+			name(speccurve_`otype'_`migr', replace)
 
-		********************************************************************************
-		** Lower panel: Specification indicators
-		********************************************************************************
-		gen y_covars = -1 if spec_covars == 1
-		gen y_excl = -2 if spec_excl2020 == 1
-		gen y_irs = -3 if spec_irs == 1
-		gen y_acs_all = -4 if spec_acs_all == 1
-		gen y_acs_col = -5 if spec_acs_col == 1
-		gen y_16_22 = -6 if spec_16_22 == 1
-		gen y_16_24 = -7 if spec_16_24 == 1
-
-		twoway 	(scatter y_covars spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))		///
-				(scatter y_excl spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))		///
-				(scatter y_irs spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))			///
-				(scatter y_acs_all spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))		///
-				(scatter y_acs_col spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))		///
-				(scatter y_16_22 spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))		///
-				(scatter y_16_24 spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall)),		///
-			legend(off)														///
-			ytitle("")														///
-			xtitle("Specification (ranked by effect size)")					///
-			ylabel(	-1 "Covariates"											///
-					-2 "Excl. 2020"											///
-					-3 "IRS"												///
-					-4 "ACS All"											///
-					-5 "ACS College"										///
-					-6 "16-22"												///
-					-7 "16-24",												///
-				angle(0) labsize(vsmall))									///
-			xlabel(none)													///
-			xscale(range(0.5 `=`n_specs'+0.5'))						///
-			name(spec_`otype'_`migr', replace)
-
-		** Combine panels
-		graph combine coef_`otype'_`migr' spec_`otype'_`migr',				///
-			cols(1)															///
-			xcommon															///
-			imargin(zero)
-
-		** Export combined figure
+		** Export figure
 		graph export "${results}sdid/narrow/fig_speccurve_narrow_`otype'_`migr'.pdf", replace
 		graph export "${results}sdid/narrow/fig_speccurve_narrow_`otype'_`migr'.jpg", as(jpg) quality(100) replace
 		if ${overleaf} == 1 {
@@ -758,7 +770,7 @@ foreach otype in "n1" "n2" "agi" {
 		}
 
 		** Clean up
-		graph drop coef_`otype'_`migr' spec_`otype'_`migr'
+		graph drop speccurve_`otype'_`migr'
 
 		restore
 

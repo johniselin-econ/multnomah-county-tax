@@ -1122,6 +1122,34 @@ foreach out of local outcomes {
 	** Upper panel: Coefficient plot with CIs colored by significance
 	** and preferred status
 	********************************************************************************
+	** Compute dynamic placement for indicator zone
+	qui su ci_lower
+	local ci_min = r(min)
+	qui su ci_upper
+	local ci_max = r(max)
+	local sep_y = floor(`ci_min') - 1.5
+	local ind_top = floor(`ci_min') - 3
+	local tick_lo = floor(`ci_min')
+	local tick_hi = ceil(`ci_max')
+
+	** 7 indicator rows
+	local yp1 = `ind_top'
+	local yp2 = `ind_top' - 1
+	local yp3 = `ind_top' - 2
+	local yp4 = `ind_top' - 3
+	local yp5 = `ind_top' - 4
+	local yp6 = `ind_top' - 5
+	local yp7 = `ind_top' - 6
+
+	gen y_all        = `yp1' if spec_all == 1
+	gen y_urban      = `yp2' if spec_urban95 == 1
+	gen y_covid      = `yp3' if spec_covid == 1
+	gen y_demog      = `yp4' if spec_demog == 1
+	gen y_stringency = `yp5' if spec_stringency == 1
+	gen y_covars     = `yp6' if spec_covars == 1
+	gen y_excl       = `yp7' if spec_excl2020 == 1
+
+	** Single unified specification curve
 	twoway 	(rcap ci_lo_sig_notpref ci_hi_sig_notpref spec_rank, 		///
 				lc("`col_sig_notpref'") lw(vthin)) 						///
 			(rcap ci_lo_insig_notpref ci_hi_insig_notpref spec_rank, 	///
@@ -1137,60 +1165,44 @@ foreach out of local outcomes {
 			(scatter tau_sig_pref spec_rank, 							///
 				mc("`col_sig_pref'") ms(D) msize(small)) 				///
 			(scatter tau_insig_pref spec_rank, 							///
-				mc("`col_insig_pref'") ms(D) msize(small)), 			///
+				mc("`col_insig_pref'") ms(D) msize(small)) 			///
+			(scatter y_all spec_rank, 									///
+				mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+			(scatter y_urban spec_rank, 								///
+				mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+			(scatter y_covid spec_rank, 								///
+				mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+			(scatter y_demog spec_rank, 								///
+				mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+			(scatter y_stringency spec_rank, 							///
+				mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+			(scatter y_covars spec_rank, 								///
+				mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+			(scatter y_excl spec_rank, 									///
+				mc("`col_sig_notpref'") ms(O) msize(vsmall)), 			///
+		yline(`sep_y', lc(gs12) lp(solid) lw(vthin)) 					///
+		yline(0, lc("`col_zero'") lp(dash)) 							///
+		ylabel(`tick_lo'(1)`tick_hi', labsize(vsmall) nogrid) 			///
+		ylabel(`yp1' "All Counties" 									///
+			   `yp2' "Urban (Top 5%)" 									///
+			   `yp3' "COVID Match" 										///
+			   `yp4' "Demographic Match" 								///
+			   `yp5' "Stringency Match" 								///
+			   `yp6' "Covariates" 										///
+			   `yp7' "Excl. 2020", 										///
+			labsize(vsmall) angle(0) notick nogrid add) 				///
 		legend(order(5 "Sig. (p<0.05)" 6 "Insig." 						///
 					 7 "Sig., Preferred" 8 "Insig., Preferred") 		///
 			   rows(1) pos(6) size(vsmall)) 							///
 		ytitle("Treatment Effect", size(vsmall)) 						///
-		ylabel(, labsize(vsmall))										///
-		xtitle("") 														///
+		xtitle("Specification (ranked by effect size)", size(vsmall)) 	///
 		title("`lbl_`out''", size(medium)) 								///
-		yline(0, lc("`col_zero'") lp(dash)) 							///
 		xlabel(none) 													///
-		xscale(range(0.5 `=`n_specs'+0.5'))								///
-		plotregion(margin(l+2))										///
-		name(coef_`out', replace)
+		xscale(range(0.5 `=`n_specs'+0.5')) 							///
+		graphregion(color(white)) 										///
+		name(speccurve_`out', replace)
 
-	********************************************************************************
-	** Lower panel: Specification indicators
-	********************************************************************************
-	gen y_all = -1 if spec_all == 1
-	gen y_urban = -2 if spec_urban95 == 1
-	gen y_covid = -3 if spec_covid == 1
-	gen y_demog = -4 if spec_demog == 1
-	gen y_stringency = -5 if spec_stringency == 1
-	gen y_covars = -6 if spec_covars == 1
-	gen y_excl = -7 if spec_excl2020 == 1
-
-	twoway 	(scatter y_all spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))		///
-			(scatter y_urban spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-			(scatter y_covid spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-			(scatter y_demog spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-			(scatter y_stringency spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-			(scatter y_covars spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall))	///
-			(scatter y_excl spec_rank, mc("`col_sig_notpref'") ms(O) msize(vsmall)),	///
-		legend(off)														///
-		ytitle("")														///
-		xtitle("Specification (ranked by effect size)")					///
-		ylabel(	-1 "All Counties"										///
-				-2 "Urban (Top 5%)"										///
-				-3 "COVID Match"										///
-				-4 "Demographic Match"									///
-				-5 "Stringency Match"									///
-				-6 "Covariates"											///
-				-7 "Excl. 2020",										///
-			angle(0) labsize(vsmall))									///
-		xlabel(none)													///
-		xscale(range(0.5 `=`n_specs'+0.5'))								///
-		name(spec_`out', replace)
-
-	** Combine panels
-	graph combine coef_`out' spec_`out',								///
-		cols(1)															///
-		xcommon															///
-		imargin(zero)
-
-	** Export combined figure
+	** Export figure
 	graph export "${results}sdid/otherout/fig_speccurve_otherout_`out'.pdf", replace
 	graph export "${results}sdid/otherout/fig_speccurve_otherout_`out'.jpg", as(jpg) quality(100) replace
 	if ${overleaf} == 1 {
@@ -1198,7 +1210,7 @@ foreach out of local outcomes {
 	}
 
 	** Clean up
-	graph drop coef_`out' spec_`out'
+	graph drop speccurve_`out'
 
 	restore
 
