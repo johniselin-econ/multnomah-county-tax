@@ -471,3 +471,11 @@ if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
 
 draw_empirical_approach(file.path(out_dir, "fig_empirical_approach.pdf"))
 draw_data_comparison(file.path(out_dir, "fig_data_comparison.pdf"))
+
+# Overleaf copy
+if (exists("cfg") && isTRUE(cfg$overleaf) && nzchar(cfg$dir_ol_fig)) {
+  for (f in c("fig_empirical_approach.pdf", "fig_data_comparison.pdf")) {
+    file.copy(file.path(out_dir, f), file.path(cfg$dir_ol_fig, f), overwrite = TRUE)
+  }
+  cat("Overleaf: copied diagrams to", cfg$dir_ol_fig, "\n")
+}

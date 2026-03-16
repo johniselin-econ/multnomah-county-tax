@@ -8,12 +8,16 @@ Purpose: 	Calculate flow and stock elasticities of migration with respect to the
 
 			Formulas:
 			  Flow semi-elasticity:  ε_semi = τ / (Δt × 100)
-			  Flow elasticity:       ε = (τ / pre_mean) / Δln(1−t)
-			  Stock semi-elasticity: ε_semi × T
-			  Stock elasticity:      ε × T
+			  Flow elasticity:       ε_flow = (τ / pre_mean) / Δln(1−t)
+			  Stock elasticity:      ε_stock = (τ / 100) / Δln(1−t)
 
-			where τ = SDID ATT (pp), Δt = avg effective PFA rate,
-			Δln(1−t) = ln(1 − avg_mt_rate), and T = post-treatment years.
+			where τ = SDID ATT (pp of migration rate), Δt = avg effective PFA rate,
+			Δln(1−t) = ln(1 − avg_mt_rate), and pre_mean = pre-treatment migration rate.
+
+			Note: Since τ is in pp of the migration rate (= flow/stock × 100),
+			the flow semi-elasticity already captures the stock-normalized effect.
+			The stock elasticity uses 100 (the full stock) as denominator rather
+			than pre_mean, following Moretti & Wilson (2017, AER).
 
 Called by: 	00_multnomah.do
 Requires:	${data}working/revenue_parameters.dta (from 02_revenue.do)
@@ -81,20 +85,12 @@ restore
 scalar delta_t = avg_mt_rate
 scalar delta_ln_ntr = ln(1 - avg_mt_rate)		// Δln(1−t), negative for tax increase
 
-** Post-treatment horizon (T)
-** IRS data: 2016-2022, treatment starts 2021 → T = 2 (2021, 2022)
-** ACS data: 2016-2024, treatment starts 2021 → T = 4 (2021, 2022, 2023, 2024)
-local T_irs = 2
-local T_acs = 4
-
 dis ""
 dis "Revenue parameters:"
 dis "  avg_mt_rate     = " %10.6f avg_mt_rate
 dis "  avg_state_rate  = " %10.6f avg_state_rate
 dis "  Δt              = " %10.6f delta_t
 dis "  Δln(1−t)        = " %10.6f delta_ln_ntr
-dis "  T_irs           = `T_irs'"
-dis "  T_acs           = `T_acs'"
 
 ** Sanity check: avg_mt_rate should be in a reasonable range
 if delta_t < 0.001 | delta_t > 0.05 {
@@ -103,12 +99,12 @@ if delta_t < 0.001 | delta_t > 0.05 {
 }
 
 ********************************************************************************
-** SECTION 1: Load and Filter SDID Results
+** SECTION 1: Load SDID Results & Compute Elasticities
 ********************************************************************************
 
 dis ""
 dis "=============================================="
-dis "Section 1: Load and filter SDID results"
+dis "Section 1: Load SDID results and compute elasticities"
 dis "=============================================="
 
 ** Check that SDID results exist
@@ -154,225 +150,118 @@ replace period_type = "16-22" if strpos(outcome, "_irs") > 0
 replace period_type = "16-22" if strpos(sample_data, "16_22") > 0
 replace period_type = "16-24" if strpos(sample_data, "16_24") > 0
 
-** ---- Define preferred specifications ----
+** Parse out-of-state flag (matches revenue code)
+gen outstate = strpos(outcome, "_outstate") > 0 | strpos(outcome, "_irs5") > 0
+
+** ---- Mark preferred specifications ----
 project_mark_preferred_main
 
-dis ""
-dis "Preferred specifications: "
-count if preferred == 1
+** ---- Keep only AGI ----
+keep if outcome_type == "agi"
+dis "AGI specifications: " _N
+
+** ---- Compute elasticities on all AGI specs ----
+
+** Flow semi-elasticity: ε_semi = τ / (Δt × 100)
+** Units: pp change in migration rate per pp of tax rate
+gen double flow_semi_e = tau / (delta_t * 100)
+gen double flow_semi_se = se / (delta_t * 100)
+
+** Flow elasticity: ε_flow = −(τ / pre_mean) / Δln(1−t)
+** Sign convention: negative means migration rate worsens when tax rate rises
+** (negated to match Kleven et al. convention w.r.t. tax rate, not net-of-tax)
+** Note: undefined for net migration where pre_mean ≈ 0
+gen double flow_e = -(tau / pre_mean) / delta_ln_ntr if !missing(pre_mean) & pre_mean != 0
+gen double flow_se = (se / abs(pre_mean)) / abs(delta_ln_ntr) if !missing(pre_mean) & pre_mean != 0
+
+** Stock elasticity: ε_stock = −(τ / 100) / Δln(1−t)
+** Sign convention: negative means tax base shrinks when tax rate rises
+** (negated relative to the net-of-tax formulation to match Kleven et al. convention)
+** Uses 100 (full stock) as denominator, not pre_mean → well-defined for all migration types
+gen double stock_e = -(tau / 100) / delta_ln_ntr
+gen double stock_se = (se / 100) / abs(delta_ln_ntr)
+
+** CIs
+foreach v in flow_semi_e flow_e stock_e {
+	local sev = subinstr("`v'", "_e", "_se", 1)
+	gen double `v'_ci_lo = `v' - 1.96 * `sev'
+	gen double `v'_ci_hi = `v' + 1.96 * `sev'
+}
+
+** Save full dataset (all AGI specs with elasticities)
+save "${results}elasticities/elasticity_results.dta", replace
+
+** Report preferred AGI counts
+qui count if preferred == 1
 local n_preferred = r(N)
+dis "Preferred AGI specifications: `n_preferred'"
 
 if `n_preferred' == 0 {
-	dis as error "ERROR: No preferred specifications found. Check filter criteria."
+	dis as error "ERROR: No preferred AGI specifications found."
 	log close log_02elast
 	error 2000
 }
 
-** Keep only preferred specs
-keep if preferred == 1
-
-** ---- Assign post-treatment horizon (T) ----
-gen byte T = .
-replace T = `T_irs' if strpos(data_type, "IRS") > 0
-replace T = `T_acs' if strpos(data_type, "ACS") > 0
-label var T "Post-treatment years (IRS=2, ACS=4)"
-
-** Check for missing pre_mean
-count if missing(pre_mean) | pre_mean == 0
-if r(N) > 0 {
-	dis "WARNING: " r(N) " preferred specs have missing or zero pre_mean."
-	dis "         These will have missing net-of-tax elasticities."
-	list sample_data outcome migration pre_mean if missing(pre_mean) | pre_mean == 0
-}
-
-** Display preferred specs
+** Display preferred AGI specs
 dis ""
-dis "Preferred specifications for elasticity calculation:"
-list data_type sample outcome_type migration tau se pre_mean T, sep(0)
+dis "Preferred AGI specifications for elasticity table:"
+list data_type sample migration tau se pre_mean ///
+	flow_semi_e flow_e stock_e if preferred == 1, sep(0) abbreviate(20)
 
 ********************************************************************************
-** SECTION 2: Compute Elasticities
+** SECTION 2: LaTeX Table (AGI, Preferred Specs Only)
 ********************************************************************************
 
 dis ""
 dis "=============================================="
-dis "Section 2: Compute elasticities"
+dis "Section 2: LaTeX elasticity table"
 dis "=============================================="
 
-** ---- Flow semi-elasticity ----
-** ε_flow_semi = τ / (Δt × 100)
-** Units: pp of migration rate per pp of tax rate
-gen double flow_semi_e = tau / (delta_t * 100)
-gen double flow_semi_se = se / (delta_t * 100)
-gen double flow_semi_ci_lo = flow_semi_e - 1.96 * flow_semi_se
-gen double flow_semi_ci_hi = flow_semi_e + 1.96 * flow_semi_se
-
-** ---- Flow elasticity (net-of-tax) ----
-** ε_flow = (τ / pre_mean) / Δln(1−t)
-** Unitless: % change in migration rate per % change in net-of-tax rate
-gen double flow_e = (tau / pre_mean) / delta_ln_ntr if !missing(pre_mean) & pre_mean != 0
-gen double flow_se = (se / abs(pre_mean)) / abs(delta_ln_ntr) if !missing(pre_mean) & pre_mean != 0
-gen double flow_ci_lo = flow_e - 1.96 * flow_se
-gen double flow_ci_hi = flow_e + 1.96 * flow_se
-
-** ---- Stock semi-elasticity ----
-** ε_stock_semi = (τ × T) / (Δt × 100)
-gen double stock_semi_e = tau * T / (delta_t * 100)
-gen double stock_semi_se = se * T / (delta_t * 100)
-gen double stock_semi_ci_lo = stock_semi_e - 1.96 * stock_semi_se
-gen double stock_semi_ci_hi = stock_semi_e + 1.96 * stock_semi_se
-
-** ---- Stock elasticity (net-of-tax) ----
-** ε_stock = (τ × T / pre_mean) / Δln(1−t)
-gen double stock_e = (tau * T / pre_mean) / delta_ln_ntr if !missing(pre_mean) & pre_mean != 0
-gen double stock_se = (se * T / abs(pre_mean)) / abs(delta_ln_ntr) if !missing(pre_mean) & pre_mean != 0
-gen double stock_ci_lo = stock_e - 1.96 * stock_se
-gen double stock_ci_hi = stock_e + 1.96 * stock_se
-
-** Labels
-label var flow_semi_e "Flow semi-elasticity (pp mig rate per pp tax rate)"
-label var flow_semi_se "SE: flow semi-elasticity"
-label var flow_semi_ci_lo "95% CI lower: flow semi-elasticity"
-label var flow_semi_ci_hi "95% CI upper: flow semi-elasticity"
-label var flow_e "Flow elasticity (net-of-tax)"
-label var flow_se "SE: flow elasticity"
-label var flow_ci_lo "95% CI lower: flow elasticity"
-label var flow_ci_hi "95% CI upper: flow elasticity"
-label var stock_semi_e "Stock semi-elasticity (cumulative pp per pp tax rate)"
-label var stock_semi_se "SE: stock semi-elasticity"
-label var stock_semi_ci_lo "95% CI lower: stock semi-elasticity"
-label var stock_semi_ci_hi "95% CI upper: stock semi-elasticity"
-label var stock_e "Stock elasticity (net-of-tax, cumulative)"
-label var stock_se "SE: stock elasticity"
-label var stock_ci_lo "95% CI lower: stock elasticity"
-label var stock_ci_hi "95% CI upper: stock elasticity"
-
-** ---- Sign check ----
-** For out-migration with a tax increase: τ > 0 (more out-migration) and
-** Δln(1−t) < 0 → flow_e should be negative (out-migration rises when
-** net-of-tax falls). For in-migration: τ < 0 and Δln(1−t) < 0 → flow_e
-** should be positive.
-dis ""
-dis "Sign check (expect flow_e < 0 for out-migration, > 0 for in-migration):"
-list data_type migration tau flow_e if !missing(flow_e), sep(0)
-
-********************************************************************************
-** SECTION 3: Output Tables
-********************************************************************************
-
-dis ""
-dis "=============================================="
-dis "Section 3: Output tables"
-dis "=============================================="
-
-** ---- Create readable labels ----
-gen str80 row_label = ""
-replace row_label = data_type + ", " + sample + ": "
-replace row_label = row_label + proper(outcome_type) + " " + proper(migration)
-
-** Outcome type labels for table
-gen str30 otype_label = ""
-replace otype_label = "Returns" if outcome_type == "n1"
-replace otype_label = "Exemptions" if outcome_type == "n2"
-replace otype_label = "AGI" if outcome_type == "agi"
-
-** Migration labels for table
-gen str20 migr_label = ""
-replace migr_label = "Net" if migration == "net"
-replace migr_label = "In" if migration == "in"
-replace migr_label = "Out" if migration == "out"
-
-** ---- Export to Excel ----
-preserve
-
-** Keep display variables
-keep data_type sample otype_label migr_label T ///
-	tau se pre_mean ///
-	flow_semi_e flow_semi_se ///
-	flow_e flow_se ///
-	stock_semi_e stock_semi_se ///
-	stock_e stock_se ///
-	flow_semi_ci_lo flow_semi_ci_hi ///
-	flow_ci_lo flow_ci_hi ///
-	stock_semi_ci_lo stock_semi_ci_hi ///
-	stock_ci_lo stock_ci_hi
-
-order data_type sample otype_label migr_label T ///
-	tau se pre_mean ///
-	flow_semi_e flow_semi_se ///
-	flow_e flow_se ///
-	stock_semi_e stock_semi_se ///
-	stock_e stock_se
-
-export excel using "${results}elasticities/tbl_elasticities.xlsx", ///
-	firstrow(variables) replace
-
-restore
-
-** ---- Export LaTeX table ----
-** Format: one row per spec, columns for τ and the four elasticity types
-** Focus on net migration for the main table
+** =========================================================================
+** (a) Main table: AGI net migration, semi-elasticities only
+** =========================================================================
 
 preserve
+** Domestic (county-level) net migration only; out-of-state in appendix
+keep if preferred == 1 & migration == "net" & outstate == 0
 
-** Build formatted string columns for LaTeX
+** Formatted strings
 gen str12 tau_str = string(tau, "%9.3f")
 gen str12 se_str = "(" + string(se, "%9.3f") + ")"
 gen str12 fsemi_str = string(flow_semi_e, "%9.3f")
 gen str12 fsemi_se_str = "(" + string(flow_semi_se, "%9.3f") + ")"
-gen str12 fe_str = string(flow_e, "%9.3f") if !missing(flow_e)
-gen str12 fe_se_str = "(" + string(flow_se, "%9.3f") + ")" if !missing(flow_se)
-gen str12 ssemi_str = string(stock_semi_e, "%9.3f")
-gen str12 ssemi_se_str = "(" + string(stock_semi_se, "%9.3f") + ")"
-gen str12 ste_str = string(stock_e, "%9.3f") if !missing(stock_e)
-gen str12 ste_se_str = "(" + string(stock_se, "%9.3f") + ")" if !missing(stock_e)
+gen str12 ste_str = string(stock_e, "%9.3f")
+gen str12 ste_se_str = "(" + string(stock_se, "%9.3f") + ")"
 
-** Write LaTeX table manually
+** Write LaTeX table
 tempname fh
 file open `fh' using "${results}elasticities/tbl_elasticities.tex", write replace
 
 file write `fh' "\begin{table}[htbp]" _n
 file write `fh' "\centering" _n
 file write `fh' "\begin{threeparttable}" _n
-file write `fh' "\caption{Elasticities of Migration with Respect to PFA Tax}" _n
+file write `fh' "\caption{Implied AGI Net Migration Elasticities}" _n
 file write `fh' "\label{tab:elasticities}" _n
-file write `fh' "\begin{adjustbox}{max width=\textwidth}" _n
-file write `fh' "\begin{tabular}{llll ccccc}" _n
+file write `fh' "\begin{tabular}{ll ccc}" _n
 file write `fh' "\toprule" _n
-file write `fh' " & & & & & \multicolumn{2}{c}{Flow} & \multicolumn{2}{c}{Stock} \\" _n
-file write `fh' "\cmidrule(lr){6-7} \cmidrule(lr){8-9}" _n
-file write `fh' "Data & Sample & Outcome & Direction & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ & $\varepsilon$ & Semi-$\varepsilon$ & $\varepsilon$ \\" _n
+file write `fh' "Data & Sample & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ & Stock $\varepsilon$ \\" _n
 file write `fh' "\midrule" _n
 
 ** Sort for table output
-sort data_type sample outcome_type migration
+sort data_type sample
 local N = _N
 local prev_dt = ""
 
 forvalues i = 1/`N' {
 	local dt = data_type[`i']
-	local smp = sample[`i']
-	local ot = otype_label[`i']
-	local mg = migr_label[`i']
+	local smp = subinstr(sample[`i'], "sample_", "", .)
+	local smp = proper("`smp'")
 	local t_val = tau_str[`i']
 	local se_val = se_str[`i']
 	local fs = fsemi_str[`i']
 	local fs_se = fsemi_se_str[`i']
-	local fe = fe_str[`i']
-	local fe_se = fe_se_str[`i']
-	local ss = ssemi_str[`i']
-	local ss_se = ssemi_se_str[`i']
 	local ste = ste_str[`i']
 	local ste_se = ste_se_str[`i']
-
-	** Handle missing elasticities
-	if "`fe'" == "" local fe "--"
-	if "`fe_se'" == "" local fe_se ""
-	if "`ste'" == "" local ste "--"
-	if "`ste_se'" == "" local ste_se ""
-
-	** Clean up sample name for display
-	local smp_clean = subinstr("`smp'", "sample_", "", .)
 
 	** Add spacing between data-type groups
 	if "`prev_dt'" != "" & "`prev_dt'" != "`dt'" {
@@ -381,21 +270,154 @@ forvalues i = 1/`N' {
 	local prev_dt "`dt'"
 
 	** Point estimates row
-	file write `fh' "`dt' & `smp_clean' & `ot' & `mg' & `t_val' & `fs' & `fe' & `ss' & `ste' \\" _n
+	file write `fh' "`dt' & `smp' & `t_val' & `fs' & `ste' \\" _n
 	** Standard errors row
-	file write `fh' " & & & & `se_val' & `fs_se' & `fe_se' & `ss_se' & `ste_se' \\" _n
+	file write `fh' " & & `se_val' & `fs_se' & `ste_se' \\" _n
 }
 
 file write `fh' "\bottomrule" _n
 file write `fh' "\end{tabular}" _n
-file write `fh' "\end{adjustbox}" _n
 file write `fh' "\begin{tablenotes}" _n
 file write `fh' "\small" _n
 file write `fh' "\item \textit{Notes:} " _n
-file write `fh' "Semi-elasticity: pp change in migration rate per pp of tax rate. " _n
-file write `fh' "Elasticity: \% change in migration rate per \% change in net-of-tax rate (1$-$t). " _n
-file write `fh' "Stock elasticities accumulate the annual flow effect over $T$ post-treatment years " _n
-file write `fh' "(IRS: $T=2$, ACS: $T=4$). " _n
+file write `fh' "Semi-elasticity: pp change in AGI net migration rate per pp of PFA tax rate. " _n
+file write `fh' "Stock elasticity: \% change in county AGI stock for a 1\% increase in the tax rate, " _n
+file write `fh' "using the full AGI stock as the base (Moretti and Wilson, 2017). " _n
+file write `fh' "Negative values indicate the tax base shrinks when the tax rate rises. " _n
+local pfa_pct : di %5.3f delta_t * 100
+local pfa_pct = strtrim("`pfa_pct'")
+
+file write `fh' "Average effective PFA rate: `pfa_pct'\%. " _n
+file write `fh' "Flow elasticities for gross migration are in Appendix Table~\ref{tab:elasticities_inout}. " _n
+file write `fh' "Standard errors in parentheses, derived from SDID bootstrap SEs." _n
+file write `fh' "\end{tablenotes}" _n
+file write `fh' "\end{threeparttable}" _n
+file write `fh' "\end{table}" _n
+
+file close `fh'
+restore
+
+** =========================================================================
+** (b) Appendix table: AGI out- and in-migration, semi-ε and full ε
+** =========================================================================
+
+preserve
+keep if preferred == 1 & inlist(migration, "out", "in")
+
+** Formatted strings
+gen str12 tau_str = string(tau, "%9.3f")
+gen str12 se_str = "(" + string(se, "%9.3f") + ")"
+gen str12 fsemi_str = string(flow_semi_e, "%9.3f")
+gen str12 fsemi_se_str = "(" + string(flow_semi_se, "%9.3f") + ")"
+gen str12 fe_str = string(flow_e, "%9.3f") if !missing(flow_e)
+gen str12 fe_se_str = "(" + string(flow_se, "%9.3f") + ")" if !missing(flow_se)
+gen str12 ste_str = string(stock_e, "%9.3f")
+gen str12 ste_se_str = "(" + string(stock_se, "%9.3f") + ")"
+
+** Migration label
+gen str20 migr_label = ""
+replace migr_label = "In" if migration == "in"
+replace migr_label = "Out" if migration == "out"
+
+tempname fh
+file open `fh' using "${results}elasticities/tbl_elasticities_inout.tex", write replace
+
+file write `fh' "\begin{table}[htbp]" _n
+file write `fh' "\centering" _n
+file write `fh' "\begin{threeparttable}" _n
+file write `fh' "\caption{Implied AGI Migration Elasticities: Out- and In-Migration}" _n
+file write `fh' "\label{tab:elasticities_inout}" _n
+file write `fh' "\footnotesize" _n
+file write `fh' "\begin{tabular}{lll cccc}" _n
+file write `fh' "\toprule" _n
+file write `fh' "Data & Sample & Direction & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ & Flow $\varepsilon$ & Stock $\varepsilon$ \\" _n
+file write `fh' "\midrule" _n
+
+** Panel A header
+file write `fh' "\addlinespace" _n
+file write `fh' "\multicolumn{7}{l}{\textit{Panel A: Out-Migration}} \\" _n
+file write `fh' "\addlinespace" _n
+
+sort data_type sample migration
+local N = _N
+local prev_dt = ""
+
+** Out-migration rows
+forvalues i = 1/`N' {
+	if migration[`i'] != "out" continue
+	local dt = data_type[`i']
+	local smp = subinstr(sample[`i'], "sample_", "", .)
+	local smp = proper("`smp'")
+	local mg = migr_label[`i']
+	local t_val = tau_str[`i']
+	local se_val = se_str[`i']
+	local fs = fsemi_str[`i']
+	local fs_se = fsemi_se_str[`i']
+	local fe = fe_str[`i']
+	local fe_se = fe_se_str[`i']
+	local ste = ste_str[`i']
+	local ste_se = ste_se_str[`i']
+
+	if "`fe'" == "" local fe "--"
+	if "`fe_se'" == "" local fe_se ""
+
+	if "`prev_dt'" != "" & "`prev_dt'" != "`dt'" {
+		file write `fh' "\addlinespace" _n
+	}
+	local prev_dt "`dt'"
+
+	file write `fh' "`dt' & `smp' & `mg' & `t_val' & `fs' & `fe' & `ste' \\" _n
+	file write `fh' " & & & `se_val' & `fs_se' & `fe_se' & `ste_se' \\" _n
+}
+
+** Panel B header
+file write `fh' "\addlinespace[0.75em]" _n
+file write `fh' "\midrule" _n
+file write `fh' "\addlinespace" _n
+file write `fh' "\multicolumn{7}{l}{\textit{Panel B: In-Migration}} \\" _n
+file write `fh' "\addlinespace" _n
+
+local prev_dt = ""
+
+** In-migration rows
+forvalues i = 1/`N' {
+	if migration[`i'] != "in" continue
+	local dt = data_type[`i']
+	local smp = subinstr(sample[`i'], "sample_", "", .)
+	local smp = proper("`smp'")
+	local mg = migr_label[`i']
+	local t_val = tau_str[`i']
+	local se_val = se_str[`i']
+	local fs = fsemi_str[`i']
+	local fs_se = fsemi_se_str[`i']
+	local fe = fe_str[`i']
+	local fe_se = fe_se_str[`i']
+	local ste = ste_str[`i']
+	local ste_se = ste_se_str[`i']
+
+	if "`fe'" == "" local fe "--"
+	if "`fe_se'" == "" local fe_se ""
+
+	if "`prev_dt'" != "" & "`prev_dt'" != "`dt'" {
+		file write `fh' "\addlinespace" _n
+	}
+	local prev_dt "`dt'"
+
+	file write `fh' "`dt' & `smp' & `mg' & `t_val' & `fs' & `fe' & `ste' \\" _n
+	file write `fh' " & & & `se_val' & `fs_se' & `fe_se' & `ste_se' \\" _n
+}
+
+file write `fh' "\bottomrule" _n
+file write `fh' "\end{tabular}" _n
+file write `fh' "\begin{tablenotes}" _n
+file write `fh' "\small" _n
+file write `fh' "\item \textit{Notes:} " _n
+file write `fh' "Semi-elasticity: pp change in AGI migration rate per pp of PFA tax rate. " _n
+file write `fh' "Flow elasticity: \% change in migration rate for a 1\% increase in the tax rate, " _n
+file write `fh' "using the pre-treatment migration rate as the base. " _n
+file write `fh' "Stock elasticity: \% change in county AGI stock for a 1\% increase in the tax rate, " _n
+file write `fh' "using the full AGI stock as the base (Moretti and Wilson, 2017). " _n
+file write `fh' "Negative values indicate the measure worsens when the tax rate rises. " _n
 local pfa_pct : di %5.3f delta_t * 100
 local pfa_pct = strtrim("`pfa_pct'")
 file write `fh' "Average effective PFA rate: `pfa_pct'\%. " _n
@@ -405,20 +427,177 @@ file write `fh' "\end{threeparttable}" _n
 file write `fh' "\end{table}" _n
 
 file close `fh'
-
 restore
 
-** ---- Copy to Overleaf if enabled ----
+** ---- Copy to Overleaf ----
 if ${overleaf} == 1 {
 	copy "${results}elasticities/tbl_elasticities.tex" ///
 		"${ol_tab}tbl_elasticities.tex", replace
+	copy "${results}elasticities/tbl_elasticities_inout.tex" ///
+		"${ol_tab}tbl_elasticities_inout.tex", replace
 }
 
-dis "LaTeX table exported to: ${results}elasticities/tbl_elasticities.tex"
-dis "Excel table exported to: ${results}elasticities/tbl_elasticities.xlsx"
+** Export Excel (all AGI specs)
+export excel using "${results}elasticities/tbl_elasticities.xlsx", ///
+	firstrow(variables) replace
+
+dis "Main table:     ${results}elasticities/tbl_elasticities.tex"
+dis "Appendix table: ${results}elasticities/tbl_elasticities_inout.tex"
+dis "Excel:          ${results}elasticities/tbl_elasticities.xlsx"
 
 ********************************************************************************
-** SECTION 4: Display Summary & Save Results
+** SECTION 3: Elasticity Distribution Figures
+********************************************************************************
+
+dis ""
+dis "=============================================="
+dis "Section 3: Elasticity distribution figures"
+dis "=============================================="
+
+** plotplainblind palette
+local col_fill    "86 180 233"		// sky — histogram fill
+local col_irs     "213 94 0"		// vermillion — IRS preferred
+local col_acs     "0 114 178"		// sea — ACS College preferred
+
+** ---- Loop over migration directions ----
+foreach migr in "net" "in" "out" {
+
+	if "`migr'" == "net" local migr_title "Net"
+	if "`migr'" == "in"  local migr_title "In"
+	if "`migr'" == "out" local migr_title "Out"
+
+	preserve
+	keep if migration == "`migr'"
+
+	qui count
+	local n_all = r(N)
+
+	if `n_all' == 0 {
+		dis "No AGI `migr'-migration specs found. Skipping."
+		restore
+		continue
+	}
+
+	qui count if preferred == 1
+	local n_pref = r(N)
+
+	dis ""
+	dis "--- `migr_title'-migration: `n_all' AGI specs (`n_pref' preferred) ---"
+	summ flow_semi_e, detail
+
+	** Build individual vertical lines for each preferred spec (panel a)
+	** IRS in vermillion, ACS College in sea blue
+	local pref_semi_overlays ""
+	local irs_j = 0
+	local acs_j = 0
+	forvalues i = 1/`=_N' {
+		if preferred[`i'] == 1 {
+			local v = flow_semi_e[`i']
+			local dt = data_type[`i']
+			if strpos("`dt'", "IRS") > 0 {
+				local ++irs_j
+				local pref_semi_overlays `"`pref_semi_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_irs'") lwidth(medthick) lpattern(dash))"'
+			}
+			else {
+				local ++acs_j
+				local pref_semi_overlays `"`pref_semi_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_acs'") lwidth(medthick) lpattern(dash))"'
+			}
+		}
+	}
+	local leg_irs = 2
+	local leg_acs = 2 + `irs_j'
+
+	** ---- Panel (a): Flow semi-elasticity ----
+	twoway (histogram flow_semi_e, 									///
+			fcolor("`col_fill'") lcolor(white) lwidth(thin) 		///
+			bin(20) fraction) 										///
+		`pref_semi_overlays',										///
+		graphregion(color(white)) 									///
+		title("(a) Flow Semi-Elasticity", size(medium)) 			///
+		xtitle("Semi-{&epsilon} (pp migration rate per pp tax rate)") ///
+		ytitle("Fraction of Specifications") 						///
+		legend(order(`leg_irs' "IRS Preferred" 						///
+			`leg_acs' "ACS College Preferred") 						///
+			ring(1) pos(6) rows(1) size(small)) 					///
+		name(panel_a, replace) nodraw
+
+	** ---- Panel (b): Flow elasticity ----
+	** Drop specs with missing flow_e (zero pre_mean)
+	qui count if !missing(flow_e)
+	local n_fe = r(N)
+
+	if `n_fe' > 0 {
+		qui count if preferred == 1 & !missing(flow_e)
+		local n_pref_fe = r(N)
+
+		summ flow_e if !missing(flow_e), detail
+
+		** Build individual vertical lines for each preferred spec (panel b)
+		local pref_fe_overlays ""
+		local irs_j2 = 0
+		local acs_j2 = 0
+		forvalues i = 1/`=_N' {
+			if preferred[`i'] == 1 & !missing(flow_e[`i']) {
+				local v = flow_e[`i']
+				local dt = data_type[`i']
+				if strpos("`dt'", "IRS") > 0 {
+					local ++irs_j2
+					local pref_fe_overlays `"`pref_fe_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_irs'") lwidth(medthick) lpattern(dash))"'
+				}
+				else {
+					local ++acs_j2
+					local pref_fe_overlays `"`pref_fe_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_acs'") lwidth(medthick) lpattern(dash))"'
+				}
+			}
+		}
+		local leg_irs2 = 2
+		local leg_acs2 = 2 + `irs_j2'
+
+		twoway (histogram flow_e if !missing(flow_e), 					///
+				fcolor("`col_fill'") lcolor(white) lwidth(thin)			///
+				bin(20) fraction) 										///
+			`pref_fe_overlays',											///
+			graphregion(color(white)) 									///
+			title("(b) Flow Elasticity (Net-of-Tax)", size(medium))		///
+			xtitle("{&epsilon} (% {&Delta} migration rate / % {&Delta} net-of-tax rate)") ///
+			ytitle("Fraction of Specifications") 						///
+			legend(order(`leg_irs2' "IRS Preferred" 					///
+				`leg_acs2' "ACS College Preferred") 					///
+				ring(1) pos(6) rows(1) size(small)) 				///
+			name(panel_b, replace) nodraw
+
+		** ---- Combine panels (stacked vertically) ----
+		graph combine panel_a panel_b, 									///
+			rows(2) graphregion(color(white)) 							///
+			title("Distribution of Implied AGI `migr_title'-Migration Elasticities", ///
+				size(medlarge)) 										///
+			subtitle("Across `n_all' SDID specifications", 			///
+				size(small))
+
+		graph export "${results}elasticities/fig_elasticity_dist_`migr'.pdf", replace
+		graph export "${results}elasticities/fig_elasticity_dist_`migr'.png", ///
+			as(png) width(2400) replace
+
+		** Overleaf copy — net migration only (appendix figure)
+		if "`migr'" == "net" & ${overleaf} == 1 {
+			graph export "${ol_fig}fig_elasticity_dist_net.pdf", replace
+		}
+
+		graph drop panel_a panel_b
+	}
+	else {
+		dis "  No valid flow elasticities for `migr'-migration. Skipping figure."
+		graph drop panel_a
+	}
+
+	restore
+}
+
+dis ""
+dis "Figures exported to: ${results}elasticities/fig_elasticity_dist_*.pdf"
+
+********************************************************************************
+** SECTION 4: Summary
 ********************************************************************************
 
 dis ""
@@ -428,31 +607,30 @@ dis "=============================================="
 
 dis ""
 dis "=================================================================="
-dis "ELASTICITY SUMMARY — PREFERRED SPECIFICATIONS"
+dis "ELASTICITY SUMMARY — AGI PREFERRED SPECIFICATIONS"
 dis "=================================================================="
 dis ""
 dis "Average effective PFA rate (Δt):  " %8.4f delta_t " (" %5.3f delta_t * 100 "%)"
 dis "Δln(1−t):                         " %8.6f delta_ln_ntr
 dis ""
-dis "------- Flow Elasticities -------"
 
-** Display key results in log
-list data_type sample outcome_type migration tau se ///
-	flow_semi_e flow_e stock_semi_e stock_e, ///
-	sep(0) abbreviate(20)
+list data_type sample migration tau se ///
+	flow_semi_e flow_e stock_e ///
+	if preferred == 1, sep(0) abbreviate(20)
 
 dis ""
 dis "=================================================================="
-
-** ---- Save results dataset ----
-save "${results}elasticities/elasticity_results.dta", replace
 
 dis ""
 dis "=============================================="
 dis "02_elasticities.do complete."
 dis "Output files:"
 dis "  ${results}elasticities/tbl_elasticities.tex"
+dis "  ${results}elasticities/tbl_elasticities_inout.tex"
 dis "  ${results}elasticities/tbl_elasticities.xlsx"
+dis "  ${results}elasticities/fig_elasticity_dist_net.pdf"
+dis "  ${results}elasticities/fig_elasticity_dist_in.pdf"
+dis "  ${results}elasticities/fig_elasticity_dist_out.pdf"
 dis "  ${results}elasticities/elasticity_results.dta"
 dis "=============================================="
 

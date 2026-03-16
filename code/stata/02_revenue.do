@@ -69,67 +69,113 @@ dis "=============================================="
 dis "Section 0B: SDID estimation of migration effects"
 dis "=============================================="
 
-** Check if SDID panel data exists
-capture confirm file "${data}working/sdid_analysis_data.dta"
+** Load SDID estimates from stored results (produced by 02_sdid_analysis.do)
+** Preferred specs mirror project_mark_preferred_main in 00_stata_config.do:
+**   - IRS (16-22) × {sample_all, sample_stringency} × {domestic, out-of-state}
+**   - ACS College (16-24) × {sample_all, sample_stringency} × {domestic, out-of-state}
+** All with controls == 1 & exclusion == 1 (excl. 2020)
+capture confirm file "${results}sdid/sdid_results.dta"
 if _rc == 0 {
-	project_assert_manifest using "${data}working/sdid_analysis_data_manifest.dta", ///
-		artifact("sdid_analysis_data")
+	project_assert_manifest using "${results}sdid/sdid_results_manifest.dta", ///
+		artifact("sdid_results")
 
-	** Save current data state
 	preserve
+	use "${results}sdid/sdid_results.dta", clear
 
-	** Load SDID panel data
-	use "${data}working/sdid_analysis_data.dta", clear
+	** ---- Preferred spec lookup ----
+	** Parallel locals define 4 preferred specs per direction
+	** Suffixes for scalar names
+	local suf_1 "irs_all"
+	local suf_2 "irs_string"
+	local suf_3 "acs_col_all"
+	local suf_4 "acs_col_string"
 
-	** Keep required variables 
-	keep fips year Treated irs_sample_1 sample_all population per_capita_income agi_net_rate_irs agi_net_rate_irs5 
-	
-	** ---- Run 1: effect_agi (county-level, domestic type 3) ----
-	dis "Running SDID for effect_agi (agi_net_rate_irs)..."
-	capture noisily sdid agi_net_rate_irs fips year Treated ///
-		if irs_sample_1 == 1 & sample_all == 1 & year != 2020, ///
-		vce(noinference)  ///
-		covariates(population per_capita_income, projected)
+	** Domestic (type 3) — used for PFA county revenue loss
+	local dom_sdata_1 "irs_full_16_22"
+	local dom_sdata_2 "irs_full_16_22"
+	local dom_sdata_3 "acs_16_24_col"
+	local dom_sdata_4 "acs_16_24_col"
+	local dom_ovar_1  "agi_net_rate_irs"
+	local dom_ovar_2  "agi_net_rate_irs"
+	local dom_ovar_3  "agi_net_rate_acs2"
+	local dom_ovar_4  "agi_net_rate_acs2"
 
-	if _rc == 0 {
-		** Extract ATT from e(ATT) — tau is in percentage points
-		scalar tau_agi = e(ATT)
-		scalar effect_agi = abs(tau_agi) / 100
-		dis "  SDID effect_agi: tau = " %8.4f tau_agi " pp -> effect = " %8.4f effect_agi
+	** Out-of-state (type 5) — used for Oregon state revenue loss
+	local out_sdata_1 "irs_outstate_full_16_22"
+	local out_sdata_2 "irs_outstate_full_16_22"
+	local out_sdata_3 "acs_outstate_16_24_col"
+	local out_sdata_4 "acs_outstate_16_24_col"
+	local out_ovar_1  "agi_net_rate_irs_outstate"
+	local out_ovar_2  "agi_net_rate_irs_outstate"
+	local out_ovar_3  "agi_net_rate_acs2_outstate"
+	local out_ovar_4  "agi_net_rate_acs2_outstate"
+
+	** Samples (shared across domestic and out-of-state)
+	local samp_1 "sample_all"
+	local samp_2 "sample_stringency"
+	local samp_3 "sample_all"
+	local samp_4 "sample_stringency"
+
+	** Labels for display
+	local lbl_1 "IRS, all counties"
+	local lbl_2 "IRS, stringency match"
+	local lbl_3 "ACS College, all counties"
+	local lbl_4 "ACS College, stringency"
+
+	** ---- Domestic preferred specs ----
+	dis ""
+	dis "  Preferred SDID estimates — domestic (type 3):"
+	dis "  {hline 60}"
+	forvalues i = 1/4 {
+		qui summ tau if sample_data == "`dom_sdata_`i''" ///
+			& sample == "`samp_`i''" ///
+			& outcome == "`dom_ovar_`i''" ///
+			& controls == 1 & exclusion == 1, meanonly
+		if r(N) == 1 {
+			scalar tau_dom_`suf_`i'' = r(mean)
+			scalar effect_dom_`suf_`i'' = abs(r(mean)) / 100
+			dis "    `lbl_`i'': tau = " %8.4f tau_dom_`suf_`i'' " pp, effect = " %8.6f effect_dom_`suf_`i''
+		}
+		else {
+			dis as error "    `lbl_`i'': NOT FOUND in sdid_results.dta"
+		}
 	}
-	else {
-		dis as error "WARNING: SDID estimation for effect_agi failed. Using hardcoded default = " %8.4f effect_agi
-		dis as error "         Results use PLACEHOLDER values, not empirical estimates."
+
+	** ---- Out-of-state preferred specs ----
+	dis ""
+	dis "  Preferred SDID estimates — out-of-state (type 5):"
+	dis "  {hline 60}"
+	forvalues i = 1/4 {
+		qui summ tau if sample_data == "`out_sdata_`i''" ///
+			& sample == "`samp_`i''" ///
+			& outcome == "`out_ovar_`i''" ///
+			& controls == 1 & exclusion == 1, meanonly
+		if r(N) == 1 {
+			scalar tau_out_`suf_`i'' = r(mean)
+			scalar effect_out_`suf_`i'' = abs(r(mean)) / 100
+			dis "    `lbl_`i'': tau = " %8.4f tau_out_`suf_`i'' " pp, effect = " %8.6f effect_out_`suf_`i''
+		}
+		else {
+			dis as error "    `lbl_`i'': NOT FOUND in sdid_results.dta"
+		}
 	}
 
-	** ---- Run 2: effect_agi_oregon (state-level, interstate type 5) ----
-	dis "Running SDID for effect_agi_oregon (agi_net_rate_irs5)..."
-	capture noisily sdid agi_net_rate_irs5 fips year Treated ///
-		if irs_sample_1 == 1 & sample_all == 1 & year != 2020, ///
-		vce(noinference)  ///
-		covariates(population per_capita_income, projected)
-
-	if _rc == 0 {
-		scalar tau_agi_oregon = e(ATT)
-		scalar effect_agi_oregon = abs(tau_agi_oregon) / 100
-		dis "  SDID effect_agi_oregon: tau = " %8.4f tau_agi_oregon " pp -> effect = " %8.4f effect_agi_oregon
-	}
-	else {
-		dis as error "WARNING: SDID estimation for effect_agi_oregon failed. Using hardcoded default = " %8.4f effect_agi_oregon
-		dis as error "         Results use PLACEHOLDER values, not empirical estimates."
-	}
-
-	** Restore original data state
 	restore
+
+	** ---- Set primary scalars used by revenue calculations ----
+	** Primary: IRS, all counties (most conservative / broadest sample)
+	scalar effect_agi = effect_dom_irs_all
+	scalar effect_agi_oregon = effect_out_irs_all
 }
 else {
-	dis as error "WARNING: SDID panel data (sdid_analysis_data.dta) not found."
+	dis as error "WARNING: SDID results (sdid_results.dta) not found. Run 02_sdid_analysis.do first."
 	dis as error "         Using hardcoded default effects. Results are PLACEHOLDERS."
 }
 
-dis "  Final parameters:"
-dis "    effect_agi         = " %8.4f effect_agi
-dis "    effect_agi_oregon  = " %8.4f effect_agi_oregon
+dis ""
+dis "  Primary parameters for revenue calculation:"
+dis "    effect_agi         = " %8.6f effect_agi
+dis "    effect_agi_oregon  = " %8.6f effect_agi_oregon
 
 ********************************************************************************
 ** SECTION 1: Load 2019 ACS Microdata for Multnomah County
@@ -665,10 +711,22 @@ dis "Number of impacted tax units: " r(N)
 qui summ cal_wt if impacted == 1
 dis "Weighted number of impacted filers: " %10.0fc r(sum)
 
+** ---- Compute college share of AGI ----
+** Used to scale ACS College spec τ (estimated on college-educated only)
+** to the full AGI base for revenue calculations
+gen byte college_filer = (educd >= 101) if !missing(educd)
+qui summ agi_proxy [aw=cal_wt] if college_filer == 1
+scalar agi_college = r(sum_w) * r(mean)
+qui summ agi_proxy [aw=cal_wt]
+scalar agi_total = r(sum_w) * r(mean)
+scalar college_agi_share = agi_college / agi_total
+dis "College share of AGI: " %6.4f college_agi_share " (" %5.2f college_agi_share*100 "%)"
+drop college_filer
+
 ** Save working data
 tempfile revenue_data
 save `revenue_data'
-clear 
+clear
 
 ********************************************************************************
 ** SECTION 9: Migration Revenue Effect 
@@ -1030,10 +1088,9 @@ dis "Section 12: Revenue effect distribution"
 dis "=============================================="
 
 ** plotplainblind palette
-local col_pfa     "213 94 0"		// vermillion — PFA preferred
-local col_oregon  "0 114 178"		// sea — Oregon preferred
 local col_fill    "86 180 233"		// sky — histogram fill
-local col_pref    "213 94 0"		// vermillion — preferred line
+local col_irs     "213 94 0"		// vermillion — IRS preferred
+local col_acs     "0 114 178"		// sea — ACS College preferred
 
 capture confirm file "${results}sdid/sdid_results.dta"
 if _rc == 0 {
@@ -1090,33 +1147,56 @@ if _rc == 0 {
 
 		** Compute implied revenue effect for each specification
 		** effect_i = abs(tau_i) / 100
+		** For ACS College specs, scale by college share of AGI since τ
+		** is estimated on college-educated migration only
 		** X_i = effect_i * total_agi_2022
 		** R_m_i = avg_mt_rate * X_i
 		** dynamic_i = baseline_pfa_revenue - R_m_i
-		** share_i = R_m_i / dynamic_i
-		** implied_loss_i = share_i * actual_pfa_revenue
+		** implied_loss_i = (R_m_i / dynamic_i) * actual_pfa_revenue
 		gen double effect_i = abs(tau) / 100
+		replace effect_i = effect_i * scalar(college_agi_share) ///
+			if strpos(data_type, "ACS") > 0
 		gen double X_i = effect_i * scalar(total_agi_2022)
 		gen double R_m_i = scalar(avg_mt_rate) * X_i
 		gen double dynamic_i = scalar(baseline_pfa_revenue) - R_m_i
 		gen double share_i = R_m_i / dynamic_i * 100
 		gen double implied_loss_i = (R_m_i / dynamic_i) * `actual_pfa_revenue' / 1e6
 
-		** Preferred specification value
-		qui summ implied_loss_i if preferred == 1
-		local pref_pfa_mean = r(mean)
+		** Build individual vertical lines for each preferred spec
+		** IRS preferred in vermillion, ACS College preferred in sea blue
+		qui count if preferred == 1
+		local n_pref = r(N)
+		local pref_overlays ""
+		local irs_j = 0
+		local acs_j = 0
+		forvalues i = 1/`=_N' {
+			if preferred[`i'] == 1 {
+				local v = implied_loss_i[`i']
+				local dt = data_type[`i']
+				if strpos("`dt'", "IRS") > 0 {
+					local ++irs_j
+					local pref_overlays `"`pref_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_irs'") lwidth(medthick) lpattern(dash))"'
+				}
+				else {
+					local ++acs_j
+					local pref_overlays `"`pref_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_acs'") lwidth(medthick) lpattern(dash))"'
+				}
+			}
+		}
+
+		** Legend order: 1=histogram, then IRS lines (2..1+irs_j), then ACS lines
+		local leg_irs = 2
+		local leg_acs = 2 + `irs_j'
 
 		** Summary
 		dis "PFA implied loss distribution ($ millions):"
 		summ implied_loss_i, detail
 
-		** Histogram
+		** Histogram with one dashed line per preferred spec
 		twoway (histogram implied_loss_i, 								///
 				fcolor("`col_fill'") lcolor(white) lwidth(thin) 		///
 				bin(20) fraction) 										///
-			(scatteri 0 `pref_pfa_mean' 1 `pref_pfa_mean', 			///
-				recast(line) lcolor("`col_pref'") lwidth(medthick) 		///
-				lpattern(dash)),										///
+			`pref_overlays',											///
 			graphregion(color(white)) 									///
 			title("Distribution of Implied PFA Revenue Loss", 			///
 				size(medium)) 											///
@@ -1124,10 +1204,9 @@ if _rc == 0 {
 				size(small)) 											///
 			xtitle("Implied Revenue Loss ($ millions)") 				///
 			ytitle("Fraction of Specifications") 						///
-			legend(order(2 "Preferred Specification") 					///
-				ring(0) pos(2) size(small)) 							///
-			note("Dashed line = mean of preferred specifications." 		///
-				"Revenue loss scaled to actual PFA collections ($187M).", size(vsmall))
+			legend(order(`leg_irs' "IRS Preferred" 						///
+				`leg_acs' "ACS College Preferred") 						///
+				ring(1) pos(6) rows(1) size(small))
 
 		graph export "${results}revenue/fig_revenue_dist_pfa.pdf", replace
 		graph export "${results}revenue/fig_revenue_dist_pfa.jpg", ///
@@ -1155,28 +1234,49 @@ if _rc == 0 {
 	if `n_specs' > 0 {
 
 		** Compute implied revenue effect for each specification
+		** Scale ACS College specs by college share of AGI
 		gen double effect_i = abs(tau) / 100
+		replace effect_i = effect_i * scalar(college_agi_share) ///
+			if strpos(data_type, "ACS") > 0
 		gen double X_i = effect_i * scalar(total_agi_2022)
 		gen double R_m_i = scalar(avg_state_rate) * X_i
 		gen double dynamic_i = scalar(baseline_state_revenue) - R_m_i
 		gen double share_i = R_m_i / dynamic_i * 100
 		gen double implied_loss_i = (R_m_i / dynamic_i) * `actual_oregon_revenue' / 1e6
 
-		** Preferred specification value
-		qui summ implied_loss_i if preferred == 1
-		local pref_or_mean = r(mean)
+		** Build individual vertical lines for each preferred spec
+		qui count if preferred == 1
+		local n_pref = r(N)
+		local pref_overlays ""
+		local irs_j = 0
+		local acs_j = 0
+		forvalues i = 1/`=_N' {
+			if preferred[`i'] == 1 {
+				local v = implied_loss_i[`i']
+				local dt = data_type[`i']
+				if strpos("`dt'", "IRS") > 0 {
+					local ++irs_j
+					local pref_overlays `"`pref_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_irs'") lwidth(medthick) lpattern(dash))"'
+				}
+				else {
+					local ++acs_j
+					local pref_overlays `"`pref_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_acs'") lwidth(medthick) lpattern(dash))"'
+				}
+			}
+		}
+
+		local leg_irs = 2
+		local leg_acs = 2 + `irs_j'
 
 		** Summary
 		dis "Oregon implied loss distribution ($ millions):"
 		summ implied_loss_i, detail
 
-		** Histogram
+		** Histogram with one dashed line per preferred spec
 		twoway (histogram implied_loss_i, 								///
 				fcolor("`col_fill'") lcolor(white) lwidth(thin)			///
 				bin(20) fraction) 										///
-			(scatteri 0 `pref_or_mean' 1 `pref_or_mean', 				///
-				recast(line) lcolor("`col_pref'") lwidth(medthick)		///
-				lpattern(dash)),										///
+			`pref_overlays',											///
 			graphregion(color(white)) 									///
 			title("Distribution of Implied Oregon Revenue Loss", 		///
 				size(medium)) 											///
@@ -1184,10 +1284,9 @@ if _rc == 0 {
 				size(small)) 											///
 			xtitle("Implied Revenue Loss ($ millions)") 				///
 			ytitle("Fraction of Specifications") 						///
-			legend(order(2 "Preferred Specification") 					///
-				ring(0) pos(2) size(small)) 							///
-			note("Dashed line = mean of preferred specifications." 		///
-				"Revenue loss scaled to actual Oregon income tax ($11.8B).", size(vsmall))
+			legend(order(`leg_irs' "IRS Preferred" 						///
+				`leg_acs' "ACS College Preferred") 						///
+				ring(1) pos(6) rows(1) size(small))
 
 		graph export "${results}revenue/fig_revenue_dist_oregon.pdf", replace
 		graph export "${results}revenue/fig_revenue_dist_oregon.jpg", ///

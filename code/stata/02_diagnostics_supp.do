@@ -63,7 +63,7 @@ keep if demo_merge == 3
 drop demo_merge
 
 ** Merge BEA economics
-merge 1:1 state_fips county_fips year using "${data}working/bea_economics", gen(econ_merge)
+merge m:1 year fips using "${data}working/bea_economics", gen(econ_merge)
 keep if econ_merge == 3
 drop econ_merge
 
@@ -225,14 +225,10 @@ export delimited using "${results}tables/diagnostics_obs_counts_supp.csv", repla
 export excel using "${results}tables/diagnostics_obs_counts_supp.xlsx", ///
     firstrow(variables) replace
 
-** Export to LaTeX
+** Export to LaTeX (tabular fragment — wrapper in main.tex)
 tempname fh
 file open `fh' using "${results}tables/diagnostics_obs_counts_supp.tex", write replace
 
-file write `fh' "\begin{table}[htbp]" _n
-file write `fh' "\centering" _n
-file write `fh' "\caption{Observation Counts: Supplemental Analyses}" _n
-file write `fh' "\label{tab:diagnostics_supp}" _n
 file write `fh' "\begin{tabular}{llllrrr}" _n
 file write `fh' "\toprule" _n
 file write `fh' "Approach & Sample & Data & Unit & Units & Periods & Obs. \\" _n
@@ -250,14 +246,19 @@ forvalues i = 1/`N' {
     local no = N_obs[`i']
 
     file write `fh' "`a' & `s' & `d' & `u' & "
-    file write `fh' %~12.0fc (`nu') " & " %~4.0f (`ny') " & " %~12.0fc (`no') " \\" _n
+    file write `fh' %12.0fc (`nu') " & " %4.0f (`ny') " & " %12.0fc (`no') " \\" _n
 }
 
 file write `fh' "\bottomrule" _n
 file write `fh' "\end{tabular}" _n
-file write `fh' "\end{table}" _n
 
 file close `fh'
+
+** Overleaf copy
+if ${overleaf} == 1 {
+    copy "${results}tables/diagnostics_obs_counts_supp.tex" ///
+        "${ol_tab}diagnostics_obs_counts_supp.tex", replace
+}
 
 dis _n "Supplemental diagnostics table saved to:"
 dis "  ${results}tables/diagnostics_obs_counts_supp.csv"

@@ -216,6 +216,13 @@ program define project_mark_preferred_main
         exclusion == 1
 
     replace preferred = 1 if                                 ///
+        data_type == "IRS (Out-of-State)" &                  ///
+        period_type == "16-22" &                             ///
+        inlist(sample, "sample_all", "sample_stringency") &  ///
+        controls == 1 &                                      ///
+        exclusion == 1
+
+    replace preferred = 1 if                                 ///
         data_type == "ACS College (Out-of-State)" &          ///
         period_type == "16-24" &                             ///
         inlist(sample, "sample_all", "sample_stringency") &  ///

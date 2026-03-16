@@ -68,6 +68,24 @@ multnomah_r_init <- function(script_label = "R pipeline") {
 
   source(file.path(dir_code_r, "utils.R"))
 
+  # Overleaf sync (optional) — mirrors profile.do convention
+  overleaf   <- FALSE
+  dir_ol_fig <- ""
+  dir_ol_tab <- ""
+  profile_r  <- file.path(project_root, "profile.R")
+  if (file.exists(profile_r)) {
+    source(profile_r, local = TRUE)
+  }
+  if (nzchar(Sys.getenv("OVERLEAF_PATH", ""))) {
+    oth_path <- Sys.getenv("OVERLEAF_PATH")
+  }
+  if (exists("oth_path") && nzchar(oth_path)) {
+    dir_ol_fig <- file.path(oth_path, "figures")
+    dir_ol_tab <- file.path(oth_path, "tables")
+    overleaf   <- TRUE
+    cat("Overleaf sync ON:", oth_path, "\n\n")
+  }
+
   list(
     project_root = project_root,
     dir_code_r = dir_code_r,
@@ -76,7 +94,10 @@ multnomah_r_init <- function(script_label = "R pipeline") {
     api_codes_path = api_codes_path,
     start_year = start_year,
     end_year = end_year,
-    overwrite_csv = overwrite_csv
+    overwrite_csv = overwrite_csv,
+    overleaf = overleaf,
+    dir_ol_fig = dir_ol_fig,
+    dir_ol_tab = dir_ol_tab
   )
 }
 

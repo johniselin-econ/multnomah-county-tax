@@ -1099,3 +1099,12 @@ for (measure in c("n1", "n2", "agi")) {
 }
 
 message("All directional flow maps created successfully!")
+
+# Overleaf copy — bulk copy all map PNGs to overleaf figures directory
+if (exists("cfg") && isTRUE(cfg$overleaf) && nzchar(cfg$dir_ol_fig)) {
+  map_files <- list.files(maps_dir, pattern = "\\.png$", full.names = TRUE)
+  if (length(map_files) > 0) {
+    file.copy(map_files, file.path(cfg$dir_ol_fig, basename(map_files)), overwrite = TRUE)
+    message("Overleaf: copied ", length(map_files), " maps to ", cfg$dir_ol_fig)
+  }
+}

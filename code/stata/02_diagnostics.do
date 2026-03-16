@@ -62,7 +62,7 @@ keep if demo_merge == 3
 drop demo_merge
 
 ** Merge BEA economics
-merge 1:1 state_fips county_fips year using "${data}working/bea_economics", gen(econ_merge)
+merge m:1 year fips using "${data}working/bea_economics", gen(econ_merge)
 keep if econ_merge == 3
 drop econ_merge
 
@@ -70,12 +70,9 @@ drop econ_merge
 drop if (missing(n1_out_1) | n1_out_1 == 0) & year <= 2022
 
 ** Balanced panel requirement
-bysort state_fips county_fips: gen ct = _N
+bysort fips: gen ct = _N
 keep if ct >= 7
 drop ct
-
-** Make FIPS for identification
-make_fips state_fips county_fips, gen(fips)
 
 ** Count: IRS, all counties, 2016-2022
 preserve
@@ -137,8 +134,9 @@ qui summ ct
 keep if ct == `r(max)'
 drop ct
 
-** Count: ACS, 2012-2024
+** Count: ACS, 2016-2022 (acs_period_1, matches IRS window)
 preserve
+    keep if inrange(year, 2016, 2022)
     qui distinct fips
     local n_units = r(ndistinct)
     qui distinct year
@@ -148,7 +146,28 @@ preserve
     set obs 1
     gen str40 approach = "SDID"
     gen str40 sample = "All counties"
-    gen str40 data_source = "ACS"
+    gen str40 data_source = "ACS (2016--2022)"
+    gen str20 unit = "county-year"
+    gen long N_units = `n_units'
+    gen int N_years = `n_years'
+    gen long N_obs = `n_obs'
+    append using `results'
+    save `results', replace
+restore
+
+** Count: ACS, 2016-2024 (acs_period_2, preferred for ACS College)
+preserve
+    keep if inrange(year, 2016, 2024)
+    qui distinct fips
+    local n_units = r(ndistinct)
+    qui distinct year
+    local n_years = r(ndistinct)
+    local n_obs = _N
+    clear
+    set obs 1
+    gen str40 approach = "SDID"
+    gen str40 sample = "All counties"
+    gen str40 data_source = "ACS (2016--2024)"
     gen str20 unit = "county-year"
     gen long N_units = `n_units'
     gen int N_years = `n_years'
@@ -168,18 +187,19 @@ use "${data}working/irs_county_gross", clear
 keep if inrange(year, ${start_year_irs_analysis}, 2022)
 drop if county_fips == 0
 
+** Make FIPS for identification (needed for BEA merge)
+capture confirm variable fips
+if _rc != 0  make_fips state_fips county_fips, gen(fips)
+
 ** Merge demographics
 merge m:1 state_fips county_fips using "${data}working/demographics_2020", gen(demo_merge)
 keep if demo_merge == 3
 drop demo_merge
 
 ** Merge BEA economics
-merge 1:1 state_fips county_fips year using "${data}working/bea_economics", gen(econ_merge)
+merge m:1 year fips using "${data}working/bea_economics", gen(econ_merge)
 keep if econ_merge == 3
 drop econ_merge
-
-** Make FIPS
-make_fips state_fips county_fips, gen(fips)
 
 ** Define the 22-county narrow pool
 gen sample_narrow = 0
@@ -408,15 +428,10 @@ export delimited using "${results}tables/diagnostics_obs_counts.csv", replace
 export excel using "${results}tables/diagnostics_obs_counts.xlsx", ///
     firstrow(variables) replace
 
-** Export to LaTeX
-** Build a .tex file manually for full control of formatting
+** Export to LaTeX (tabular fragment — main.tex wraps with \begin{table})
 tempname fh
 file open `fh' using "${results}tables/diagnostics_obs_counts.tex", write replace
 
-file write `fh' "\begin{table}[htbp]" _n
-file write `fh' "\centering" _n
-file write `fh' "\caption{Observation Counts by Approach and Sample}" _n
-file write `fh' "\label{tab:diagnostics}" _n
 file write `fh' "\begin{tabular}{llllrrr}" _n
 file write `fh' "\toprule" _n
 file write `fh' "Approach & Sample & Data & Unit & Units & Years & Obs. \\" _n
@@ -434,14 +449,19 @@ forvalues i = 1/`N' {
     local no = N_obs[`i']
 
     file write `fh' "`a' & `s' & `d' & `u' & "
-    file write `fh' %~12.0fc (`nu') " & " %~4.0f (`ny') " & " %~12.0fc (`no') " \\" _n
+    file write `fh' %12.0fc (`nu') " & " %4.0f (`ny') " & " %12.0fc (`no') " \\" _n
 }
 
 file write `fh' "\bottomrule" _n
 file write `fh' "\end{tabular}" _n
-file write `fh' "\end{table}" _n
 
 file close `fh'
+
+** Overleaf copy
+if ${overleaf} == 1 {
+    copy "${results}tables/diagnostics_obs_counts.tex" ///
+        "${ol_tab}diagnostics_obs_counts.tex", replace
+}
 
 dis _n "Diagnostics table saved to:"
 dis "  ${results}tables/diagnostics_obs_counts.csv"
