@@ -187,7 +187,7 @@ do "${code}02_otherout_sdid.do"
 do "${code}02_quarterly_sdid.do"
 
 ** Supplemental obs counts for otherout + quarterly (optional — uncomment to run)
-* do "${code}02_diagnostics_supp.do"
+do "${code}02_diagnostics_supp.do"
 
 ** Appendix B: IRS data quality (extended 2012-2022 window)
 do "${code}02_appendix_data_quality.do"

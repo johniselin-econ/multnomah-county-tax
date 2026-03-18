@@ -201,6 +201,10 @@ program define project_mark_preferred_main
     capture drop preferred
     gen preferred = 0
 
+    ** Highlighted main SDID specifications:
+    ** IRS x {All Counties, Stringency Match}
+    ** ACS College x {All Counties, Stringency Match}
+
     replace preferred = 1 if                                 ///
         data_type == "IRS" &                                 ///
         period_type == "16-22" &                             ///

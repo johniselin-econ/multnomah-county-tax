@@ -153,7 +153,11 @@ replace period_type = "16-24" if strpos(sample_data, "16_24") > 0
 ** Parse out-of-state flag (matches revenue code)
 gen outstate = strpos(outcome, "_outstate") > 0 | strpos(outcome, "_irs5") > 0
 
-** ---- Mark preferred specifications ----
+** Exclude IRS 389 (ACS-matched counties) — keep only IRS with all counties
+drop if inlist(data_type, "IRS (389)", "IRS (389, Out-of-State)")
+drop if strpos(sample_data, "irs_389") > 0
+
+** ---- Mark highlighted specifications ----
 project_mark_preferred_main
 
 ** ---- Keep only AGI ----
@@ -191,25 +195,25 @@ foreach v in flow_semi_e flow_e stock_e {
 ** Save full dataset (all AGI specs with elasticities)
 save "${results}elasticities/elasticity_results.dta", replace
 
-** Report preferred AGI counts
+** Report highlighted AGI counts
 qui count if preferred == 1
 local n_preferred = r(N)
-dis "Preferred AGI specifications: `n_preferred'"
+dis "Highlighted AGI specifications: `n_preferred'"
 
 if `n_preferred' == 0 {
-	dis as error "ERROR: No preferred AGI specifications found."
+	dis as error "ERROR: No highlighted AGI specifications found."
 	log close log_02elast
 	error 2000
 }
 
-** Display preferred AGI specs
+** Display highlighted AGI specs
 dis ""
-dis "Preferred AGI specifications for elasticity table:"
+dis "Highlighted AGI specifications for elasticity table:"
 list data_type sample migration tau se pre_mean ///
 	flow_semi_e flow_e stock_e if preferred == 1, sep(0) abbreviate(20)
 
 ********************************************************************************
-** SECTION 2: LaTeX Table (AGI, Preferred Specs Only)
+** SECTION 2: LaTeX Table (AGI, Highlighted Specs Only)
 ********************************************************************************
 
 dis ""
@@ -482,10 +486,10 @@ foreach migr in "net" "in" "out" {
 	local n_pref = r(N)
 
 	dis ""
-	dis "--- `migr_title'-migration: `n_all' AGI specs (`n_pref' preferred) ---"
+dis "--- `migr_title'-migration: `n_all' AGI specs (`n_pref' highlighted) ---"
 	summ flow_semi_e, detail
 
-	** Build individual vertical lines for each preferred spec (panel a)
+	** Build individual vertical lines for each highlighted spec (panel a)
 	** IRS in vermillion, ACS College in sea blue
 	local pref_semi_overlays ""
 	local irs_j = 0
@@ -516,8 +520,8 @@ foreach migr in "net" "in" "out" {
 		title("(a) Flow Semi-Elasticity", size(medium)) 			///
 		xtitle("Semi-{&epsilon} (pp migration rate per pp tax rate)") ///
 		ytitle("Fraction of Specifications") 						///
-		legend(order(`leg_irs' "IRS Preferred" 						///
-			`leg_acs' "ACS College Preferred") 						///
+		legend(order(`leg_irs' "IRS Benchmarks" 					///
+			`leg_acs' "ACS College Benchmarks") 					///
 			ring(1) pos(6) rows(1) size(small)) 					///
 		name(panel_a, replace) nodraw
 
@@ -532,7 +536,7 @@ foreach migr in "net" "in" "out" {
 
 		summ flow_e if !missing(flow_e), detail
 
-		** Build individual vertical lines for each preferred spec (panel b)
+		** Build individual vertical lines for each highlighted spec (panel b)
 		local pref_fe_overlays ""
 		local irs_j2 = 0
 		local acs_j2 = 0
@@ -561,8 +565,8 @@ foreach migr in "net" "in" "out" {
 			title("(b) Flow Elasticity (Net-of-Tax)", size(medium))		///
 			xtitle("{&epsilon} (% {&Delta} migration rate / % {&Delta} net-of-tax rate)") ///
 			ytitle("Fraction of Specifications") 						///
-			legend(order(`leg_irs2' "IRS Preferred" 					///
-				`leg_acs2' "ACS College Preferred") 					///
+			legend(order(`leg_irs2' "IRS Benchmarks" 				///
+				`leg_acs2' "ACS College Benchmarks") 				///
 				ring(1) pos(6) rows(1) size(small)) 				///
 			name(panel_b, replace) nodraw
 
@@ -607,7 +611,7 @@ dis "=============================================="
 
 dis ""
 dis "=================================================================="
-dis "ELASTICITY SUMMARY — AGI PREFERRED SPECIFICATIONS"
+dis "ELASTICITY SUMMARY — AGI HIGHLIGHTED SPECIFICATIONS"
 dis "=================================================================="
 dis ""
 dis "Average effective PFA rate (Δt):  " %8.4f delta_t " (" %5.3f delta_t * 100 "%)"

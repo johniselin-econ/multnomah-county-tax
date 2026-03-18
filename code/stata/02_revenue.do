@@ -70,7 +70,7 @@ dis "Section 0B: SDID estimation of migration effects"
 dis "=============================================="
 
 ** Load SDID estimates from stored results (produced by 02_sdid_analysis.do)
-** Preferred specs mirror project_mark_preferred_main in 00_stata_config.do:
+** Highlighted specs mirror project_mark_preferred_main in 00_stata_config.do:
 **   - IRS (16-22) × {sample_all, sample_stringency} × {domestic, out-of-state}
 **   - ACS College (16-24) × {sample_all, sample_stringency} × {domestic, out-of-state}
 ** All with controls == 1 & exclusion == 1 (excl. 2020)
@@ -82,8 +82,8 @@ if _rc == 0 {
 	preserve
 	use "${results}sdid/sdid_results.dta", clear
 
-	** ---- Preferred spec lookup ----
-	** Parallel locals define 4 preferred specs per direction
+	** ---- Highlighted spec lookup ----
+	** Parallel locals define 4 highlighted specs per direction
 	** Suffixes for scalar names
 	local suf_1 "irs_all"
 	local suf_2 "irs_string"
@@ -122,9 +122,9 @@ if _rc == 0 {
 	local lbl_3 "ACS College, all counties"
 	local lbl_4 "ACS College, stringency"
 
-	** ---- Domestic preferred specs ----
+	** ---- Domestic highlighted specs ----
 	dis ""
-	dis "  Preferred SDID estimates — domestic (type 3):"
+	dis "  Highlighted SDID estimates — domestic (type 3):"
 	dis "  {hline 60}"
 	forvalues i = 1/4 {
 		qui summ tau if sample_data == "`dom_sdata_`i''" ///
@@ -141,9 +141,9 @@ if _rc == 0 {
 		}
 	}
 
-	** ---- Out-of-state preferred specs ----
+	** ---- Out-of-state highlighted specs ----
 	dis ""
-	dis "  Preferred SDID estimates — out-of-state (type 5):"
+	dis "  Highlighted SDID estimates — out-of-state (type 5):"
 	dis "  {hline 60}"
 	forvalues i = 1/4 {
 		qui summ tau if sample_data == "`out_sdata_`i''" ///
@@ -163,7 +163,7 @@ if _rc == 0 {
 	restore
 
 	** ---- Set primary scalars used by revenue calculations ----
-	** Primary: IRS, all counties (most conservative / broadest sample)
+	** Primary benchmark from the highlighted set: IRS, all counties
 	scalar effect_agi = effect_dom_irs_all
 	scalar effect_agi_oregon = effect_out_irs_all
 }
@@ -1162,37 +1162,39 @@ if _rc == 0 {
 		gen double share_i = R_m_i / dynamic_i * 100
 		gen double implied_loss_i = (R_m_i / dynamic_i) * `actual_pfa_revenue' / 1e6
 
-		** Build individual vertical lines for each preferred spec
-		** IRS preferred in vermillion, ACS College preferred in sea blue
+		** Build individual vertical lines for each highlighted spec
+		** IRS benchmarks in vermillion, ACS College benchmarks in sea blue
 		qui count if preferred == 1
 		local n_pref = r(N)
 		local pref_overlays ""
 		local irs_j = 0
 		local acs_j = 0
+		local leg_irs = 0
+		local leg_acs = 0
+		local plot_j = 1		// plot 1 = histogram
 		forvalues i = 1/`=_N' {
 			if preferred[`i'] == 1 {
+				local ++plot_j
 				local v = implied_loss_i[`i']
 				local dt = data_type[`i']
 				if strpos("`dt'", "IRS") > 0 {
 					local ++irs_j
+					if `leg_irs' == 0 local leg_irs = `plot_j'
 					local pref_overlays `"`pref_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_irs'") lwidth(medthick) lpattern(dash))"'
 				}
 				else {
 					local ++acs_j
+					if `leg_acs' == 0 local leg_acs = `plot_j'
 					local pref_overlays `"`pref_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_acs'") lwidth(medthick) lpattern(dash))"'
 				}
 			}
 		}
 
-		** Legend order: 1=histogram, then IRS lines (2..1+irs_j), then ACS lines
-		local leg_irs = 2
-		local leg_acs = 2 + `irs_j'
-
 		** Summary
 		dis "PFA implied loss distribution ($ millions):"
 		summ implied_loss_i, detail
 
-		** Histogram with one dashed line per preferred spec
+		** Histogram with one dashed line per highlighted spec
 		twoway (histogram implied_loss_i, 								///
 				fcolor("`col_fill'") lcolor(white) lwidth(thin) 		///
 				bin(20) fraction) 										///
@@ -1204,8 +1206,8 @@ if _rc == 0 {
 				size(small)) 											///
 			xtitle("Implied Revenue Loss ($ millions)") 				///
 			ytitle("Fraction of Specifications") 						///
-			legend(order(`leg_irs' "IRS Preferred" 						///
-				`leg_acs' "ACS College Preferred") 						///
+			legend(order(`leg_irs' "IRS Benchmarks" 					///
+				`leg_acs' "ACS College Benchmarks") 					///
 				ring(1) pos(6) rows(1) size(small))
 
 		graph export "${results}revenue/fig_revenue_dist_pfa.pdf", replace
@@ -1244,35 +1246,38 @@ if _rc == 0 {
 		gen double share_i = R_m_i / dynamic_i * 100
 		gen double implied_loss_i = (R_m_i / dynamic_i) * `actual_oregon_revenue' / 1e6
 
-		** Build individual vertical lines for each preferred spec
+		** Build individual vertical lines for each highlighted spec
 		qui count if preferred == 1
 		local n_pref = r(N)
 		local pref_overlays ""
 		local irs_j = 0
 		local acs_j = 0
+		local leg_irs = 0
+		local leg_acs = 0
+		local plot_j = 1		// plot 1 = histogram
 		forvalues i = 1/`=_N' {
 			if preferred[`i'] == 1 {
+				local ++plot_j
 				local v = implied_loss_i[`i']
 				local dt = data_type[`i']
 				if strpos("`dt'", "IRS") > 0 {
 					local ++irs_j
+					if `leg_irs' == 0 local leg_irs = `plot_j'
 					local pref_overlays `"`pref_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_irs'") lwidth(medthick) lpattern(dash))"'
 				}
 				else {
 					local ++acs_j
+					if `leg_acs' == 0 local leg_acs = `plot_j'
 					local pref_overlays `"`pref_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_acs'") lwidth(medthick) lpattern(dash))"'
 				}
 			}
 		}
 
-		local leg_irs = 2
-		local leg_acs = 2 + `irs_j'
-
 		** Summary
 		dis "Oregon implied loss distribution ($ millions):"
 		summ implied_loss_i, detail
 
-		** Histogram with one dashed line per preferred spec
+		** Histogram with one dashed line per highlighted spec
 		twoway (histogram implied_loss_i, 								///
 				fcolor("`col_fill'") lcolor(white) lwidth(thin)			///
 				bin(20) fraction) 										///
@@ -1284,8 +1289,8 @@ if _rc == 0 {
 				size(small)) 											///
 			xtitle("Implied Revenue Loss ($ millions)") 				///
 			ytitle("Fraction of Specifications") 						///
-			legend(order(`leg_irs' "IRS Preferred" 						///
-				`leg_acs' "ACS College Preferred") 						///
+			legend(order(`leg_irs' "IRS Benchmarks" 					///
+				`leg_acs' "ACS College Benchmarks") 					///
 				ring(1) pos(6) rows(1) size(small))
 
 		graph export "${results}revenue/fig_revenue_dist_oregon.pdf", replace

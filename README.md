@@ -141,7 +141,8 @@ The primary analysis uses SDID to estimate the causal effect on migration:
 - **Treatment unit**: Multnomah County, Oregon
 - **Treatment period**: Post-2020
 - **Outcomes**: Migration rates (in, out, net) for returns (n1), exemptions (n2), and AGI
-- **Donor pools**: All counties, urban top 389, COVID-matched, out-of-state
+- **Donor pools**: All counties, urban top 5%, top-25%-urban COVID match, demographic match, and top-25%-urban stringency match
+- **Highlighted SDID specifications**: IRS vs. ACS College, each shown with all-counties and stringency-matched donor pools
 - **Data sources**: IRS county flows (2016–2022), ACS microdata (2016–2024)
 
 ### Difference-in-Differences (DiD)
