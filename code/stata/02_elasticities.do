@@ -104,6 +104,19 @@ log using "${logs}02_log_elasticities_${date}", name(log_02elast) replace text
 
 project_set_seed, context("02_elasticities.do") offset(50)
 
+** Drop any stale revenue-parameter scalars from a prior run. Stata `scalar`
+** is a global namespace that survives `clear`, so a stale value from an
+** earlier (differently-named) run could silently shadow the fresh load.
+foreach s in avg_mt_rate avg_state_rate baseline_pfa_revenue total_agi_2022  ///
+	agi_total agi_impacted impacted_agi_share agi_college college_agi_share   ///
+	agi_college_impacted college_impacted_agi_share                           ///
+	avg_mt_rate_college_impacted avg_total_rate avg_total_rate_pre            ///
+	avg_total_rate_college avg_total_rate_pre_college                         ///
+	delta_t delta_ln_ntr delta_ln_ntr_total delta_ln_ntr_total_college        ///
+	ntr_post ntr_pre ntr_mid delta_ntr_arc {
+	capture scalar drop `s'
+}
+
 ** Validate Overleaf globals up-front. String comparison is empty-safe;
 ** an unquoted `if ${overleaf} == 1` expands to `if  == 1` (syntax error) when unset.
 if "${overleaf}" == "1" {
@@ -555,12 +568,12 @@ preserve
 keep if preferred == 1 & migration == "net" & outstate == 0
 
 ** Formatted strings
-gen str12 tau_str = string(tau, "%9.3f")
-gen str12 se_str = "(" + string(se, "%9.3f") + ")"
-gen str12 fsemi_str = string(flow_semi_e, "%9.3f")
-gen str12 fsemi_se_str = "(" + string(flow_semi_se, "%9.3f") + ")"
-gen str12 stock_common_kleven_str = string(stock_e_cum_common_tb_kleven, "%9.3f")
-gen str12 stock_ann_kleven_str = string(stock_e_ann_full_tb_kleven, "%9.3f")
+gen str20 tau_str = string(tau, "%9.3f")
+gen str20 se_str = "(" + string(se, "%9.3f") + ")"
+gen str20 fsemi_str = string(flow_semi_e, "%9.3f")
+gen str20 fsemi_se_str = "(" + string(flow_semi_se, "%9.3f") + ")"
+gen str20 stock_common_kleven_str = string(stock_e_cum_common_tb_kleven, "%9.3f")
+gen str20 stock_ann_kleven_str = string(stock_e_ann_full_tb_kleven, "%9.3f")
 
 ** Write LaTeX table
 tempname fh
@@ -626,16 +639,16 @@ preserve
 keep if preferred == 1 & inlist(migration, "out", "in") & outstate == 0
 
 ** Formatted strings
-gen str12 tau_str = string(tau, "%9.3f")
-gen str12 se_str = "(" + string(se, "%9.3f") + ")"
-gen str12 fsemi_str = string(flow_semi_e, "%9.3f")
-gen str12 fsemi_se_str = "(" + string(flow_semi_se, "%9.3f") + ")"
-gen str12 fe_total_str = string(flow_e_total, "%9.3f") if !missing(flow_e_total)
-gen str12 fe_total_se_str = "(" + string(flow_se_total, "%9.3f") + ")" if !missing(flow_se_total)
-gen str12 fe_str = string(flow_e, "%9.3f") if !missing(flow_e)
-gen str12 fe_se_str = "(" + string(flow_se, "%9.3f") + ")" if !missing(flow_se)
-gen str12 ste_kleven_str = string(stock_e_att_taxbase_kleven, "%9.3f")
-gen str12 ste_kleven_se_str = "(" + string(stock_se_att_taxbase_kleven, "%9.3f") + ")"
+gen str20 tau_str = string(tau, "%9.3f")
+gen str20 se_str = "(" + string(se, "%9.3f") + ")"
+gen str20 fsemi_str = string(flow_semi_e, "%9.3f")
+gen str20 fsemi_se_str = "(" + string(flow_semi_se, "%9.3f") + ")"
+gen str20 fe_total_str = string(flow_e_total, "%9.3f") if !missing(flow_e_total)
+gen str20 fe_total_se_str = "(" + string(flow_se_total, "%9.3f") + ")" if !missing(flow_se_total)
+gen str20 fe_str = string(flow_e, "%9.3f") if !missing(flow_e)
+gen str20 fe_se_str = "(" + string(flow_se, "%9.3f") + ")" if !missing(flow_se)
+gen str20 ste_kleven_str = string(stock_e_att_taxbase_kleven, "%9.3f")
+gen str20 ste_kleven_se_str = "(" + string(stock_se_att_taxbase_kleven, "%9.3f") + ")"
 
 ** Migration label
 gen str20 migr_label = ""
