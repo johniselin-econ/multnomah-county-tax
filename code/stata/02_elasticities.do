@@ -251,12 +251,21 @@ replace period_type = "16-22" if regexm(outcome, "_irs(_|$)")
 replace period_type = "16-22" if regexm(sample_data, "16_22")
 replace period_type = "16-24" if regexm(sample_data, "16_24")
 
+** Cache sdid_event_results.dta once; two downstream preserve blocks
+** (outstate lookup here, cumulative-tau aggregation in Section 1) read
+** from the tempfile instead of reloading the .dta.
+tempfile event_src
+preserve
+use "${results}sdid/sdid_event_results.dta", clear
+save `event_src'
+restore
+
 ** Read outstate from sdid_event_results.dta (canonical source) rather than
 ** re-deriving. Event-study file is produced by 02_sdid_analysis.do:762 and
 ** carries outstate on every row; collapse to one value per spec and merge.
 tempfile outstate_src
 preserve
-use "${results}sdid/sdid_event_results.dta", clear
+use `event_src', clear
 bysort sample_data sample outcome controls exclusion: keep if _n == 1
 keep sample_data sample outcome controls exclusion outstate
 save `outstate_src'
@@ -357,7 +366,7 @@ foreach pair in ///
 tempfile event_cum
 
 preserve
-use "${results}sdid/sdid_event_results.dta", clear
+use `event_src', clear
 keep if strpos(outcome, "agi_") > 0 & strpos(outcome, "_net_") > 0
 drop if outstate == 1
 
