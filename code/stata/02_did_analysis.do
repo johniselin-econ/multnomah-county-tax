@@ -672,7 +672,7 @@ estimates store es_age_out_state
 use "${data}working/acs_migration_file", replace
 
 ** Sample restrictions
-drop if year == 2015
+drop if year < 2016					// Sample: 2016-2024 (ACS file starts 2012)
 drop if qmigplc1 == 4
 drop if inlist(state_fips_o, 2, 15)
 drop if inlist(state_fips_d, 2, 15)

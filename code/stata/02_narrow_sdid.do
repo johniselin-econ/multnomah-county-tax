@@ -92,7 +92,7 @@ rename dollars_* acs2_dollars_*
 
 ** Drop "other counties"
 drop if county_fips == 0
-drop if year == 2015
+drop if year < 2016					// Sample: 2016-2024 (IRS/ACS data start 2012)
 
 ** Merge with Demographic data
 merge m:1 fips using "${data}working/demographics_2020", ///

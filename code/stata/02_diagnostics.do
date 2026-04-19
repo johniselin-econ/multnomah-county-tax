@@ -321,8 +321,8 @@ clear
 use "${data}working/acs_migration_file", clear
 
 ** Replicate sample construction from 02_did_analysis.do
-drop if year == 2015
-drop if year == 2020
+drop if year < 2016					// Sample: 2016-2024 (ACS file starts 2012)
+drop if year == 2020				// Exclude COVID year
 keep if age >= 25
 capture confirm variable qmigplc1
 if !_rc drop if qmigplc1 == 4
