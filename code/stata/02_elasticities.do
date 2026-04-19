@@ -104,6 +104,23 @@ log using "${logs}02_log_elasticities_${date}", name(log_02elast) replace text
 
 project_set_seed, context("02_elasticities.do") offset(50)
 
+** Validate Overleaf globals up-front. String comparison is empty-safe;
+** an unquoted `if ${overleaf} == 1` expands to `if  == 1` (syntax error) when unset.
+if "${overleaf}" == "1" {
+	foreach g in ol_fig ol_tab {
+		if "${`g'}" == "" {
+			dis as error "ERROR: \${overleaf}=1 but \${`g'} is unset in 00_stata_config.do."
+			exit 198
+		}
+	}
+}
+
+** Common-support window for cumulative stock elasticities.
+** IRS migration data currently ends in 2022; update `common_end_year` when
+** 2023 IRS SOI data lands and can be merged into the ACS panel.
+local pfa_start_year  = 2021		// PFA tax took effect
+local common_end_year = 2022		// last year of IRS-ACS overlap
+
 ** Create output directory
 capture mkdir "${results}elasticities"
 
@@ -174,14 +191,21 @@ dis "  Δln(1−t) PFA only = " %10.6f delta_ln_ntr
 dis "  Δln(1−t) total NTR= " %10.6f delta_ln_ntr_total
 dis "  Arc Δ(1−t)/(1−t̄) = " %10.6f delta_ntr_arc
 
-** Sanity checks
+** Sanity checks (hard errors — a scale bug in 02_revenue.do should halt
+** the pipeline, not print a warning and produce absurd elasticities).
 if delta_t < 0.001 | delta_t > 0.05 {
-	dis as error "WARNING: avg_mt_rate = " %8.6f delta_t " — outside expected range [0.001, 0.05]"
-	dis as error "         Elasticities may be very large or small. Verify 02_revenue.do output."
+	dis as error "ERROR: avg_mt_rate = " %8.6f delta_t " outside [0.001, 0.05]"
+	dis as error "       Inspect TAXSIM v25 inputs in 02_revenue.do and verify"
+	dis as error "       avg_mt_rate is on the [0,1] scale (not [0,100])."
+	log close log_02elast
+	error 459
 }
 if avg_total_rate < 0.20 | avg_total_rate > 0.55 {
-	dis as error "WARNING: avg_total_rate = " %8.6f avg_total_rate ///
-		" — outside expected range [0.20, 0.55]"
+	dis as error "ERROR: avg_total_rate = " %8.6f avg_total_rate ///
+		" outside [0.20, 0.55]"
+	dis as error "       Inspect 02_revenue.do tax-total aggregation."
+	log close log_02elast
+	error 459
 }
 
 ********************************************************************************
@@ -329,6 +353,12 @@ gen double scale_total = 1
 replace scale_total = college_agi_share ///
 	if inlist(data_type, "ACS College", "ACS College (Out-of-State)")
 
+** Guard against a new data_type silently getting the default scale_total=1.
+assert scale_total == 1 ///
+	if !inlist(data_type, "ACS College", "ACS College (Out-of-State)")
+assert scale_total == college_agi_share ///
+	if  inlist(data_type, "ACS College", "ACS College (Out-of-State)")
+
 gen double scale_taxbase = scale_total / impacted_agi_share
 
 ** ATT-implied stock — PFA-only NTR (diagnostic/appendix)
@@ -370,8 +400,9 @@ use `event_src', clear
 keep if strpos(outcome, "agi_") > 0 & strpos(outcome, "_net_") > 0
 drop if outstate == 1
 
-gen byte post_common = inrange(event_year, 2021, 2022) & !missing(event_tau)
-gen byte post_full = event_year >= 2021 & !missing(event_tau)
+gen byte post_common = inrange(event_year, `pfa_start_year', `common_end_year') ///
+	& !missing(event_tau)
+gen byte post_full = event_year >= `pfa_start_year' & !missing(event_tau)
 gen double tau_common = event_tau if post_common
 gen double tau_full = event_tau if post_full
 
@@ -721,7 +752,7 @@ file close `fh'
 restore
 
 ** ---- Copy to Overleaf ----
-if ${overleaf} == 1 {
+if "${overleaf}" == "1" {
 	copy "${results}elasticities/tbl_elasticities.tex" ///
 		"${ol_tab}tbl_elasticities.tex", replace
 	copy "${results}elasticities/tbl_elasticities_inout.tex" ///
@@ -910,7 +941,7 @@ foreach migr in "net" "in" "out" {
 				as(png) width(2400) replace
 
 			** Overleaf copy — net migration only (appendix figure)
-			if "`migr'" == "net" & ${overleaf} == 1 {
+			if "`migr'" == "net" & "${overleaf}" == "1" {
 				graph export "${ol_fig}fig_elasticity_dist_net.pdf", replace
 			}
 
@@ -925,7 +956,7 @@ foreach migr in "net" "in" "out" {
 			graph export "${results}elasticities/fig_elasticity_dist_`migr'.png", ///
 				as(png) width(2400) replace
 
-			if "`migr'" == "net" & ${overleaf} == 1 {
+			if "`migr'" == "net" & "${overleaf}" == "1" {
 				graph export "${ol_fig}fig_elasticity_dist_net.pdf", replace
 			}
 
