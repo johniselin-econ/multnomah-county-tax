@@ -56,7 +56,7 @@ local col_age3  "`col_mult'"   // dark blue - age 65+
 use "${data}working/acs_migration_file", replace
 
 ** Sample restrictions
-drop if year == 2015 					// Sample: 2016-2024
+drop if year < 2016 					// Sample: 2016-2024 (ACS file starts 2012)
 drop if qmigplc1 == 4					// Error in migration place
 drop if inlist(state_fips_o, 2, 15)   	// Alaska and Hawaii
 drop if inlist(state_fips_d, 2, 15)   	// Alaska and Hawaii
