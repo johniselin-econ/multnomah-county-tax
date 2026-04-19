@@ -208,6 +208,8 @@ dis "ACS 2019 Multnomah County observations (18+, non-GQ): " _N
 
 ********************************************************************************
 ** SECTION 2: Create Tax Units
+** (Section 2B was historically a separate tax-unit-income aggregation block;
+** it has been merged into subsection (d) below. Section numbering jumps 2->3.)
 ********************************************************************************
 
 dis ""

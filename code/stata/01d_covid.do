@@ -123,6 +123,10 @@ clear
 ********************************************************************************
 
 ** Load JII data
+if !fileexists("${data}JII Covid data.dta") {
+	dis as error "ERROR: JII Covid data.dta not found at ${data}JII Covid data.dta"
+	error 601
+}
 use "${data}JII Covid data.dta", clear
 
 ** Drop missing FIPS (1 row)

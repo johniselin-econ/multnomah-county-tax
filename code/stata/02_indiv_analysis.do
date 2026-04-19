@@ -7,10 +7,15 @@ Called by:       00_multnomah.do
 
 Purpose:         Perform individual-level migration analysis.
 
+Requires:        Stata 14+ (uses direxists() in hdfe_catyear_plot graph export)
+
 Authors:         John Iselin
 
 For more information, contact john.iselin@yale.edu
 *******************************************************************************/
+
+** Enforce minimum Stata version (direxists requires 14+)
+version 14
 
 ** Load shared project defaults and helper programs
 local cwd = subinstr("`c(pwd)'", "\", "/", .)

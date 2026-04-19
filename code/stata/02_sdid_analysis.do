@@ -1134,7 +1134,10 @@ else {
 			qui count
 			local n_done = r(N)
 			if `n_done' > 0 {
-				** Build lookup key and store in mata associative array
+				** Build lookup key and store in mata associative array.
+				** Drop any stale _done_set from a prior aborted run before
+				** (re-)creating so results don't silently inherit old state.
+				capture mata: mata drop _done_set
 				gen _done_key = sample_data + "|" + sample + "|" + outcome ///
 					+ "|" + string(controls, "%1.0f") + "|" + string(exclusion, "%1.0f")
 				mata: _done_set = asarray_create()
@@ -1464,10 +1467,9 @@ else {
 		capture erase "${results}sdid/sdid_results_new.dta"
 	}
 
-	** Clean up mata checkpoint lookup
-	if `n_done' > 0 {
-		mata: mata drop _done_set
-	}
+	** Clean up mata checkpoint lookup. `capture` prevents an error if an
+	** earlier failure in the loop dropped _done_set prematurely.
+	capture mata: mata drop _done_set
 
 	** Export treatment effects
 	use "${results}sdid/sdid_results.dta", clear

@@ -29,9 +29,6 @@ forvalues y = `next_year'(1)$end_year_acs {
 
 } // END YEAR LOOP
 
-** Des
-tab year
-
 //--------------------------------------------------
 // Household composition variables
 //--------------------------------------------------
@@ -73,11 +70,8 @@ rename statefip state_fips_d
 rename countyfip county_fips_d
 
 ** Set up origin data
-fre migrate1
 drop migrate1d
-tab migplac1
 rename migplac1 state_fips_o
-tab migcounty1
 rename migcounty1 county_fips_o
 
 ** Use migrate1 to assign origin counties:

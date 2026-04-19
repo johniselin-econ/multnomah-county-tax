@@ -45,13 +45,16 @@ foreach var of varlist me mc* mf* {
 	drop tmp1
 } // END VAR LOOP
 
-** Generate value as a percent of median income
+** Generate value as a percent of median income.
+** Naming mirrors the DOL source columns exactly: market-care (mc) columns
+** keep the 2-char prefix; market family-childcare (mfcc) columns keep all
+** 4 chars, so the output prefix matches the input prefix in both groups.
 gen mc_infant_med = mcinfant / me
 gen mc_toddler_med = mctoddler / me
 gen mc_preschool_med = mcpreschool / me
-gen mf_infant_med = mfccinfant / me
-gen mf_toddler_med = mfcctoddler / me
-gen mf_preschool_med = mfccpreschool / me
+gen mfcc_infant_med = mfccinfant / me
+gen mfcc_toddler_med = mfcctoddler / me
+gen mfcc_preschool_med = mfccpreschool / me
 
 ** Drop unnecc. variables
 drop me mcinfant mctoddler mcpreschool mfcc*
@@ -64,7 +67,7 @@ by fips year, sort: replace year = year + _n - 1 if year == 2022 & _n > 1
 ** Extrapolate 2023-24 by county using county-specific linear trends.
 ** Counties with <=3 observed values for a given variable are left missing for
 ** extrapolated years rather than being dropped from the full childcare panel.
-foreach v of varlist mc_* mf_* {
+foreach v of varlist mc_* mfcc_* {
     tempfile coef_`v'
 
 	** Replace 2023 + 2024 values with missings
