@@ -97,6 +97,7 @@ drop if year == 2015
 ** Merge with Demographic data
 merge m:1 fips using "${data}working/demographics_2020", ///
 	gen(demo_merge) keep(master match)
+project_report_merge, gen(demo_merge) tag("demographics_2020") keep_merge
 keep if demo_merge == 3
 drop demo_merge
 
@@ -106,22 +107,23 @@ rename population pop_census
 ** Merge with BEA economics
 merge m:1 year fips using "${data}working/bea_economics", ///
 	gen(econ_merge) keep(master match)
+project_report_merge, gen(econ_merge) tag("bea_economics") keep_merge
 keep if econ_merge == 3
 drop econ_merge
 
 ** Merge with COVID-19 Data
 merge m:1 fips using "${data}working/covid_cleaned_wide.dta", ///
 	gen(covid_merge) keep(master match)
+project_report_merge, gen(covid_merge) tag("covid_wide")
 
 ** Merge with Property Tax Rates
 merge m:1 year fips using "${data}working/property_tax_rates_overall", ///
-	gen(proptx_merge) keep(master match) keepusing(prop_rate_mean prop_rate_se)
+	gen(proptx_merge) keep(master match) keepusing(prop_rate_mean)
+project_report_merge, gen(proptx_merge) tag("property_tax")
 
 ** Rename for clarity
 rename prop_rate_mean prop_tax_rate
-rename prop_rate_se prop_tax_rate_se
 label var prop_tax_rate "Mean property tax rate (% of home value)"
-label var prop_tax_rate_se "SE of property tax rate"
 
 ** Organize data
 order year fips state_* county_*
@@ -645,16 +647,6 @@ foreach otype in "n1" "n2" "agi" {
 		gen spec_rank = _n
 		local n_specs = _N
 
-		** Labels for outcome type
-		if "`otype'" == "n1" local otype_label "Returns/Households"
-		else if "`otype'" == "n2" local otype_label "Exemptions/Persons"
-		else if "`otype'" == "agi" local otype_label "AGI/Income"
-
-		** Labels for migration
-		if "`migr'" == "net" local migr_label "Net Migration"
-		else if "`migr'" == "in" local migr_label "In-Migration"
-		else if "`migr'" == "out" local migr_label "Out-Migration"
-
 		********************************************************************************
 		** Create variables for significance and preferred-based coloring
 		********************************************************************************
@@ -756,7 +748,6 @@ foreach otype in "n1" "n2" "agi" {
 				   rows(1) pos(6) size(vsmall)) 							///
 			ytitle("Treatment Effect (pp)", size(vsmall)) 					///
 			xtitle("Specification (ranked by effect size)", size(vsmall)) 	///
-			title("`otype_label': `migr_label' (Narrow Sample)", size(medium)) ///
 			xlabel(none) 													///
 			xscale(range(0.5 `=`n_specs'+0.5')) 							///
 			graphregion(color(white)) 										///

@@ -41,6 +41,7 @@ rename b79aam median_income_margin
 
 ** Create urban percent
 gen percent_urban = pop_urban / population
+label var percent_urban "Share of population in urban areas"
 
 ** Label variables
 label var state_name "State name"
@@ -93,6 +94,7 @@ drop year median_income* population_margin
 make_fips state_fips county_fips, gen(fips)
 
 ** Save data
+compress
 save "${data}working/population_2020", replace
 clear
 
@@ -101,7 +103,7 @@ use `demo'
 keep if !missing(median_income)
 tab year
 
-** Keep 2020
+** Keep the 5-year ACS estimate (NHGIS reports it under year="2015-2019")
 keep if year == "2015-2019"
 drop year pop_rural pop_urban percent_urban
 
@@ -109,6 +111,7 @@ drop year pop_rural pop_urban percent_urban
 make_fips state_fips county_fips, gen(fips)
 
 ** Save data
+compress
 save "${data}working/acs_2015_2019_data", replace
 
 ** Rename for merge
@@ -116,9 +119,11 @@ rename population population_acs
 
 ** Merge with other data
 merge 1:1 state_fips county_fips using "${data}working/population_2020", 		///
-	keep(match) nogen
+	gen(pop2020_mrg) keep(match)
+project_report_merge, gen(pop2020_mrg) tag("pop2020")
 
 ** Save data
+compress
 save "${data}working/demographics_2020", replace
 
 //--------------------------------------------------
@@ -148,6 +153,7 @@ drop if missing(linecode)
 ** Update names
 rename geofips fips
 replace fips = subinstr(fips, `"""', "", .)
+** BEA geofips imports as a quoted string ("01001"); after subinstr it is pure numeric.
 destring fips, replace
 
 ** Keep population and per-capita income, dropping personal income (total)
@@ -199,6 +205,7 @@ keep if ct == `full_years'
 drop ct
 
 ** Save data
+compress
 save "${data}working/bea_economics", replace
 
 //--------------------------------------------------
@@ -238,6 +245,7 @@ order year fips unemp
 destring unemp, replace
 
 ** Save data
+compress
 save "${data}working/bls_unemployment", replace
 
 //--------------------------------------------------
@@ -262,5 +270,6 @@ rename longitude lon
 drop if fips > 60000
 
 ** Save data
+compress
 save "${data}working/pop_centers", replace
 clear

@@ -1,15 +1,13 @@
 /*****************************************************************************
 * File:        02_diagnostics_supp.do
-* Purpose:     Supplemental observation counts for Other-Outcome SDID and
-*              Quarterly SDID analyses
-* Called by:   00_multnomah.do (optional, after 02_otherout_sdid and
-*              02_quarterly_sdid have run)
+* Purpose:     Supplemental observation counts for Other-Outcome SDID analysis
+* Called by:   00_multnomah.do (optional, after 02_otherout_sdid has run)
 * Outputs:     ${results}tables/diagnostics_obs_counts_supp.tex
 *              ${results}tables/diagnostics_obs_counts_supp.xlsx
 *              ${results}tables/diagnostics_obs_counts_supp.csv
 *
-* Note:        Companion to 02_diagnostics.do. Separated because these
-*              sections depend on data prep that runs later in the pipeline.
+* Note:        Companion to 02_diagnostics.do. Kept separate because it runs
+*              after 02_otherout_sdid.do has produced its working datasets.
 ******************************************************************************/
 
 ** Load shared project defaults and helper programs
@@ -112,91 +110,6 @@ foreach out in "ln_n1" "ln_agi" "ln_total_inc" "ln_wage" {
 } // END OUTCOME LOOP
 
 clear
-
-
-********************************************************************************
-** SECTION 2: Quarterly SDID (QCEW + QWI)
-********************************************************************************
-
-** ---- QCEW (establishments, wages) ----
-capture confirm file "${data}working/qcew_county_quarterly.dta"
-if !_rc {
-
-    use "${data}working/qcew_county_quarterly", clear
-
-    drop if county_fips == 0
-
-    ** Balanced panel
-    bysort fips: gen ct = _N
-    qui summ ct
-    keep if ct == `r(max)'
-    drop ct
-
-    preserve
-        qui distinct fips
-        local n_units = r(ndistinct)
-        qui distinct year_quarter
-        local n_periods = r(ndistinct)
-        local n_obs = _N
-
-        clear
-        set obs 1
-        gen str40 approach = "Quarterly SDID"
-        gen str40 sample = "Establishments + Wages"
-        gen str40 data_source = "QCEW"
-        gen str20 unit = "county-quarter"
-        gen long N_units = `n_units'
-        gen int N_years = `n_periods'
-        gen long N_obs = `n_obs'
-        append using `results'
-        save `results', replace
-    restore
-
-    clear
-}
-else {
-    dis as txt "  Note: QCEW data not found, skipping QCEW diagnostics."
-}
-
-** ---- QWI (employment, earnings) ----
-capture confirm file "${data}working/qwi_county_quarterly.dta"
-if !_rc {
-
-    use "${data}working/qwi_county_quarterly", clear
-
-    drop if county_fips == 0
-
-    ** Balanced panel
-    bysort fips: gen ct = _N
-    qui summ ct
-    keep if ct == `r(max)'
-    drop ct
-
-    preserve
-        qui distinct fips
-        local n_units = r(ndistinct)
-        qui distinct year_quarter
-        local n_periods = r(ndistinct)
-        local n_obs = _N
-
-        clear
-        set obs 1
-        gen str40 approach = "Quarterly SDID"
-        gen str40 sample = "Employment + Earnings"
-        gen str40 data_source = "QWI"
-        gen str20 unit = "county-quarter"
-        gen long N_units = `n_units'
-        gen int N_years = `n_periods'
-        gen long N_obs = `n_obs'
-        append using `results'
-        save `results', replace
-    restore
-
-    clear
-}
-else {
-    dis as txt "  Note: QWI data not found, skipping QWI diagnostics."
-}
 
 
 ********************************************************************************

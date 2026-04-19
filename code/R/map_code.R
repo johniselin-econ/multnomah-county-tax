@@ -505,21 +505,6 @@ orwa_counties <- us_counties_flow |>
  filter(STATEFP %in% orwa_states)
 
 # ------------------------------------------------------------
-# DEFINE MEASURE AND DIRECTION LABELS
-# ------------------------------------------------------------
-measure_labels <- list(
- n1 = "Returns",
- n2 = "Exemptions",
- agi = "AGI ($)"
-)
-
-direction_labels <- list(
- "out" = "Out-Migration from Multnomah",
- "in" = "In-Migration to Multnomah",
- "net" = "Net Migration (In - Out)"
-)
-
-# ------------------------------------------------------------
 # FUNCTION TO CREATE FLOW DELTA MAP
 # ------------------------------------------------------------
 create_flow_map <- function(data, counties_sf, direction, measure, region_name,
@@ -567,10 +552,6 @@ create_flow_map <- function(data, counties_sf, direction, measure, region_name,
      )
    )
 
- # Get direction and measure labels
- dir_label <- direction_labels[[direction]]
- meas_label <- measure_labels[[measure]]
-
  # Extract Multnomah County for highlighting
  multnomah_highlight <- map_data |> filter(GEOID == "41051")
 
@@ -590,16 +571,8 @@ create_flow_map <- function(data, counties_sf, direction, measure, region_name,
      breaks = c(-100, -50, 0, 50, 100, 150, 200),
      labels = c("-100%", "-50%", "0%", "+50%", "+100%", "+150%", "+200%")
    ) +
-   labs(
-     title = paste0(dir_label, ": ", meas_label),
-     subtitle = paste0("Percent change (2018-2019 vs 2021-2022) - ", region_name),
-     caption = "Note: Values capped at -100% to +200% for visualization"
-   ) +
    theme_void() +
    theme(
-     plot.title = element_text(size = 14, face = "bold", hjust = 0.5, color = "black"),
-     plot.subtitle = element_text(size = 10, hjust = 0.5, color = "black"),
-     plot.caption = element_text(size = 8, hjust = 0.5, color = "black"),
      legend.position = "bottom",
      legend.key.width = LEGEND_KEY_W,
      legend.key.height = LEGEND_KEY_H,
@@ -661,10 +634,6 @@ create_rate_change_map <- function(data, counties_sf, direction, measure, region
      )
    )
 
- # Get direction and measure labels
- dir_label <- direction_labels[[direction]]
- meas_label <- measure_labels[[measure]]
-
  # Extract Multnomah County for highlighting
  multnomah_highlight <- map_data |> filter(GEOID == "41051")
 
@@ -681,14 +650,8 @@ create_rate_change_map <- function(data, counties_sf, direction, measure, region
      na.value = "gray90",
      name = legend_title
    ) +
-   labs(
-     title = paste0(dir_label, " Rate Change: ", meas_label),
-     subtitle = paste0("Pre vs Post difference (2018-2019 vs 2021-2022) - ", region_name)
-   ) +
    theme_void() +
    theme(
-     plot.title = element_text(size = 14, face = "bold", hjust = 0.5, color = "black"),
-     plot.subtitle = element_text(size = 10, hjust = 0.5, color = "black"),
      legend.position = "bottom",
      legend.key.width = LEGEND_KEY_W,
      legend.key.height = LEGEND_KEY_H,
@@ -907,8 +870,6 @@ create_directional_flow_map <- function(data, counties_sf, direction, measure,
     data_filtered <- data |>
       filter(out_pre > 0 & out_post > 0) |>
       mutate(rate_change = out_rate_change)
-    title_prefix <- "Out-Migration FROM Multnomah"
-    subtitle_text <- "Rate change per 100K destination population"
     # Positive = more people leaving Multnomah for this county
     low_color <- col_div_low
     high_color <- col_div_high
@@ -920,8 +881,6 @@ create_directional_flow_map <- function(data, counties_sf, direction, measure,
     data_filtered <- data |>
       filter(in_pre > 0 & in_post > 0) |>
       mutate(rate_change = in_rate_change)
-    title_prefix <- "In-Migration TO Multnomah"
-    subtitle_text <- "Rate change per 100K origin population"
     # Negative = fewer people coming to Multnomah
     low_color <- col_div_low
     high_color <- col_div_high
@@ -929,9 +888,6 @@ create_directional_flow_map <- function(data, counties_sf, direction, measure,
     message(paste0("  ", direction, ": ", n_counties_with_flows,
                    " counties with positive flows in both periods"))
   }
-
-  # Get measure label
-  meas_label <- measure_labels[[measure]]
 
   # Join with county geometries
   # Counties without flows in both periods will have NA (shown in gray)
@@ -994,16 +950,8 @@ create_directional_flow_map <- function(data, counties_sf, direction, measure,
       name = "Rate change\n(per 100K)",
       limits = c(-limit_val, limit_val)
     ) +
-    labs(
-      title = paste0(title_prefix, ": ", meas_label),
-      subtitle = paste0(subtitle_text, " (2018-19 vs 2021-22) - ", region_name),
-      caption = "Note: Multnomah shown hatched; gray counties had zero flows in one or both periods"
-    ) +
     theme_void() +
     theme(
-      plot.title = element_text(size = 14, face = "bold", hjust = 0.5, color = "black"),
-      plot.subtitle = element_text(size = 10, hjust = 0.5, color = "black"),
-      plot.caption = element_text(size = 8, hjust = 0.5, color = "gray40"),
       legend.position = "bottom",
       legend.key.width = LEGEND_KEY_W,
       legend.key.height = LEGEND_KEY_H,

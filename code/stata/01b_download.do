@@ -30,14 +30,12 @@ forvalues yy = $start_yy_irs_download/$end_yy_irs_migration {
     local fn_out "countyoutflow`yy'`zz'.csv"
     local fn_in  "countyinflow`yy'`zz'.csv"
 
-    capture confirm file "${data}irs/`fn_out'"
-    if _rc {
+    if !fileexists("${data}irs/`fn_out'") {
         di as txt "Downloading (IRS SOI) `fn_out' ..."
         copy "`irs_base'/`fn_out'" "${data}irs/`fn_out'", replace
     }
 
-    capture confirm file "${data}irs/`fn_in'"
-    if _rc {
+    if !fileexists("${data}irs/`fn_in'") {
         di as txt "Downloading (IRS SOI) `fn_in' ..."
         copy "`irs_base'/`fn_in'" "${data}irs/`fn_in'", replace
     }
@@ -55,8 +53,7 @@ forvalues yy = $start_yy_irs_download/$end_yy_irs_agi {
         local fn_inc "`yy'incyallagi.csv"
     }
 
-    capture confirm file "${data}irs/`fn_inc'"
-    if _rc {
+    if !fileexists("${data}irs/`fn_inc'") {
         di as txt "Downloading (IRS SOI) `fn_inc' ..."
         copy "`irs_base'/`fn_inc'" "${data}irs/`fn_inc'", replace
     }
@@ -100,14 +97,12 @@ forvalues yy = $start_yy_irs_download/$end_yy_irs_migration {
     local fn_sout "stateoutflow`yy'`zz'.csv"
     local fn_sin  "stateinflow`yy'`zz'.csv"
 
-    capture confirm file "${data}irs/`fn_sout'"
-    if _rc {
+    if !fileexists("${data}irs/`fn_sout'") {
         di as txt "Downloading (IRS SOI) `fn_sout' ..."
         copy "`irs_base'/`fn_sout'" "${data}irs/`fn_sout'", replace
     }
 
-    capture confirm file "${data}irs/`fn_sin'"
-    if _rc {
+    if !fileexists("${data}irs/`fn_sin'") {
         di as txt "Downloading (IRS SOI) `fn_sin' ..."
         copy "`irs_base'/`fn_sin'" "${data}irs/`fn_sin'", replace
     }
@@ -135,19 +130,15 @@ if "`covid_file'"=="" {
 local dol_dir "${data}demographic/dol/NDCP2022.xlsx"
 local bls_dir "${data}demographic/bls/la.data.64.County"
 
-capture confirm file `dol_dir'
-
-if _rc != 0 {
-    di as err "WARNING: `dol_dir' not found."
+if !fileexists("`dol_dir'") {
+    di as err "ERROR: `dol_dir' not found."
     di as err "Run 00_multnomah.R first, or download manually from:"
     di as err "  https://www.dol.gov/sites/dolgov/files/WB/NDCP2022.xlsx"
     exit 601
 }
 
-capture confirm file `bls_dir'
-
-if _rc != 0 {
-    di as err "WARNING: `bls_dir' not found."
+if !fileexists("`bls_dir'") {
+    di as err "ERROR: `bls_dir' not found."
     di as err "Run 00_multnomah.R first, or download manually from:"
     di as err "  https://download.bls.gov/pub/time.series/la/la.data.64.County"
     exit 601
@@ -156,20 +147,19 @@ if _rc != 0 {
 * ----------------------------
 * Census B01001: County Age Shares (created by 00_multnomah.R)
 * ----------------------------
-capture confirm file "${data}working/age_shares_county.csv"
-if _rc {
+if !fileexists("${data}working/age_shares_county.csv") {
     di as err "ERROR: age_shares_county.csv not found."
     di as err "Run 00_multnomah.R first to download Census age share data."
     exit 601
 }
 
 ** Import and save as Stata dataset
-capture confirm file "${data}working/age_shares_county.dta"
-if _rc {
+if !fileexists("${data}working/age_shares_county.dta") {
     import delimited "${data}working/age_shares_county.csv", clear
     label var fips "County FIPS code"
     label var share_under_24 "Share of population under age 24 (ACS 2015-2019)"
     label var share_over_65 "Share of population age 65+ (ACS 2015-2019)"
+    compress
     save "${data}working/age_shares_county", replace
     clear
 }

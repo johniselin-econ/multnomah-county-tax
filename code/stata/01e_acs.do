@@ -173,7 +173,8 @@ restore
 
 ** Merge persons/income with households
 use `acs_pi', clear
-merge 1:1 year fips_o fips_d using `acs_hh', nogen
+merge 1:1 year fips_o fips_d using `acs_hh', gen(hh_mrg)
+project_report_merge, gen(hh_mrg) tag("acs_hh")
 
 label var persons "Estimated number of persons (sum PERWT)"
 label var households "Estimated number of households (sum HHWT among heads)"
@@ -207,8 +208,10 @@ tempfile ids_o
 save `ids_o'
 restore
 
-merge m:1 state_fips_d county_fips_d using `ids_d', keep(master match) nogen
-merge m:1 state_fips_o county_fips_o using `ids_o', keep(master match) nogen
+merge m:1 state_fips_d county_fips_d using `ids_d', gen(ids_d_mrg) keep(master match)
+project_report_merge, gen(ids_d_mrg) tag("acs_ids_d")
+merge m:1 state_fips_o county_fips_o using `ids_o', gen(ids_o_mrg) keep(master match)
+project_report_merge, gen(ids_o_mrg) tag("acs_ids_o")
 
 ** Organize data
 order year ///
@@ -224,6 +227,7 @@ replace county_name_o = "Other" if county_fips_o == 0
 replace county_name_d = "Other" if county_fips_d == 0
 
 ** Save data
+compress
 save "${data}working/acs_county_flow", replace
 clear
 

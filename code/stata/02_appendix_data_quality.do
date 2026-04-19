@@ -172,9 +172,7 @@ twoway ///
 	xtitle("Year", size(small)) ///
 	legend(order(1 "National average" 2 "Oregon" 3 "Multnomah County") ///
 		rows(1) size(vsmall) position(6)) ///
-	graphregion(color(white)) ///
-	note("Vertical line marks start of main analysis window (2016)." ///
-		"Source: IRS SOI county-to-county migration data.", size(vsmall))
+	graphregion(color(white))
 
 graph export "${results}appx_irs_data/fig_dq_timeseries_out.png", replace width(2400)
 if ${overleaf} == 1 {
@@ -194,9 +192,7 @@ twoway ///
 	xtitle("Year", size(small)) ///
 	legend(order(1 "National average" 2 "Oregon" 3 "Multnomah County") ///
 		rows(1) size(vsmall) position(6)) ///
-	graphregion(color(white)) ///
-	note("Vertical line marks start of main analysis window (2016)." ///
-		"Source: IRS SOI county-to-county migration data.", size(vsmall))
+	graphregion(color(white))
 
 graph export "${results}appx_irs_data/fig_dq_timeseries_in.png", replace width(2400)
 if ${overleaf} == 1 {
@@ -244,25 +240,18 @@ save `yoy_changes'
 foreach measure in "n1" "agi" {
 
 	if "`measure'" == "n1" {
-		local fig_title "Returns"
-		local fig_num "B2"
 		local fig_file "fig_dq_dist_n1"
 	}
 	else {
-		local fig_title "AGI"
-		local fig_num "B3"
 		local fig_file "fig_dq_dist_agi"
 	}
 
 	local glist ""
 	local panel_idx = 0
-	local panel_labels `" "a" "b" "c" "d" "'
 
 	foreach yr in 2014 2015 2016 2017 {
 
 		local panel_idx = `panel_idx' + 1
-		local panel_ltr : word `panel_idx' of `panel_labels'
-		local prev = `yr' - 1
 
 		** Get Multnomah's change value for this year (out-migration)
 		use `yoy_changes', clear
@@ -295,8 +284,6 @@ foreach measure in "n1" "agi" {
 			ytitle("Density", size(vsmall)) ///
 			xtitle("Change in out-migration rate (%)", size(vsmall)) ///
 			graphregion(color(white)) ///
-			note("Multnomah at `pctile'th percentile (vertical line)." ///
-				"`N_excl' counties with |change| > 200% excluded.", size(vsmall)) ///
 			legend(off) ///
 			name(g_`measure'_`yr', replace)
 
@@ -307,9 +294,7 @@ foreach measure in "n1" "agi" {
 	** Combine panels
 	graph combine `glist', ///
 		rows(2) cols(2) ///
-		graphregion(color(white)) ///
-		note("Kernel density of county-level year-over-year changes in the out-migration rate." ///
-			"Vertical line marks Multnomah County. Counties with |change| > 200% excluded. Source: IRS SOI.", size(vsmall))
+		graphregion(color(white))
 
 	graph export "${results}appx_irs_data/`fig_file'.png", replace width(3000)
 	if ${overleaf} == 1 {
@@ -323,8 +308,6 @@ foreach measure in "n1" "agi" {
 	foreach yr in 2014 2015 2016 2017 {
 
 		local panel_idx = `panel_idx' + 1
-		local panel_ltr : word `panel_idx' of `panel_labels'
-		local prev = `yr' - 1
 
 		use `yoy_changes', clear
 		keep if year == `yr'
@@ -356,8 +339,6 @@ foreach measure in "n1" "agi" {
 			ytitle("Density", size(vsmall)) ///
 			xtitle("Change in in-migration rate (%)", size(vsmall)) ///
 			graphregion(color(white)) ///
-			note("Multnomah at `pctile'th percentile (vertical line)." ///
-				"`N_excl' counties with |change| > 200% excluded.", size(vsmall)) ///
 			legend(off) ///
 			name(g_`measure'_in_`yr', replace)
 
@@ -368,9 +349,7 @@ foreach measure in "n1" "agi" {
 	** Combine in-migration panels
 	graph combine `glist', ///
 		rows(2) cols(2) ///
-		graphregion(color(white)) ///
-		note("Kernel density of county-level year-over-year changes in the in-migration rate." ///
-			"Vertical line marks Multnomah County. Counties with |change| > 200% excluded. Source: IRS SOI.", size(vsmall))
+		graphregion(color(white))
 
 	graph export "${results}appx_irs_data/`fig_file'_in.png", replace width(3000)
 	if ${overleaf} == 1 {
@@ -534,9 +513,7 @@ twoway ///
 	xtitle("Year", size(small)) ///
 	legend(order(1 "National average" 2 "Multnomah County") ///
 		rows(1) size(vsmall) position(6)) ///
-	graphregion(color(white)) ///
-	note("Vertical line marks start of main analysis window (2016)." ///
-		"Source: Authors' calculations using ACS microdata, ages 25+.", size(vsmall))
+	graphregion(color(white))
 
 graph export "${results}appx_irs_data/fig_dq_acs_timeseries_out.png", replace width(2400)
 if ${overleaf} == 1 {
@@ -555,9 +532,7 @@ twoway ///
 	xtitle("Year", size(small)) ///
 	legend(order(1 "National average" 2 "Multnomah County") ///
 		rows(1) size(vsmall) position(6)) ///
-	graphregion(color(white)) ///
-	note("Vertical line marks start of main analysis window (2016)." ///
-		"Source: Authors' calculations using ACS microdata, ages 25+.", size(vsmall))
+	graphregion(color(white))
 
 graph export "${results}appx_irs_data/fig_dq_acs_timeseries_in.png", replace width(2400)
 if ${overleaf} == 1 {
@@ -595,26 +570,19 @@ save `acs_yoy_changes'
 foreach measure in "hh" "dollars" {
 
 	if "`measure'" == "hh" {
-		local fig_title "Households"
-		local fig_num "B5"
 		local fig_file "fig_dq_acs_dist_hh"
 	}
 	else {
-		local fig_title "Dollars"
-		local fig_num "B6"
 		local fig_file "fig_dq_acs_dist_dollars"
 	}
 
 	** Out-migration distributions
 	local glist ""
 	local panel_idx = 0
-	local panel_labels `" "a" "b" "c" "d" "'
 
 	foreach yr in 2014 2015 2016 2017 {
 
 		local panel_idx = `panel_idx' + 1
-		local panel_ltr : word `panel_idx' of `panel_labels'
-		local prev = `yr' - 1
 
 		use `acs_yoy_changes', clear
 		keep if year == `yr'
@@ -653,8 +621,6 @@ foreach measure in "hh" "dollars" {
 			ytitle("Density", size(vsmall)) ///
 			xtitle("Change in out-migration rate (%)", size(vsmall)) ///
 			graphregion(color(white)) ///
-			note("Multnomah at `pctile'th percentile (vertical line)." ///
-				"`N_excl' counties with |change| > 200% excluded.", size(vsmall)) ///
 			legend(off) ///
 			name(g_acs_`measure'_`yr', replace)
 
@@ -666,9 +632,7 @@ foreach measure in "hh" "dollars" {
 	if "`glist'" != "" {
 		graph combine `glist', ///
 			rows(2) cols(2) ///
-			graphregion(color(white)) ///
-			note("Kernel density of county-level year-over-year changes in the out-migration rate." ///
-				"Vertical line marks Multnomah County. Counties with |change| > 200% excluded. Source: ACS microdata, ages 25+.", size(vsmall))
+			graphregion(color(white))
 
 		graph export "${results}appx_irs_data/`fig_file'.png", replace width(3000)
 		if ${overleaf} == 1 {
@@ -683,8 +647,6 @@ foreach measure in "hh" "dollars" {
 	foreach yr in 2014 2015 2016 2017 {
 
 		local panel_idx = `panel_idx' + 1
-		local panel_ltr : word `panel_idx' of `panel_labels'
-		local prev = `yr' - 1
 
 		use `acs_yoy_changes', clear
 		keep if year == `yr'
@@ -723,8 +685,6 @@ foreach measure in "hh" "dollars" {
 			ytitle("Density", size(vsmall)) ///
 			xtitle("Change in in-migration rate (%)", size(vsmall)) ///
 			graphregion(color(white)) ///
-			note("Multnomah at `pctile'th percentile (vertical line)." ///
-				"`N_excl' counties with |change| > 200% excluded.", size(vsmall)) ///
 			legend(off) ///
 			name(g_acs_`measure'_in_`yr', replace)
 
@@ -736,9 +696,7 @@ foreach measure in "hh" "dollars" {
 	if "`glist'" != "" {
 		graph combine `glist', ///
 			rows(2) cols(2) ///
-			graphregion(color(white)) ///
-			note("Kernel density of county-level year-over-year changes in the in-migration rate." ///
-				"Vertical line marks Multnomah County. Counties with |change| > 200% excluded. Source: ACS microdata, ages 25+.", size(vsmall))
+			graphregion(color(white))
 
 		graph export "${results}appx_irs_data/`fig_file'_in.png", replace width(3000)
 		if ${overleaf} == 1 {

@@ -90,6 +90,7 @@ foreach v of varlist mc_* mf_* {
 } // END VAR LOOP
 
 ** Save file
+compress
 save "${data}working/dol_childcare", replace
 
 
@@ -189,20 +190,24 @@ drop if missing(valueh) | valueh == 0 | valueh == 9999999
 gen prop_rate = 100 * proptx_dollars / valueh
 label var prop_rate "Property tax rate (% of home value)"
 
+** Sanity check: HHWT must be fractional for analytic weighting
+qui summ hhwt
+assert r(min) > 0
+di as text "HHWT range: " %9.4f r(min) " to " %9.4f r(max) ///
+   ", mean: " %9.4f r(mean)
+
 ********************************************************************************
 ** VERSION 1: Overall (all observations)
 ********************************************************************************
 preserve
 
-** Collapse to county X year, weighted by household weight
+** Collapse to county X year, weighted by household expansion weight
 collapse (mean) prop_rate_mean = prop_rate ///
-         (semean) prop_rate_se = prop_rate ///
          (count) prop_rate_n = prop_rate ///
-         [fw = hhwt], by(year fips)
+         [aw = hhwt], by(year fips)
 
 ** Label variables
 label var prop_rate_mean "Mean property tax rate (% of home value)"
-label var prop_rate_se "SE of property tax rate"
 label var prop_rate_n "Number of observations"
 
 ** Generate state and county FIPS
@@ -217,12 +222,13 @@ merge m:1 state_fips using "${data}working/state_ids", keep(master match) update
 replace county_name = "Other" if county_fips == 0
 
 ** Order variables
-order year fips state_fips county_fips state_name county_name prop_rate_mean prop_rate_se prop_rate_n
+order year fips state_fips county_fips state_name county_name prop_rate_mean prop_rate_n
 
 ** Sort
 sort fips year
 
 ** Save overall version
+compress
 save "${data}working/property_tax_rates_overall", replace
 
 restore
@@ -235,15 +241,13 @@ restore
 drop if qprotx99 == 4
 drop if qvalueh == 4
 
-** Collapse to county X year, weighted by household weight
+** Collapse to county X year, weighted by household expansion weight
 collapse (mean) prop_rate_mean = prop_rate ///
-         (semean) prop_rate_se = prop_rate ///
          (count) prop_rate_n = prop_rate ///
-         [fw = hhwt], by(year fips)
+         [aw = hhwt], by(year fips)
 
 ** Label variables
 label var prop_rate_mean "Mean property tax rate (% of home value, excl. allocated)"
-label var prop_rate_se "SE of property tax rate (excl. allocated)"
 label var prop_rate_n "Number of observations (excl. allocated)"
 
 ** Generate state and county FIPS
@@ -258,12 +262,13 @@ merge m:1 state_fips using "${data}working/state_ids", keep(master match) update
 replace county_name = "Other" if county_fips == 0
 
 ** Order variables
-order year fips state_fips county_fips state_name county_name prop_rate_mean prop_rate_se prop_rate_n
+order year fips state_fips county_fips state_name county_name prop_rate_mean prop_rate_n
 
 ** Sort
 sort fips year
 
 ** Save version excluding allocated
+compress
 save "${data}working/property_tax_rates_excl_allocated", replace
 
 ** Display summary

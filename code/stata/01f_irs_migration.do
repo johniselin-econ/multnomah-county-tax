@@ -79,7 +79,8 @@ forvalues y = $start_yy_irs_county(1)$end_yy_irs_county {
 		}
 
 		** Keep gross categories
-		** IRS aggregate pseudo-FIPS codes:
+		** IRS aggregate pseudo-FIPS codes (SOI Migration Data User Guide,
+		** https://www.irs.gov/statistics/soi-tax-stats-migration-data):
 		**   96 = total migration, 97 = domestic subtotals
 		**     county == 0 = total domestic, 1 = within-state, 3 = interstate
 		**   98 = foreign migration
@@ -290,22 +291,8 @@ rename *_total *_total_in
 ** Reshape
 reshape wide n1_in_ n2_in_ agi_in_, i(year state_fips county_fips) j(move_type)
 
-** Define locals
-local txt1 "Non-movers"
-local txt2 "All movers"
-local txt3 "Domestic movers"
-local txt4 "Within-state movers"
-local txt5 "Inter-state movers"
-local txt6 "Foreign movers"
-
-** Label variables, in loop
-foreach n of numlist 1(1)6 {
-
-	label var n1_in_`n' "Returns, in-migration, `txt`n''"
-	label var n2_in_`n' "Exemptions, in-migration, `txt`n''"
-	label var agi_in_`n' "AGI, in-migration, `txt`n''"
-
-} // END NUMLIST LOOP
+** Label variables
+label_irs_migration_vars, direction(in)
 
 ** Preserve
 tempfile gross_in
@@ -324,57 +311,28 @@ rename *_total *_total_out
 ** Reshape
 reshape wide n1_out_ n2_out_ agi_out_, i(year state_fips county_fips) j(move_type)
 
-** Define locals
-local txt1 "Non-movers"
-local txt2 "All movers"
-local txt3 "Domestic movers"
-local txt4 "Within-state movers"
-local txt5 "Inter-state movers"
-local txt6 "Foreign movers"
-
-** Label variables, in loop
-foreach n of numlist 1(1)6 {
-
-	label var n1_out_`n' "Returns, out-migration, `txt`n''"
-	label var n2_out_`n' "Exemptions, out-migration, `txt`n''"
-	label var agi_out_`n' "AGI, out-migration, `txt`n''"
-
-} // END NUMLIST LOOP
+** Label variables
+label_irs_migration_vars, direction(out)
 
 ** Merge data
-merge 1:1 year state_fips county_fips using `gross_in', keep(match) nogen
+merge 1:1 year state_fips county_fips using `gross_in', gen(gross_in_mrg) keep(match)
+project_report_merge, gen(gross_in_mrg) tag("irs_cty_gross_in")
 
 ** Text for correct matching (non-movers should match perfectly)
 summ n*_*_1 agi_*_1
 
 ** Define net migration variables
-
-** Loop over variable
-foreach a in "n1" "n2" "agi" {
-
-	if "`a'" == "n1" local txt "Returns"
-	else if "`a'" == "n2" local txt "Exemptions"
-	else if "`a'" == "agi" local txt "AGI"
-
-	** Loop over type of movers
+foreach a in n1 n2 agi {
 	forvalues n = 2/6 {
-
-		** Clean up missing values
-		replace `a'_in_`n' = 0 if missing(`a'_in_`n')
+		replace `a'_in_`n'  = 0 if missing(`a'_in_`n')
 		replace `a'_out_`n' = 0 if missing(`a'_out_`n')
-
-		** Generate net
 		gen `a'_net_`n' = `a'_in_`n' - `a'_out_`n'
-		label var `a'_net_`n' "`txt', net-migration, `txt`n''"
-
-	} // END MOVER TYPE LOOP
-
-} // END VARIABLE LOOP
-
-** Generate fips variable
-*make_fips state_fips county_fips, gen(fips)
+	}
+}
+label_irs_migration_vars, direction(net) first(2)
 
 ** Save file
+compress
 save "${data}working/irs_county_gross", replace
 clear
 
@@ -528,7 +486,8 @@ rename agi agi_in_
 reshape wide n1_in_ n2_in_ agi_in_, i(year state_fips) j(move_type)
 
 ** Merge inflow and outflow
-merge 1:1 year state_fips using `state_gross_out', keep(match) nogen
+merge 1:1 year state_fips using `state_gross_out', gen(state_out_mrg) keep(match)
+project_report_merge, gen(state_out_mrg) tag("irs_state_out")
 
 ** Generate net migration variables
 foreach a in "n1" "n2" "agi" {
@@ -552,7 +511,8 @@ foreach a in "n1" "n2" "agi" {
 } // END VARIABLE LOOP
 
 ** Merge state names
-merge m:1 state_fips using "${data}working/state_ids", keep(master match) nogen
+merge m:1 state_fips using "${data}working/state_ids", gen(state_ids_mrg) keep(master match)
+project_report_merge, gen(state_ids_mrg) tag("state_ids")
 
 ** Label variables
 label var year "Tax year"
@@ -569,5 +529,6 @@ order year state_fips state_name
 sort state_fips year
 
 ** Save
+compress
 save "${data}working/irs_state_gross", replace
 clear

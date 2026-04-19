@@ -38,29 +38,18 @@ project_set_seed, context("02_indiv_analysis.do") offset(80)
 ********************************************************************************
 ** Program: hdfe_catyear_plot
 **
-** - Runs:      reghdfe y i.cat#i.year, absorb(...) nocons
-** - Posts:     cell means and CIs for each cat×year coefficient
-** - Plots:     one connected series per category + optional CI caps
-** - Exports:   PDF via graph export
-**
-** Notes:
-** - Legend uses category VALUE LABELS. We store those labels immediately after
-**   levelsof (before moving into the posted coefficient dataset) to avoid any
-**   issues from dataset swaps.
-** - CI and line use the same color; CI uses 50% opacity.
-********************************************************************************
-********************************************************************************
-** Program: hdfe_catyear_plot
-**
 ** Purpose:
 **   1) Run reghdfe with a CAT × YEAR interaction and absorbed fixed effects.
-**   2) Use margins (rather than reghdfe coefficients) to compute conditional means:
-**        margins i.CAT, over(YEAR)
+**   2) Use margins (rather than reghdfe coefficients) to compute conditional
+**      means:  margins i.CAT, over(YEAR)
 **   3) Plot margins by YEAR with one series per CAT (CI optional).
 **
 ** Notes:
 **   - baseyear(0) => plot levels (conditional means).
 **   - baseyear(#) => plot within-CAT differences relative to that year.
+**   - Legend uses category VALUE LABELS, stored right after levelsof (before
+**     dataset swaps) to survive the posted coefficient dataset.
+**   - CI and line use the same color; CI uses 50% opacity.
 ********************************************************************************
 capture program drop hdfe_catyear_plot
 program define hdfe_catyear_plot
@@ -170,6 +159,8 @@ program define hdfe_catyear_plot
 
     local yeartype : type `year'
     if substr("`yeartype'", 1, 3) == "str" {
+        ** IPUMS sometimes ships year as string ("2019"); force conversion is
+        ** safe because the assert below requires zero missings post-destring.
         quietly destring `year' if `touse', gen(`__year') force
         capture assert !missing(`__year') if `touse'
         if _rc {
@@ -188,7 +179,13 @@ program define hdfe_catyear_plot
     ** Guard: CAT should not also be absorbed
     ********************************************************************************
     if `__dbg' di as txt "[Step 4] Validating absorb()..."
-    if regexm(" `absorb' ", " `catv' ") {
+    ** Strip factor-variable prefixes and interaction operators, then use list
+    ** semantics to test membership — robust to i./c./## in absorb().
+    local absorb_clean : subinstr local absorb "i." "", all
+    local absorb_clean : subinstr local absorb_clean "c." "", all
+    local absorb_clean : subinstr local absorb_clean "##" " ", all
+    local absorb_clean : subinstr local absorb_clean "#" " ", all
+    if `: list posof "`catv'" in absorb_clean' > 0 {
         di as error "Category variable `catv' appears in absorb(): `absorb'. Remove it from absorb() for this run."
         exit 198
     }

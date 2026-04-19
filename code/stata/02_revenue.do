@@ -41,21 +41,19 @@ log using "${logs}02_log_revenue_${date}", name(log_02rev) replace text
 
 project_set_seed, context("02_revenue.do") offset(40)
 
-** Parameters
-scalar effect_agi = 0.02			// estimated net out-migration effect on AGI
-scalar effect_agi_oregon = 0.02		// Oregon-level effect
-local  cpi_2019_to_2022 = 1.136	// CPI-U inflation factor 2019→2022
+** SDID effect defaults (overwritten by Section 0B once SDID results load)
+scalar effect_agi = 0.02			// placeholder: net out-migration effect on AGI
+scalar effect_agi_oregon = 0.02		// placeholder: Oregon-level effect
 
-** Actual revenue (for scaling simulated effects)
-local actual_pfa_revenue = 187000000			// PFA actual collections
-local actual_oregon_revenue = 11772886000		// Oregon individual income tax
-
-** PFA tax brackets (2022)
-local pfa_thresh1_single = 125000
-local pfa_thresh2_single = 250000
-local pfa_thresh1_joint  = 200000
-local pfa_thresh2_joint  = 400000
-local pfa_rate = 0.015
+** Pull calibration + policy parameters from 00_stata_config.do globals
+local cpi_2019_to_2022     = ${cpi_2019_to_2022}
+local actual_pfa_revenue   = ${actual_pfa_revenue}
+local actual_oregon_revenue = ${actual_oregon_revenue}
+local pfa_thresh1_single   = ${pfa_thresh1_single}
+local pfa_thresh2_single   = ${pfa_thresh2_single}
+local pfa_thresh1_joint    = ${pfa_thresh1_joint}
+local pfa_thresh2_joint    = ${pfa_thresh2_joint}
+local pfa_rate             = ${pfa_rate}
 
 ** Create output directory
 capture mkdir "${results}revenue"
@@ -607,18 +605,9 @@ if _rc != 0 {
 	cd "${dir}"
 	use `pre_taxsim', clear
 
-	** Fallback: estimate taxes without TAXSIM
-	dis "Using simplified tax calculator as fallback"
-
-	** Approximate Oregon state income tax (simplified progressive schedule)
-	** 2022 Oregon brackets (single): 5% up to $3,750, 7% $3,750-$9,450,
-	** 9% $9,450-$125k, 9.9% above $125k
-	gen double taxable_income = max(agi_proxy - cond(mstat == 2, 25900, 12950), 0)
-	gen double siitax = 0.05 * min(taxable_income, 3750) ///
-		+ 0.07 * max(min(taxable_income, 9450) - 3750, 0) ///
-		+ 0.09 * max(min(taxable_income, 125000) - 9450, 0) ///
-		+ 0.099 * max(taxable_income - 125000, 0)
-	gen double fiitax = 0	// placeholder
+	dis "Using simplified tax calculator as fallback (see taxsim_fallback_calc)"
+	taxsim_fallback_calc, agi(agi_proxy) mstat(mstat) ///
+		pwages(pwages) swages(swages)
 }
 else {
 	** Load TAXSIM results
@@ -628,13 +617,16 @@ else {
 	cd "${dir}"
 
 	** Clean results
+	** TAXSIM can return the header row if the job ran without data; force
+	** lets us coerce the row to missing and drop it on the next line.
 	destring taxsimid, replace force
 	drop if missing(taxsimid)
 
-	** Get State taxable income 
-	rename v36 taxable_income
+	** Get State taxable income (v36) and FICA (v6, already named by TAXSIM)
+	capture confirm variable taxable_income
+	if _rc  rename v36 taxable_income
 
-	keep taxsimid fiitax siitax taxable_income
+	keep taxsimid fiitax siitax fica taxable_income
 
 	** Save TAXSIM results
 	tempfile taxsim_results
@@ -648,6 +640,7 @@ else {
 ** Label tax variables
 label var fiitax "Federal income tax (TAXSIM)"
 label var siitax "Oregon state income tax (TAXSIM)"
+label var fica "FICA (TAXSIM v6, employee + employer)"
 label var taxable_income "Oregon taxable income (TAXSIM)"
 
 ** Verification
@@ -823,6 +816,18 @@ qui summ agi_proxy [aw=cal_wt] if impacted == 1
 scalar agi_impacted = r(sum_w) * r(mean)
 dis "Total AGI of impacted filers: $" %15.0fc agi_impacted
 
+** Shares used to map migration effects onto broader AGI bases
+scalar impacted_agi_share = agi_impacted / total_agi_2022
+dis "Impacted share of county AGI: " %6.4f impacted_agi_share ///
+	" (" %5.2f impacted_agi_share*100 "%)"
+
+** College-educated AGI among impacted filers
+qui summ agi_proxy [aw=cal_wt] if impacted == 1 & educd >= 101
+scalar agi_college_impacted = r(sum_w) * r(mean)
+scalar college_impacted_agi_share = agi_college_impacted / total_agi_2022
+dis "College-impacted share of county AGI: " %6.4f college_impacted_agi_share ///
+	" (" %5.2f college_impacted_agi_share*100 "%)"
+
 ** p = probability of out-migration for impacted units
 scalar p_migrate = X_1 / agi_impacted
 dis "Migration probability (p): " %8.6f p_migrate
@@ -869,9 +874,81 @@ scalar total_agi_impacted = r(sum_w) * r(mean)
 scalar avg_mt_rate = total_mt_tax_impacted / total_agi_impacted
 dis "Average effective MT tax rate on impacted: " %6.4f avg_mt_rate
 
+qui summ pfa_tax [aw=cal_wt] if impacted == 1 & educd >= 101
+scalar total_mt_tax_college_impacted = r(sum_w) * r(mean)
+scalar avg_mt_rate_college_impacted = total_mt_tax_college_impacted / agi_college_impacted
+dis "Average effective MT tax rate on college-impacted: " %6.4f avg_mt_rate_college_impacted
+
 ** PFA revenue loss from departing AGI
 scalar mt_revenue_loss = avg_mt_rate * X_1
 dis "Multnomah county revenue loss from migration effect: $" %15.0fc mt_revenue_loss
+
+********************************************************************************
+** SECTION 10A: Total Tax Rate for Kleven et al. Elasticity Denominator
+********************************************************************************
+
+dis ""
+dis "=============================================="
+dis "Section 10A: Total tax rate (federal + state + FICA + PFA)"
+dis "=============================================="
+
+** Total average tax rate on impacted filers — used for Kleven et al. (2020)
+** total net-of-tax rate elasticity denominator.
+** Post-PFA: includes federal income + Oregon state + FICA employee + PFA
+** Pre-PFA:  same without PFA (counterfactual baseline)
+
+** Federal income tax on impacted filers
+qui summ fiitax [aw=cal_wt] if impacted == 1
+scalar total_federal_impacted = r(sum_w) * r(mean)
+
+** FICA (employee share) on impacted filers
+qui summ fica [aw=cal_wt] if impacted == 1
+scalar total_fica_impacted = r(sum_w) * r(mean)
+
+** Post-PFA total rate
+scalar avg_total_rate = (total_federal_impacted + total_state_tax_impacted ///
+	+ total_fica_impacted + total_mt_tax_impacted) / total_agi_impacted
+dis "Average total tax rate on impacted (post-PFA): " %6.4f avg_total_rate ///
+	" (" %5.2f avg_total_rate*100 "%)"
+
+** Pre-PFA total rate (counterfactual without PFA)
+scalar avg_total_rate_pre = (total_federal_impacted + total_state_tax_impacted ///
+	+ total_fica_impacted) / total_agi_impacted
+dis "Average total tax rate on impacted (pre-PFA):  " %6.4f avg_total_rate_pre ///
+	" (" %5.2f avg_total_rate_pre*100 "%)"
+
+** Sanity check: total rate should be ~30-45% for high-income impacted filers
+if avg_total_rate < 0.20 | avg_total_rate > 0.55 {
+	dis as error "WARNING: avg_total_rate = " %6.4f avg_total_rate ///
+		" — outside expected range [0.20, 0.55]. Verify tax calculations."
+}
+
+** College-impacted variants
+qui summ fiitax [aw=cal_wt] if impacted == 1 & educd >= 101
+scalar total_federal_college_impacted = r(sum_w) * r(mean)
+
+qui summ fica [aw=cal_wt] if impacted == 1 & educd >= 101
+scalar total_fica_college_impacted = r(sum_w) * r(mean)
+
+qui summ siitax [aw=cal_wt] if impacted == 1 & educd >= 101
+scalar total_state_college_impacted = r(sum_w) * r(mean)
+
+scalar avg_total_rate_college = (total_federal_college_impacted ///
+	+ total_state_college_impacted + total_fica_college_impacted ///
+	+ total_mt_tax_college_impacted) / agi_college_impacted
+scalar avg_total_rate_pre_college = (total_federal_college_impacted ///
+	+ total_state_college_impacted + total_fica_college_impacted) ///
+	/ agi_college_impacted
+dis "Average total tax rate on college-impacted (post-PFA): " %6.4f avg_total_rate_college
+dis "Average total tax rate on college-impacted (pre-PFA):  " %6.4f avg_total_rate_pre_college
+
+dis ""
+dis "  Components (impacted filers):"
+dis "    Federal:  " %6.4f total_federal_impacted / total_agi_impacted
+dis "    State:    " %6.4f total_state_tax_impacted / total_agi_impacted
+dis "    FICA:     " %6.4f total_fica_impacted / total_agi_impacted
+dis "    PFA:      " %6.4f total_mt_tax_impacted / total_agi_impacted
+dis "    Total:    " %6.4f avg_total_rate
 
 ********************************************************************************
 ** SECTION 10B: Revenue Scaling to Actual Collections
@@ -1042,6 +1119,7 @@ restore
 ** Save final dataset
 ********************************************************************************
 
+compress
 save "${data}working/revenue_microsim.dta", replace
 
 ********************************************************************************
@@ -1053,13 +1131,28 @@ clear
 set obs 1
 gen double avg_mt_rate = scalar(avg_mt_rate)
 gen double avg_state_rate = scalar(avg_state_rate)
+gen double avg_mt_rate_impacted = scalar(avg_mt_rate)
+gen double avg_state_rate_impacted = scalar(avg_state_rate)
+gen double avg_mt_rate_college_impacted = scalar(avg_mt_rate_college_impacted)
 gen double baseline_pfa_revenue = scalar(baseline_pfa_revenue)
 gen double baseline_state_revenue = scalar(baseline_state_revenue)
 gen double total_agi_2022 = scalar(total_agi_2022)
+gen double agi_total = scalar(agi_total)
+gen double agi_impacted = scalar(agi_impacted)
+gen double impacted_agi_share = scalar(impacted_agi_share)
+gen double agi_college = scalar(agi_college)
+gen double college_agi_share = scalar(college_agi_share)
+gen double agi_college_impacted = scalar(agi_college_impacted)
+gen double college_impacted_agi_share = scalar(college_impacted_agi_share)
 gen double pfa_migration_share = scalar(pfa_migration_share)
 gen double oregon_migration_share = scalar(oregon_migration_share)
 gen double pfa_implied_loss = scalar(pfa_implied_loss)
 gen double oregon_implied_loss = scalar(oregon_implied_loss)
+gen double avg_total_rate = scalar(avg_total_rate)
+gen double avg_total_rate_pre = scalar(avg_total_rate_pre)
+gen double avg_total_rate_college = scalar(avg_total_rate_college)
+gen double avg_total_rate_pre_college = scalar(avg_total_rate_pre_college)
+compress
 save "${data}working/revenue_parameters.dta", replace
 project_build_signature, artifact("sdid_results")
 project_write_manifest using "${data}working/revenue_parameters_manifest.dta", ///
@@ -1070,13 +1163,21 @@ dis ""
 dis "Exported revenue_parameters.dta:"
 dis "  avg_mt_rate           = " %8.6f avg_mt_rate
 dis "  avg_state_rate        = " %8.6f avg_state_rate
+dis "  avg_mt_rate_college   = " %8.6f avg_mt_rate_college_impacted
 dis "  baseline_pfa_revenue  = $" %15.0fc baseline_pfa_revenue
 dis "  baseline_state_revenue= $" %15.0fc baseline_state_revenue
 dis "  total_agi_2022        = $" %15.0fc total_agi_2022
+dis "  impacted_agi_share    = " %8.6f impacted_agi_share
+dis "  college_agi_share     = " %8.6f college_agi_share
+dis "  college_impacted_share= " %8.6f college_impacted_agi_share
 dis "  pfa_migration_share   = " %8.6f pfa_migration_share
 dis "  oregon_migration_share= " %8.6f oregon_migration_share
 dis "  pfa_implied_loss      = $" %15.0fc pfa_implied_loss
 dis "  oregon_implied_loss   = $" %15.0fc oregon_implied_loss
+dis "  avg_total_rate        = " %8.6f avg_total_rate
+dis "  avg_total_rate_pre    = " %8.6f avg_total_rate_pre
+dis "  avg_total_rate_college= " %8.6f avg_total_rate_college
+dis "  avg_total_rate_pre_col= " %8.6f avg_total_rate_pre_college
 
 ********************************************************************************
 ** SECTION 12: Distribution of Revenue Effects Across SDID Specifications
@@ -1200,10 +1301,6 @@ if _rc == 0 {
 				bin(20) fraction) 										///
 			`pref_overlays',											///
 			graphregion(color(white)) 									///
-			title("Distribution of Implied PFA Revenue Loss", 			///
-				size(medium)) 											///
-			subtitle("Across `n_specs' SDID specifications", 			///
-				size(small)) 											///
 			xtitle("Implied Revenue Loss ($ millions)") 				///
 			ytitle("Fraction of Specifications") 						///
 			legend(order(`leg_irs' "IRS Benchmarks" 					///
@@ -1283,10 +1380,6 @@ if _rc == 0 {
 				bin(20) fraction) 										///
 			`pref_overlays',											///
 			graphregion(color(white)) 									///
-			title("Distribution of Implied Oregon Revenue Loss", 		///
-				size(medium)) 											///
-			subtitle("Across `n_specs' SDID specifications", 			///
-				size(small)) 											///
 			xtitle("Implied Revenue Loss ($ millions)") 				///
 			ytitle("Fraction of Specifications") 						///
 			legend(order(`leg_irs' "IRS Benchmarks" 					///

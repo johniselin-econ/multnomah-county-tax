@@ -65,10 +65,43 @@ if "${end_yy_irs_county}" == ""    global end_yy_irs_county    = 22
 ** Overleaf sync (default off; set to 1 in profile.do with oth_path)
 if "${overleaf}" == "" global overleaf = 0
 
+** ------------------------------------------------------------------
+** PFA policy & calibration constants (tax year 2022)
+** Source: Multnomah Co. Ordinance 1269, 2023 Annual Report
+** ------------------------------------------------------------------
+if "${pfa_rate}" == ""             global pfa_rate             = 0.015
+if "${pfa_thresh1_single}" == ""   global pfa_thresh1_single   = 125000
+if "${pfa_thresh2_single}" == ""   global pfa_thresh2_single   = 250000
+if "${pfa_thresh1_joint}" == ""    global pfa_thresh1_joint    = 200000
+if "${pfa_thresh2_joint}" == ""    global pfa_thresh2_joint    = 400000
+** Actual collections used to rescale simulation output
+if "${actual_pfa_revenue}" == ""   global actual_pfa_revenue   = 187000000
+if "${actual_oregon_revenue}" == "" global actual_oregon_revenue = 11772886000
+** CPI-U inflation factor, 2019 annual -> 2022 annual (BLS series CUUR0000SA0)
+if "${cpi_2019_to_2022}" == ""     global cpi_2019_to_2022     = 1.136
+
 capture mkdir "${results}"
 capture mkdir "${logs}"
 
 set scheme plotplainblind
+
+** ------------------------------------------------------------------
+** Pre-flight: required SSC packages
+** Fails fast with an install hint rather than letting the pipeline die
+** cryptically later on `command not found`.
+** ------------------------------------------------------------------
+local required_ssc reghdfe ppmlhdfe coefplot estout distinct sdid
+foreach pkg of local required_ssc {
+    capture which `pkg'
+    if _rc {
+        di as error "Missing required package: `pkg'"
+        di as error "  Install with: ssc install `pkg'"
+        exit 199
+    }
+}
+** Non-SSC packages (soft-checked — callers handle their own fallbacks):
+**   parallel:      net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
+**   taxsimlocal35: ssc install taxsim35  (or see https://taxsim.nber.org/taxsim35/)
 
 capture program drop project_set_seed
 program define project_set_seed
@@ -166,8 +199,7 @@ capture program drop project_assert_manifest
 program define project_assert_manifest
     syntax using/, ARTIFACT(string)
 
-    capture confirm file `"`using'"'
-    if _rc != 0 {
+    if !fileexists(`"`using'"') {
         di as error "ERROR: Required manifest not found: `using'"
         exit 601
     }

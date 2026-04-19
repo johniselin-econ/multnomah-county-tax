@@ -40,8 +40,6 @@ other/
 data/acs/
 data/irs/*.csv
 data/working/
-data/qwi/
-data/qcew/
 data/demographic/CAINC1/
 data/demographic/bls/
 
@@ -53,6 +51,7 @@ results/
 # ========================================
 # Archives and deprecated code
 # ========================================
+archive/
 code/old/
 code/logs/
 code/stata/logs/

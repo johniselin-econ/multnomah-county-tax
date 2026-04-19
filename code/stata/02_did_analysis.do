@@ -278,6 +278,9 @@ preserve
 	gen out_state_ci_hi = .
 
 	** Fill in coefficients (2020 = base year = 0)
+	** `capture` wraps each _b[] lookup because not every year is estimable
+	** in every spec (e.g. out-of-sample years or dropped categories); a
+	** missing coefficient should leave the cell at its initialized value.
 	foreach y in 2016 2017 2018 2021 2022 2023 2024 {
 
 		** Out-migration
@@ -334,9 +337,7 @@ preserve
 		ytitle("Effect on Out-Migration (pp)") 						///
 		xtitle("Year")												///
 		legend(off) 												///
-		title("Out-Migration")										///
-		subtitle("College vs. No College")							///
-		graphregion(color(white))
+		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_out_migration.png", replace
 	if ${overleaf} == 1 {
@@ -352,9 +353,7 @@ preserve
 		ytitle("Effect on In-Migration (pp)") 						///
 		xtitle("Year")												///
 		legend(off) 												///
-		title("In-Migration (West Coast)")							///
-		subtitle("College vs. No College")							///
-		graphregion(color(white))
+		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_in_migration_west.png", replace
 	if ${overleaf} == 1 {
@@ -370,9 +369,7 @@ preserve
 		ytitle("Effect on In-Migration (pp)") 						///
 		xtitle("Year")												///
 		legend(off) 												///
-		title("In-Migration (Lower 48 + DC)")						///
-		subtitle("College vs. No College")							///
-		graphregion(color(white))
+		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_in_migration_48.png", replace
 	if ${overleaf} == 1 {
@@ -388,9 +385,7 @@ preserve
 		ytitle("Effect on Out-of-State Migration (pp)") 					///
 		xtitle("Year")														///
 		legend(off) 														///
-		title("Out-of-State Migration")										///
-		subtitle("College vs. No College")									///
-		graphregion(color(white))
+		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_out_state_migration.png", replace
 	if ${overleaf} == 1 {
@@ -414,9 +409,7 @@ preserve
 		legend(order(2 "Out-migration" 4 "Out-of-state" 					///
 			6 "In-migration (West Coast)" 									///
 			8 "In-migration (Lower 48 + DC)") pos(6) rows(1)) 				///
-		title("Migration Effects")											///
-		subtitle("College vs. No College")									///
-		graphregion(color(white))
+		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_combined.png", replace
 	if ${overleaf} == 1 {
@@ -603,8 +596,6 @@ estimates store es_age_out_state
 		ytitle("Effect on Out-Migration (pp)") 											///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "45-64" 6 "65+") pos(6) rows(1)) 						///
-		title("Out-Migration by Age")												///
-		subtitle("College vs. No College")											///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_age_out_migration.png", replace
@@ -625,8 +616,6 @@ estimates store es_age_out_state
 		ytitle("Effect on In-Migration (pp)") 											///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "45-64" 6 "65+") pos(6) rows(1)) 						///
-		title("In-Migration by Age (West Coast)")										///
-		subtitle("College vs. No College")											///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_age_in_migration_west.png", replace
@@ -647,8 +636,6 @@ estimates store es_age_out_state
 		ytitle("Effect on In-Migration (pp)") 											///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "45-64" 6 "65+") pos(6) rows(1)) 						///
-		title("In-Migration by Age (Lower 48 + DC)")									///
-		subtitle("College vs. No College")											///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_age_in_migration_48.png", replace
@@ -669,8 +656,6 @@ estimates store es_age_out_state
 		ytitle("Effect on Out-of-State Migration (pp)") 								///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "45-64" 6 "65+") pos(6) rows(1)) 						///
-		title("Out-of-State Migration by Age")										///
-		subtitle("College vs. No College")											///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_age_out_state_migration.png", replace
@@ -837,7 +822,7 @@ esttab did_age_out did_age_out_state did_age_in_west did_age_in_48 		///
 				treated_age_2  "College $\times$ Post $\times$ Age 45-64"	///
 				treated_age_3  "College $\times$ Post $\times$ Age 65+")	///
 	nomtitles nonumbers 												///
-	prehead("\multicolumn{5}{l}{\textit{Panel C: Treatment heterogeniety by age (College $\times$ Age $\times$ Post)}}\\[0.3em]") ///
+	prehead("\multicolumn{5}{l}{\textit{Panel C: Treatment heterogeneity by age (College $\times$ Age $\times$ Post)}}\\[0.3em]") ///
 	posthead("") 														///
 	prefoot("\hline") 													///
 	stats(N_unwtd, fmt(%12.0fc) labels("Observations"))					///
@@ -899,7 +884,7 @@ if ${overleaf} == 1 {
 					treated_age_2  "College $\times$ Post $\times$ Age 45-64"	///
 					treated_age_3  "College $\times$ Post $\times$ Age 65+")	///
 		nomtitles nonumbers 												///
-		prehead("\multicolumn{5}{l}{\textit{Panel C: Treatment heterogeniety by age (College $\times$ Age $\times$ Post)}}\\[0.3em]") ///
+		prehead("\multicolumn{5}{l}{\textit{Panel C: Treatment heterogeneity by age (College $\times$ Age $\times$ Post)}}\\[0.3em]") ///
 		posthead("") 														///
 		prefoot("\hline") 													///
 		stats(N_unwtd, fmt(%12.0fc) labels("Observations"))					///
@@ -1021,8 +1006,6 @@ preserve
 		ytitle("Effect on Out-Migration (pp)") 											///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "65+") pos(6) rows(1)) 								///
-		title("Out-Migration by Age")													///
-		subtitle("Relative to Age 45-64")												///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_out_migration.png", replace
@@ -1041,8 +1024,6 @@ preserve
 		ytitle("Effect on In-Migration (pp)") 											///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "65+") pos(6) rows(1)) 								///
-		title("In-Migration by Age (West Coast)")										///
-		subtitle("Relative to Age 45-64")												///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_in_migration_west.png", replace
@@ -1061,8 +1042,6 @@ preserve
 		ytitle("Effect on In-Migration (pp)") 											///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "65+") pos(6) rows(1)) 								///
-		title("In-Migration by Age (Lower 48 + DC)")									///
-		subtitle("Relative to Age 45-64")												///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_in_migration_48.png", replace
@@ -1081,8 +1060,6 @@ preserve
 		ytitle("Effect on Out-of-State Migration (pp)") 								///
 		xtitle("Year")																	///
 		legend(order(2 "25-44" 4 "65+") pos(6) rows(1)) 								///
-		title("Out-of-State Migration by Age")										///
-		subtitle("Relative to Age 45-64")												///
 		graphregion(color(white)) plotregion(color(white))
 
 	graph export "${results}did/fig_es_agepost_out_state_migration.png", replace

@@ -49,7 +49,6 @@ multnomah_r_init <- function(script_label = "R pipeline") {
   }
 
   project_root <- here::here()
-  setwd(project_root)
   cat("Project root:", project_root, "\n\n")
 
   dir_code_r     <- file.path(project_root, "code", "R")
@@ -110,26 +109,6 @@ run_multnomah_data_pulls <- function(cfg) {
     project_root = cfg$project_root,
     dir_data_acs = cfg$dir_data_acs,
     api_codes_path = cfg$api_codes_path,
-    start_year = cfg$start_year,
-    end_year = cfg$end_year,
-    overwrite_csv = cfg$overwrite_csv
-  )
-  cat("   Done.\n\n")
-
-  cat(">> QWI data (LEHD)\n")
-  source(file.path(cfg$dir_code_r, "qwi_data.R"))
-  download_qwi(
-    project_root = cfg$project_root,
-    start_year = cfg$start_year,
-    end_year = cfg$end_year,
-    overwrite_csv = cfg$overwrite_csv
-  )
-  cat("   Done.\n\n")
-
-  cat(">> QCEW data (BLS)\n")
-  source(file.path(cfg$dir_code_r, "qcew_data.R"))
-  download_qcew(
-    project_root = cfg$project_root,
     start_year = cfg$start_year,
     end_year = cfg$end_year,
     overwrite_csv = cfg$overwrite_csv

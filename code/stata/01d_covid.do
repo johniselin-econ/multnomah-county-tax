@@ -14,15 +14,17 @@ import delimited using "${data}covid/covid_nyt.csv", varnames(1) clear case(lowe
 ** Describe data
 des
 
-** Set up date information
+** Convert the string `date` column (YYYY-MM-DD) to a numeric Stata date,
+** then replace the original string column so downstream code works with a
+** numeric date throughout.
 generate num_date = date(date, "YMD")
 format num_date %td
 drop date
+rename num_date date
 
-** Rename
+** Rename text columns to project convention
 rename state state_name
 rename county county_name
-rename num_date date
 
 ** keep only counties
 keep if !missing(fips)
@@ -66,7 +68,8 @@ restore
 
 ** Drop and merge in names
 drop state_name county_name
-merge m:1 fips using `state_county_names', keep(master match) nogen
+merge m:1 fips using `state_county_names', gen(names_mrg) keep(master match)
+project_report_merge, gen(names_mrg) tag("covid_names")
 
 ** Get year, month, day
 gen year = year(date)
@@ -74,16 +77,18 @@ gen month = month(date)
 gen day = day(date)
 
 ** Order data
-order date year month day fips state county cases deaths
+order date year month day fips state_name county_name cases deaths
 
 ** Calculate cumulative cases and deaths
 bysort fips (date): gen cases_cum = sum(cases)
 bysort fips (date): gen deaths_cum = sum(deaths)
 
 ** Merge population data (2020)
-merge m:1 fips using "${data}working/population_2020", keep(match) nogen
+merge m:1 fips using "${data}working/population_2020", gen(pop_mrg) keep(match)
+project_report_merge, gen(pop_mrg) tag("covid_pop2020")
 
 ** Save file
+compress
 save "${data}working/covid_cleaned.dta", replace
 
 ** Keep one observation per month
@@ -106,6 +111,7 @@ drop population cases deaths
 reshape wide cases_cum deaths_cum, i(fips state_name county_name) j(date)
 
 ** Save file
+compress
 save "${data}working/covid_cleaned_wide.dta", replace
 clear
 
@@ -135,13 +141,23 @@ label var gatherbandays "Days under gathering ban"
 label var strictgatherbandays "Days under strict gathering ban"
 label var maskpubdays "Days under public mask mandate"
 
-** Verify Multnomah County values
-assert msahodays == 88 if fips == 41051
-assert restclosedays == 109 if fips == 41051
-assert gatherbandays == 295 if fips == 41051
-assert strictgatherbandays == 284 if fips == 41051
-assert maskpubdays == 184 if fips == 41051
+** Sanity-check Multnomah County values against the JII data vintage we
+** originally cleaned against. If JII re-releases and values drift, we want
+** a visible warning rather than a hard pipeline halt.
+** Source: JII COVID-19 US State Policy database (policy durations in days).
+local jii_vintage "JII COVID-19 US State Policy data (accessed 2024-03)"
+foreach pair in msahodays=88 restclosedays=109 gatherbandays=295 ///
+    strictgatherbandays=284 maskpubdays=184 {
+    local v : word 1 of `=subinstr("`pair'", "=", " ", 1)'
+    local expected : word 2 of `=subinstr("`pair'", "=", " ", 1)'
+    qui summ `v' if fips == 41051, meanonly
+    if r(mean) != `expected' {
+        di as error "  WARNING: `v' for Multnomah = " r(mean) ///
+            ", expected `expected' (`jii_vintage')"
+    }
+}
 
 ** Save
+compress
 save "${data}working/jii_stringency.dta", replace
 clear

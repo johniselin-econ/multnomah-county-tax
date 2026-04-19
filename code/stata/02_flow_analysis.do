@@ -195,6 +195,7 @@ tempfile main_data
 save `main_data'
 
 ** Save to real file for parallel workers (parallel can't access tempfiles)
+compress
 save "${data}working/flow_analysis_data.dta", replace
 
 ********************************************************************************
@@ -223,7 +224,9 @@ if ${use_parallel} == 1 {
 		local tmp_b_in = .
 		local tmp_se_in = .
 
-		capture {
+		** `noisily` surfaces ppmlhdfe error messages (convergence, collinearity,
+		** etc.) in the log while still letting the loop continue on failure.
+		capture noisily {
 			ppmlhdfe agi i.out_post_tmp i.in_post_tmp 		///
 				${flow_covars} 								///
 				if mover == 1 ${flow_sample_cond}, 			///
@@ -284,13 +287,11 @@ foreach sample in "acs" "all" {
 		local sample_cond ""
 		local covars "unemp_* pop_* per_capita_income_*"
 		local file_suffix ""
-		local title_suffix ""
 	}
 	else if "`sample'" == "acs" {
 		local sample_cond "& acs_flow == 1"
 		local covars "unemp_* pop_* per_capita_income_* prop_rate_mean_o prop_rate_mean_d"
 		local file_suffix "_acs"
-		local title_suffix " (ACS Counties)"
 	}
 	
 	if `debug' == 1 local debug_txt "_debug"
@@ -313,11 +314,6 @@ foreach sample in "acs" "all" {
 
 	** Loop over outcome variables
 	foreach outcome in n1 n2 agi {
-
-		** Set outcome label for graphs
-		if "`outcome'" == "n1" local outcome_label "Number of Returns"
-		if "`outcome'" == "n2" local outcome_label "Number of Exemptions"
-		if "`outcome'" == "agi" local outcome_label "Adjusted Gross Income"
 
 		** Regression 1a: With covariates
 		ppmlhdfe `outcome' i.out_multnomah_post i.in_multnomah_post 	///
@@ -346,8 +342,6 @@ foreach sample in "acs" "all" {
 			ytitle("Coefficient") 										///
 			xtitle("")													///
 			legend(pos(6) rows(1)) 										///
-		title("Flow Effects`title_suffix'")								///
-			subtitle("`outcome_label'")									///
 			graphregion(color(white))
 
 		graph export "${results}flows/fig_multnomah_post_`outcome'`file_suffix'.png", replace
@@ -447,7 +441,16 @@ foreach sample in "acs" "all" {
 		capture mkdir "${results}flows/temp_results"
 
 		** Initialize and run parallel
-		parallel initialize ${n_clusters}, force
+		** For the "all" sample, halve the worker count: each ppmlhdfe with
+		** ~2,849 flow_id clusters has multi-GB transient memory, so 6 workers
+		** can OOM the machine and silently kill children (seen 2026-04-18).
+		local n_clusters_this = ${n_clusters}
+		if "`sample'" == "all" {
+			local n_clusters_this = max(1, floor(${n_clusters} / 2))
+			dis as text "Note: reducing workers from ${n_clusters} to `n_clusters_this' " ///
+				"for 'all' sample to avoid OOM"
+		}
+		parallel initialize `n_clusters_this', force
 
 		dis "Starting parallel flow estimation for `n_fips' counties at $S_TIME..."
 		timer clear 2
@@ -514,8 +517,9 @@ foreach sample in "acs" "all" {
 			gen out_post_tmp = out_tmp * post
 			gen in_post_tmp = in_tmp * post
 
-			** Run regression with capture to handle potential errors
-			capture {
+			** Run regression; `noisily` keeps error messages visible in the log
+			** while still letting the loop continue on failure.
+			capture noisily {
 				** Regression: With covariates
 				 ppmlhdfe agi i.out_post_tmp i.in_post_tmp 	///
 					`covars' 										///
@@ -647,8 +651,6 @@ foreach sample in "acs" "all" {
 			xline(`multnomah_`x'_out', lcolor("`col_mult'") lwidth(thick) lpattern(solid)) ///
 			xtitle("Out-migration `txt' (County x Post)") 			///
 			ytitle("Frequency") 											///
-		title("Out-Migration Distribution`title_suffix'") 				///
-		subtitle("Multnomah percentile: `: display %4.1f `multnomah_pctile_out''") ///
 			graphregion(color(white))
 
 		graph export "${results}flows/fig_hist_out_`x'`file_suffix'`debug_txt'.png", replace
@@ -660,8 +662,6 @@ foreach sample in "acs" "all" {
 			xline(`multnomah_`x'_in', lcolor("`col_mult'") lwidth(thick) lpattern(solid)) ///
 			xtitle("In-migration `txt' (County x Post)") 				///
 			ytitle("Frequency") 											///
-		title("In-Migration Distribution`title_suffix'") 				///
-		subtitle("Multnomah percentile: `: display %4.1f `multnomah_pctile_in''") ///
 			graphregion(color(white))
 
 		graph export "${results}flows/fig_hist_in_`x'`file_suffix'`debug_txt'.png", replace
@@ -675,7 +675,6 @@ foreach sample in "acs" "all" {
 			yline(0, lc(gs10) lp(dash)) 									///
 			xtitle("Out-migration `txt'") 							///
 			ytitle("In-migration `txt'") 								///
-		title("Out- vs. In-Migration Effects`title_suffix'") 			///
 			legend(order(1 "Other Counties" 2 "Multnomah County") pos(6) rows(1)) ///
 			graphregion(color(white))
 
@@ -1152,11 +1151,6 @@ foreach sample in "acs" "all" {
 	** Loop over outcome variables
 	foreach outcome in n1 n2 agi {
 
-		** Set outcome label for graphs
-		if "`outcome'" == "n1" local outcome_label "Number of Returns"
-		if "`outcome'" == "n2" local outcome_label "Number of Exemptions"
-		if "`outcome'" == "agi" local outcome_label "Adjusted Gross Income"
-
 		** Regression 2a: With covariates
 		ppmlhdfe `outcome' x_out_* x_in_* 								///
 			`covars' 													///
@@ -1243,8 +1237,6 @@ foreach sample in "acs" "all" {
 			xtitle("Year")														///
 			legend(order(2 "With Covariates" 4 "Without Covariates") 			///
 				pos(6) rows(1)) 												///
-			title("Out-Migration`title_suffix'")								///
-			subtitle("`outcome_label'")											///
 			graphregion(color(white))
 
 		graph export "${results}flows/fig_multnomah_out_`outcome'`file_suffix'.png", replace
@@ -1261,8 +1253,6 @@ foreach sample in "acs" "all" {
 			xtitle("Year")														///
 			legend(order(2 "With Covariates" 4 "Without Covariates") 			///
 				pos(6) rows(1)) 												///
-			title("In-Migration`title_suffix'")								///
-			subtitle("`outcome_label'")											///
 			graphregion(color(white))
 
 		graph export "${results}flows/fig_multnomah_in_`outcome'`file_suffix'.png", replace
@@ -1279,8 +1269,6 @@ foreach sample in "acs" "all" {
 			xtitle("Year")														///
 			legend(order(2 "Out-migration" 4 "In-migration") 					///
 				pos(6) rows(1)) 												///
-			title("Migration Flows`title_suffix'")								///
-			subtitle("`outcome_label'")											///
 			graphregion(color(white))
 
 		graph export "${results}flows/fig_multnomah_both_`outcome'`file_suffix'.png", replace

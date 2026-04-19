@@ -93,6 +93,7 @@ drop if county_fips == 0
 ** Merge with Demographics (2020)
 merge m:1 fips using "${data}working/demographics_2020", ///
 	gen(demo_merge) keep(master match)
+project_report_merge, gen(demo_merge) tag("demographics_2020") keep_merge
 keep if demo_merge == 3
 drop demo_merge
 
@@ -102,28 +103,32 @@ rename population pop_census
 ** Merge with BEA Economics (time-varying population)
 merge m:1 year fips using "${data}working/bea_economics", ///
 	gen(econ_merge) keep(master match)
+project_report_merge, gen(econ_merge) tag("bea_economics") keep_merge
 keep if econ_merge == 3
 drop econ_merge
 
 ** Merge with COVID-19 Data
 merge m:1 fips using "${data}working/covid_cleaned_wide.dta", ///
 	gen(covid_merge) keep(master match)
+project_report_merge, gen(covid_merge) tag("covid_wide") keep_merge
 
 ** Merge with Property Tax Rates
 merge m:1 year fips using "${data}working/property_tax_rates_overall", ///
-	gen(proptx_merge) keep(master match) keepusing(prop_rate_mean prop_rate_se)
+	gen(proptx_merge) keep(master match) keepusing(prop_rate_mean)
+project_report_merge, gen(proptx_merge) tag("property_tax")
 
 rename prop_rate_mean prop_tax_rate
-rename prop_rate_se prop_tax_rate_se
 label var prop_tax_rate "Mean property tax rate (% of home value)"
 
 ** Merge with Age Shares (for demographic k-means sample)
 merge m:1 fips using "${data}working/age_shares_county", ///
 	gen(age_merge) keep(master match)
+project_report_merge, gen(age_merge) tag("age_shares")
 
 ** Merge with JII COVID Stringency Data
 merge m:1 fips using "${data}working/jii_stringency.dta", ///
 	gen(jii_merge) keep(master match)
+project_report_merge, gen(jii_merge) tag("jii_stringency") keep_merge
 
 ** Organize
 order year fips state_* county_*
@@ -270,6 +275,7 @@ foreach v of local all_covariates {
 xtset fips year
 
 ** Save prepared data (for parallel mode)
+compress
 save "${data}working/otherout_sdid_data.dta", replace
 
 ********************************************************************************
@@ -1196,7 +1202,6 @@ foreach out of local outcomes {
 			   rows(1) pos(6) size(vsmall)) 							///
 		ytitle("Treatment Effect", size(vsmall)) 						///
 		xtitle("Specification (ranked by effect size)", size(vsmall)) 	///
-		title("`lbl_`out''", size(medium)) 								///
 		xlabel(none) 													///
 		xscale(range(0.5 `=`n_specs'+0.5')) 							///
 		graphregion(color(white)) 										///

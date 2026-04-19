@@ -4,7 +4,8 @@
 * Called by:   01_clean_data.do
 * Outputs:     In-memory label definitions and programs:
 *                lb_move_type, lb_agi (labels)
-*                make_fips, unsuppress, acs_make_gross_migration (programs)
+*                make_fips, unsuppress, setup_parallel,
+*                acs_make_gross_migration, label_irs_migration_vars (programs)
 ******************************************************************************/
 
 //--------------------------------------------------
@@ -291,4 +292,124 @@ program define acs_make_gross_migration
     if `__restore' use `__src', clear
 	else clear
 
+end
+
+
+** Apply labels to reshaped IRS migration variables
+**
+** After 01f_irs_migration.do reshapes gross_in / gross_out by move_type,
+** variables exist as <prefix>_<direction>_<n> for prefix in {n1, n2, agi},
+** direction in {in, out, net}, and n an IRS move-type code. This program
+** applies "<Series>, <direction>-migration, <move-type>" labels, using the
+** move-type strings from the lb_move_type value label (defined above).
+**
+** Usage:
+**   label_irs_migration_vars, direction(in)                 // types 1-6
+**   label_irs_migration_vars, direction(out)                // types 1-6
+**   label_irs_migration_vars, direction(net) first(2)       // types 2-6
+
+capture program drop label_irs_migration_vars
+program define label_irs_migration_vars
+    syntax, DIRection(string) [First(integer 1) Last(integer 6)]
+
+    if !inlist("`direction'", "in", "out", "net") {
+        di as err "direction() must be one of: in, out, net"
+        exit 198
+    }
+
+    local dir_label "`direction'-migration"
+
+    foreach v in n1 n2 agi {
+        if      "`v'" == "n1"  local vtext "Returns"
+        else if "`v'" == "n2"  local vtext "Exemptions"
+        else if "`v'" == "agi" local vtext "AGI"
+
+        forvalues n = `first'/`last' {
+            local mtype : label lb_move_type `n'
+            label var `v'_`direction'_`n' "`vtext', `dir_label', `mtype'"
+        }
+    }
+end
+
+
+//------------------------------------------------------------------------------
+// project_report_merge — report match rates after a merge
+//
+// Call immediately after `merge ..., gen(<name>) keep(master match)`. Reads
+// the _merge indicator, prints matched/master-only/using-only counts, and (by
+// default) drops the indicator. Fails loudly if match rate falls below
+// `required(#)` — useful for catching silent data loss.
+//
+// Usage:
+//   merge m:1 fips using "X.dta", gen(x_mrg) keep(master match)
+//   project_report_merge, gen(x_mrg) tag("X")
+//
+// Options:
+//   gen(name)        — name of the merge indicator (required)
+//   tag(string)      — label shown in the report
+//   required(real)   — minimum match rate (master rows matched / master rows);
+//                      aborts with error if below
+//   keep_merge       — do not drop the merge indicator after reporting
+//------------------------------------------------------------------------------
+capture program drop project_report_merge
+program define project_report_merge
+    syntax, gen(name) [tag(string) required(real -1) keep_merge]
+    qui count if `gen' == 3
+    local matched = r(N)
+    qui count if `gen' == 1
+    local master_only = r(N)
+    qui count if `gen' == 2
+    local using_only = r(N)
+    local total_master = `matched' + `master_only'
+    if `total_master' == 0 local total_master = 1
+    local rate = 100 * `matched' / `total_master'
+    if "`tag'" == "" local tag "merge"
+    di as text "  `tag': " %9.0fc `matched' " matched / " ///
+        %9.0fc `matched' + `master_only' " master (" %4.1f `rate' "%)" ///
+        "  [" %9.0fc `master_only' " master-only, " ///
+        %9.0fc `using_only' " using-only]"
+    if `required' > 0 & `rate' < `required' {
+        di as error "  `tag': match rate `rate'% below required `required'%"
+        exit 459
+    }
+    if "`keep_merge'" == "" drop `gen'
+end
+
+
+//------------------------------------------------------------------------------
+// taxsim_fallback_calc — approximate federal/state/FICA tax when TAXSIM is
+// unavailable. Generates (or replaces) fiitax, siitax, fica, taxable_income.
+//
+// Uses Oregon's 2022 single-filer progressive schedule and standard
+// 2022 federal deductions ($12,950 single / $25,900 joint). Federal income
+// tax is set to 0 as a placeholder — this fallback is not a substitute for
+// TAXSIM, only a diagnostic when TAXSIM fails.
+//
+// Usage: taxsim_fallback_calc, agi(agi_proxy) mstat(mstat) ///
+//            pwages(pwages) swages(swages)
+//------------------------------------------------------------------------------
+capture program drop taxsim_fallback_calc
+program define taxsim_fallback_calc
+    syntax, agi(varname numeric) mstat(varname numeric) ///
+        pwages(varname numeric) swages(varname numeric)
+
+    ** Federal-like taxable income (std deduction by filing status)
+    capture drop taxable_income
+    gen double taxable_income = max(`agi' - cond(`mstat' == 2, 25900, 12950), 0)
+
+    ** Oregon 2022 single-filer brackets
+    capture drop siitax
+    gen double siitax = 0.05  * min(taxable_income, 3750) ///
+        + 0.07  * max(min(taxable_income, 9450)   - 3750, 0) ///
+        + 0.09  * max(min(taxable_income, 125000) - 9450, 0) ///
+        + 0.099 * max(taxable_income - 125000, 0)
+
+    ** Placeholder — fallback does not attempt federal liability
+    capture drop fiitax
+    gen double fiitax = 0
+
+    ** FICA (employee share): 6.2% OASDI capped at $147k + 1.45% HI uncapped
+    capture drop fica
+    gen double fica = 0.062  * min(`pwages' + `swages', 147000) ///
+        + 0.0145 * (`pwages' + `swages')
 end

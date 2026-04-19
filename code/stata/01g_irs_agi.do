@@ -99,12 +99,10 @@ forvalues y = $start_yy_irs_download(1)$end_yy_irs_agi {
 
 	} // END YEAR LOOP
 
-** Save file
-save "${data}working/irs_county_all", replace
-
 ** Generate fips variable
 make_fips state_fips county_fips, gen(fips)
 
 ** Save file
+compress
 save "${data}working/irs_county_all", replace
 clear

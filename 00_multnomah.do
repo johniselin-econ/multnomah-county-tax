@@ -183,10 +183,7 @@ do "${code}02_diagnostics.do"
 ** SDID on non-migration IRS outcomes (returns, AGI, wages, income)
 do "${code}02_otherout_sdid.do"
 
-** SDID on quarterly outcomes (QWI employment/earnings, QCEW estabs/wages)
-do "${code}02_quarterly_sdid.do"
-
-** Supplemental obs counts for otherout + quarterly (optional — uncomment to run)
+** Supplemental obs counts for otherout SDID
 do "${code}02_diagnostics_supp.do"
 
 ** Appendix B: IRS data quality (extended 2012-2022 window)

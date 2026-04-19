@@ -14,6 +14,7 @@ Requirements (for parallel mode):
 Outputs:
 - sdid_results.dta/xlsx: Treatment effects for each specification
 - sdid_results.dta/xlsx: Treatment effects, SEs, p-values for each specification
+- sdid_event_results.dta: Machine-readable event-study coefficients
 - fig_speccurve_*.pdf/jpg: Specification curve plots
 
 Authors: John Iselin
@@ -112,6 +113,7 @@ merge m:1 fips using "${data}working/demographics_2020", 	///
 ** Show match
 tab state_name demo_merge, m
 tab year demo_merge, m
+project_report_merge, gen(demo_merge) tag("demographics_2020") keep_merge
 
 ** Keep if matched
 keep if demo_merge == 3
@@ -127,6 +129,7 @@ merge m:1 year fips using "${data}working/bea_economics", 	///
 ** Show match
 tab state_name econ_merge, m
 tab year econ_merge, m
+project_report_merge, gen(econ_merge) tag("bea_economics") keep_merge
 
 ** Keep if matched
 keep if econ_merge == 3
@@ -135,6 +138,7 @@ drop econ_merge
 ** Merge with COVID-19 Data
 merge m:1 fips using "${data}working/covid_cleaned_wide.dta", 	///
 	gen(covid_merge) keep(master match )
+project_report_merge, gen(covid_merge) tag("covid_wide") keep_merge
 
 ** Show match
 tab state_name covid_merge, m
@@ -142,17 +146,16 @@ tab year covid_merge, m
 
 ** Merge with Property Tax Rates (time-varying)
 merge m:1 year fips using "${data}working/property_tax_rates_overall", ///
-	gen(proptx_merge) keep(master match) keepusing(prop_rate_mean prop_rate_se)
+	gen(proptx_merge) keep(master match) keepusing(prop_rate_mean)
 
 ** Show match
 tab state_name proptx_merge, m
 tab year proptx_merge, m
+project_report_merge, gen(proptx_merge) tag("property_tax")
 
 ** Rename for clarity
 rename prop_rate_mean prop_tax_rate
-rename prop_rate_se prop_tax_rate_se
 label var prop_tax_rate "Mean property tax rate (% of home value)"
-label var prop_tax_rate_se "SE of property tax rate"
 
 ** Merge with Census Age Shares (time-invariant, ACS 2015-2019)
 merge m:1 fips using "${data}working/age_shares_county", ///
@@ -160,6 +163,7 @@ merge m:1 fips using "${data}working/age_shares_county", ///
 
 ** Show match
 tab state_name age_merge, m
+project_report_merge, gen(age_merge) tag("age_shares")
 
 ** Organize data
 order year fips state_* county_*
@@ -279,6 +283,7 @@ tab sample_demog if year == 2020
 
 ** Define sample 5: COVID stringency k-means match (JII restriction-duration)
 merge m:1 fips using "${data}working/jii_stringency.dta", gen(jii_merge) keep(master match)
+project_report_merge, gen(jii_merge) tag("jii_stringency") keep_merge
 
 ** Standardize 5 stringency vars within urban top-75%
 foreach v in msahodays restclosedays gatherbandays strictgatherbandays maskpubdays {
@@ -436,6 +441,7 @@ xtset fips year
 ** Label var
 label var year "Year (destination)"
 
+compress
 save "${data}working/sdid_analysis_data.dta", replace
 project_write_manifest using "${data}working/sdid_analysis_data_manifest.dta", ///
 	artifact("sdid_analysis_data") script("02_sdid_analysis.do")
@@ -740,6 +746,30 @@ if ${use_parallel} == 1 {
 
 					graph export "`evpath'", as(jpg) name("Graph") quality(100) replace
 
+					** Save machine-readable event-study results
+					capture drop sample
+					gen str40 sample_data = "`out_txt'"
+					gen str40 sample = "`samp_var'"
+					gen str60 outcome = "`outcome'"
+					gen controls = `c'
+					gen exclusion = `exl'
+					gen event_year = id
+					gen event_tau = res1
+					gen event_ci_lo = res3
+					gen event_ci_hi = res4
+					gen event_se = (event_ci_hi - event_ci_lo) / (2 * 1.96) ///
+						if !missing(event_ci_lo) & !missing(event_ci_hi)
+					gen outstate = strpos("`outcome'", "_outstate") > 0 | strpos("`outcome'", "_irs5") > 0
+					gen preferred = inlist("`samp_var'", "sample_all", "sample_stringency") ///
+						& `c' == 1 & `exl' == 1 ///
+						& inlist("`out_txt'", "irs_full_16_22", "acs_16_24_col", ///
+							"irs_outstate_full_16_22", "acs_outstate_16_24_col")
+					keep sample_data sample outcome controls exclusion ///
+						event_year event_tau event_se event_ci_lo event_ci_hi ///
+						outstate preferred
+					drop if missing(event_tau)
+					save "`results_path'sdid/temp_event_results/event_`table_id'_`outvar'_`c'.dta", replace
+
 					** Restore data
 					restore
 
@@ -842,6 +872,7 @@ if ${use_parallel} == 1 {
 
 	** Create temp directories for results
 	capture mkdir "${results}sdid/temp_results"
+	capture mkdir "${results}sdid/temp_event_results"
 
 	** Create subfolders for each output type
 	foreach out_txt in "irs_full_16_22" "irs_outstate_full_16_22" "irs_389_16_22" "irs_outstate_389_16_22" "acs_16_22_all" "acs_16_22_col" "acs_16_24_all" "acs_16_24_col" "acs_outstate_16_22_all" "acs_outstate_16_22_col" "acs_outstate_16_24_all" "acs_outstate_16_24_col" {
@@ -1016,6 +1047,57 @@ if ${use_parallel} == 1 {
 	** Clean up temp directory
 	shell rmdir "${results}sdid/temp_results" /s /q
 
+	** Combine event-study results from parallel workers
+	clear
+	local event_files : dir "${results}sdid/temp_event_results" files "event_*.dta"
+	local first_event = 1
+
+	foreach f of local event_files {
+		if `first_event' == 1 {
+			use "${results}sdid/temp_event_results/`f'", clear
+			local first_event = 0
+		}
+		else {
+			append using "${results}sdid/temp_event_results/`f'"
+		}
+	}
+
+	if `first_event' == 1 {
+		clear
+		set obs 1
+		gen str40 sample_data = ""
+		gen str40 sample = ""
+		gen str60 outcome = ""
+		gen controls = .
+		gen exclusion = .
+		gen event_year = .
+		gen event_tau = .
+		gen event_se = .
+		gen event_ci_lo = .
+		gen event_ci_hi = .
+		gen outstate = .
+		gen preferred = .
+		drop in 1
+	}
+
+	if ${resume} == 1 {
+		capture confirm file "${results}sdid/sdid_event_results.dta"
+		if _rc == 0 {
+			append using "${results}sdid/sdid_event_results.dta"
+			duplicates drop sample_data sample outcome controls exclusion event_year, force
+		}
+	}
+
+	order sample_data sample outcome controls exclusion event_year ///
+		event_tau event_se event_ci_lo event_ci_hi outstate preferred
+	compress
+	save "${results}sdid/sdid_event_results.dta", replace
+	project_write_manifest using "${results}sdid/sdid_event_results_manifest.dta", ///
+		artifact("sdid_event_results") script("02_sdid_analysis.do")
+
+	** Clean up event-study temp directory
+	shell rmdir "${results}sdid/temp_event_results" /s /q
+
 	** Clean up temporary files
 	capture erase "${data}working/table_grid.dta"
 	capture erase "${data}working/table_ids.dta"
@@ -1030,6 +1112,7 @@ else {
 	********************************************************************************
 
 	** Open postfile for results accumulation (O(1) per spec)
+	capture mkdir "${results}sdid/temp_event_results"
 	local pf_path "${results}sdid/sdid_results.dta"
 	if ${resume} == 1 {
 		local pf_path "${results}sdid/sdid_results_new.dta"
@@ -1061,6 +1144,8 @@ else {
 			restore
 		}
 	}
+
+	local event_seq = 0
 
 	** Loop over IRS and ACS Samples
 	foreach data in `data_vars' {
@@ -1230,8 +1315,8 @@ else {
 								** Move Matrix results to data
 								svmat res
 
-								** Generate ID variable
-								gen id = `max_yr' - _n + 1 if !missing(res1)
+								** Generate ID variable (missing-tau rows dropped at end)
+								gen id = `max_yr' - _n + 1
 
 								** Update labeling for exclusion of 2020
 								if `exl' == 1 {
@@ -1259,6 +1344,32 @@ else {
 
 								graph export "`path'", 	///
 									as(jpg) name("Graph") quality(100) replace
+
+								** Save machine-readable event-study results
+								capture drop sample
+								gen str40 sample_data = "`out_txt'"
+								gen str40 sample = "`samp'"
+								gen str60 outcome = "`out'"
+								gen controls = `c'
+								gen exclusion = `exl'
+								gen event_year = id
+								gen event_tau = res1
+								gen event_ci_lo = res3
+								gen event_ci_hi = res4
+								gen event_se = (event_ci_hi - event_ci_lo) / (2 * 1.96) ///
+									if !missing(event_ci_lo) & !missing(event_ci_hi)
+								gen outstate = strpos("`out'", "_outstate") > 0 | strpos("`out'", "_irs5") > 0
+								gen preferred = inlist("`samp'", "sample_all", "sample_stringency") ///
+									& `c' == 1 & `exl' == 1 ///
+									& inlist("`out_txt'", "irs_full_16_22", "acs_16_24_col", ///
+										"irs_outstate_full_16_22", "acs_outstate_16_24_col")
+								keep sample_data sample outcome controls exclusion ///
+									event_year event_tau event_se event_ci_lo event_ci_hi ///
+									outstate preferred
+								drop if missing(event_tau)
+								local ++event_seq
+								local event_file "${results}sdid/temp_event_results/event_`event_seq'.dta"
+								save "`event_file'", replace
 
 								** Restore data (removes expanded rows and temp variables)
 								restore
@@ -1363,6 +1474,57 @@ else {
 	project_write_manifest using "${results}sdid/sdid_results_manifest.dta", ///
 		artifact("sdid_results") script("02_sdid_analysis.do")
 	export excel using "${results}sdid/sdid_results.xlsx", firstrow(variables) replace
+
+	** Combine event-study results
+	clear
+	local event_files : dir "${results}sdid/temp_event_results" files "event_*.dta"
+	local first_event = 1
+
+	foreach f of local event_files {
+		if `first_event' == 1 {
+			use "${results}sdid/temp_event_results/`f'", clear
+			local first_event = 0
+		}
+		else {
+			append using "${results}sdid/temp_event_results/`f'"
+		}
+	}
+
+	if `first_event' == 1 {
+		clear
+		set obs 1
+		gen str40 sample_data = ""
+		gen str40 sample = ""
+		gen str60 outcome = ""
+		gen controls = .
+		gen exclusion = .
+		gen event_year = .
+		gen event_tau = .
+		gen event_se = .
+		gen event_ci_lo = .
+		gen event_ci_hi = .
+		gen outstate = .
+		gen preferred = .
+		drop in 1
+	}
+
+	if ${resume} == 1 {
+		capture confirm file "${results}sdid/sdid_event_results.dta"
+		if _rc == 0 {
+			append using "${results}sdid/sdid_event_results.dta"
+			duplicates drop sample_data sample outcome controls exclusion event_year, force
+		}
+	}
+
+	order sample_data sample outcome controls exclusion event_year ///
+		event_tau event_se event_ci_lo event_ci_hi outstate preferred
+	compress
+	save "${results}sdid/sdid_event_results.dta", replace
+	project_write_manifest using "${results}sdid/sdid_event_results_manifest.dta", ///
+		artifact("sdid_event_results") script("02_sdid_analysis.do")
+
+	** Clean up event-study temp directory
+	shell rmdir "${results}sdid/temp_event_results" /s /q
 
 } // END SEQUENTIAL ESTIMATION
 
@@ -1485,20 +1647,6 @@ foreach otype in "n1" "n2" "agi" {
 		sort tau
 		gen spec_rank = _n
 		local n_specs = _N
-
-		** Labels for outcome type
-		if "`otype'" == "n1" local otype_label "Returns/Households"
-		else if "`otype'" == "n2" local otype_label "Exemptions/Persons"
-		else if "`otype'" == "agi" local otype_label "AGI/Income"
-
-		** Labels for migration
-		if "`migr'" == "net" local migr_label "Net Migration"
-		else if "`migr'" == "in" local migr_label "In-Migration"
-		else if "`migr'" == "out" local migr_label "Out-Migration"
-
-		** Title suffix for IRS5 plots
-		if "`pset'" == "outstate" local pset_title " (Out-of-State)"
-		else local pset_title ""
 
 		********************************************************************************
 		** Create variables for significance and preferred-based coloring
@@ -1656,7 +1804,6 @@ foreach otype in "n1" "n2" "agi" {
 				   rows(1) pos(6) size(vsmall)) 							///
 			ytitle("Treatment Effect (pp)", size(vsmall)) 					///
 			xtitle("Specification (ranked by effect size)", size(vsmall)) 	///
-			title("`otype_label': `migr_label'`pset_title'", size(medium)) 	///
 			xlabel(none) 													///
 			xscale(range(0.5 `=`n_specs'+0.5')) 							///
 			graphregion(color(white)) 										///
@@ -1749,7 +1896,6 @@ foreach otype in "n1" "n2" "agi" {
 				   rows(1) pos(6) size(vsmall)) 							///
 			ytitle("Treatment Effect (pp)", size(vsmall)) 					///
 			xtitle("Specification (ranked by effect size)", size(vsmall)) 	///
-			title("`otype_label': `migr_label'`pset_title'", size(medium)) 	///
 			xlabel(none) 													///
 			xscale(range(0.5 `=`n_specs'+0.5')) 							///
 			graphregion(color(white)) 										///
@@ -1920,10 +2066,6 @@ foreach otype in "n1" "n2" "agi" {
 					robust
 		estimates store meta_full
 
-		** Store regression stats for subtitle
-		local r2 : di %4.3f e(r2)
-		local n  : di %4.0f e(N)
-
 		** Panel 1: donor-pool choices
 		coefplot meta_full, drop(_cons) noomitted 					///
 			keep(2.donor_pool 3.donor_pool 4.donor_pool 5.donor_pool) ///
@@ -1937,8 +2079,6 @@ foreach otype in "n1" "n2" "agi" {
 			msymbol(D) mcolor("`col_pool'") 						///
 			ciopts(lcolor("`col_pool'")) 							///
 			graphregion(color(white)) plotregion(color(white)) 		///
-			title("Donor Pool", size(small)) 						///
-			subtitle("", size(vsmall)) 								///
 			xtitle("Effect on SDID estimate (pp)", size(vsmall)) 	///
 			legend(off)												///
 			name(inf_pool_`otype'_`migr'_`geo', replace)
@@ -1955,8 +2095,6 @@ foreach otype in "n1" "n2" "agi" {
 			msymbol(D) mcolor("`col_data'") 						///
 			ciopts(lcolor("`col_data'")) 							///
 			graphregion(color(white)) plotregion(color(white)) 		///
-			title("Data Source", size(small)) 						///
-			subtitle("", size(vsmall)) 								///
 			xtitle("Effect on SDID estimate (pp)", size(vsmall)) 	///
 			legend(off)												///
 			name(inf_data_`otype'_`migr'_`geo', replace)
@@ -1973,8 +2111,6 @@ foreach otype in "n1" "n2" "agi" {
 			msymbol(D) mcolor("`col_other'") 						///
 			ciopts(lcolor("`col_other'")) 							///
 			graphregion(color(white)) plotregion(color(white)) 		///
-			title("Other Choices", size(small)) 					///
-			subtitle("", size(vsmall)) 								///
 			xtitle("Effect on SDID estimate (pp)", size(vsmall)) 	///
 			legend(off)												///
 			name(inf_other_`otype'_`migr'_`geo', replace)
@@ -1984,8 +2120,6 @@ foreach otype in "n1" "n2" "agi" {
 			inf_data_`otype'_`migr'_`geo' 							///
 			inf_other_`otype'_`migr'_`geo', 						///
 			cols(3) xcommon imargin(2 2 2 2) 						///
-			title("`otype_label': `migr_label'", size(medium)) 		///
-			subtitle("`geo_label' | N = `n', R-sq = `r2'", size(small)) ///
 			graphregion(color(white))
 
 		** Export

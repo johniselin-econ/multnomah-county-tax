@@ -47,10 +47,13 @@ if "${dir}" == "" {
 if "${code}" == "" global code "${dir}/code/stata/"
 do "${code}00_stata_config.do"
 
-** Start log file 
+** Start log file
 capture log close log_02
 log using "${logs}02_log_descriptives_${date}", replace text name(log_02)
 project_set_seed, context("02_descriptives.do") offset(20)
+
+** Ensure output dir exists (supports standalone runs outside the orchestrator)
+capture mkdir "${results}tables"
 
 ** plotplainblind palette (RGB) — consistent across all figures
 local col_out  "0 114 178"    // sea (p7) — out-migration
@@ -74,18 +77,18 @@ foreach x in "o" "d" {
 	** Keep Multnomah
 	keep if multnomah_`x' == 1 
 	
-	** Export data 
-	export excel using "${data}multnomah.xlsx", 	///
-		sheet(irs_`x', replace ) firstrow(variables) 
-		
-	** Clear and restore 
-	clear 
+	** Export data
+	export excel using "${results}tables/multnomah_flow_counties.xlsx", 	///
+		sheet(irs_`x', replace ) firstrow(variables)
+
+	** Clear and restore
+	clear
 	restore
-		
-} // END ORIGIN-DESTINATION LOOP 
+
+} // END ORIGIN-DESTINATION LOOP
 
 ** Determine set of common in- and out-migration counties for Multnomah
-use ${data}working/acs_county_flow.dta, clear 
+use ${data}working/acs_county_flow.dta, clear
 
 ** Tag Multnomah
 gen multnomah_o = (state_fips_o == 41 & county_fips_o == 51)
@@ -100,9 +103,9 @@ foreach x in "o" "d" {
 	** Keep Multnomah
 	keep if multnomah_`x' == 1 
 	
-	** Export data 
-	export excel using "${data}multnomah.xlsx", 	///
-		sheet(acs_`x', replace ) firstrow(variables) 
+	** Export data
+	export excel using "${results}tables/multnomah_flow_counties.xlsx", 	///
+		sheet(acs_`x', replace ) firstrow(variables)
 		
 	** Clear and restore 
 	clear 
