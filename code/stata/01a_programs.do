@@ -5,7 +5,8 @@
 * Outputs:     In-memory label definitions and programs:
 *                lb_move_type, lb_agi (labels)
 *                make_fips, unsuppress, setup_parallel,
-*                acs_make_gross_migration, label_irs_migration_vars (programs)
+*                acs_make_gross_migration, label_irs_migration_vars,
+*                sdid_log_failure, sdid_consolidate_failures (programs)
 ******************************************************************************/
 
 //--------------------------------------------------
@@ -412,4 +413,88 @@ program define taxsim_fallback_calc
     capture drop fica
     gen double fica = 0.062  * min(`pwages' + `swages', 147000) ///
         + 0.0145 * (`pwages' + `swages')
+end
+
+
+** ---------------------------------------------------------------------
+** SDID failure logging
+** ---------------------------------------------------------------------
+** Record each SDID skip-handler hit with its rc so reruns can distinguish
+** legitimate failures from crash-masked cells. Per-PID CSVs avoid contention
+** between parallel workers; consolidate step merges them into one summary.
+
+capture program drop sdid_log_failure
+program define sdid_log_failure
+    syntax, RC(integer)       ///
+            SCRIPT(string)    ///
+            TABLEID(string)   ///
+            OUTCOME(string)   ///
+            C(integer)        ///
+            EXL(integer)      ///
+            [SAMP(string)     ///
+             CONTEXT(string)]
+
+    capture mkdir "${logs}sdid_failures"
+
+    local pid = c(pid)
+    local fpath "${logs}sdid_failures/failures_pid`pid'.csv"
+
+    local rc_text ""
+    if `rc' == 503  local rc_text "conformability error"
+    if `rc' == 603  local rc_text "file could not be opened"
+    if `rc' == 700  local rc_text "no room to add more observations"
+    if `rc' == 900  local rc_text "no room to add more variables"
+    if `rc' == 910  local rc_text "op. sys. refuses to provide memory"
+    if `rc' == 950  local rc_text "op. sys. refuses to provide memory"
+    if `rc' == 2000 local rc_text "no observations"
+
+    capture confirm file "`fpath'"
+    local need_header = (_rc != 0)
+
+    tempname fh
+    file open `fh' using "`fpath'", write text append
+    if `need_header' {
+        file write `fh' "timestamp,script,table_id,outcome,c,exl,samp,rc,rc_text,context" _n
+    }
+
+    local ts "`c(current_date)' `c(current_time)'"
+    file write `fh' `""`ts'","`script'","`tableid'","`outcome'",`c',`exl',"`samp'",`rc',"`rc_text'","`context'""' _n
+    file close `fh'
+
+    dis as txt "  [sdid_log_failure] pid=`pid' rc=`rc' `rc_text' | script=`script' table=`tableid' out=`outcome' c=`c' exl=`exl' samp=`samp'"
+end
+
+
+capture program drop sdid_consolidate_failures
+program define sdid_consolidate_failures
+    syntax [, QUIET]
+
+    local logdir "${logs}sdid_failures"
+    local files ""
+    capture local files : dir "`logdir'" files "failures_pid*.csv"
+    if `"`files'"' == "" {
+        if "`quiet'" == "" dis as txt "No SDID failure files; nothing to consolidate."
+        exit 0
+    }
+
+    local outpath "${logs}sdid_failures_${pr_name}_${date}.csv"
+    tempname outh inh
+    file open `outh' using "`outpath'", write text replace
+    file write `outh' "timestamp,script,table_id,outcome,c,exl,samp,rc,rc_text,context" _n
+
+    local n_rows = 0
+    foreach f of local files {
+        file open `inh' using "`logdir'/`f'", read
+        file read `inh' line
+        file read `inh' line
+        while r(eof) == 0 {
+            file write `outh' `"`line'"' _n
+            local ++n_rows
+            file read `inh' line
+        }
+        file close `inh'
+    }
+    file close `outh'
+
+    dis as text "sdid_consolidate_failures: wrote `n_rows' row(s) to `outpath'"
 end

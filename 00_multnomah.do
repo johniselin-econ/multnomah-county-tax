@@ -55,6 +55,7 @@ if "${dir}" == "" {
 }
 if "${code}" == "" global code "${dir}/code/stata/"
 do "${code}00_stata_config.do"
+do "${code}01a_programs.do"   // reusable helpers (project_set_seed, project_report_merge, etc.)
 
 ** Verify all required packages are installed
 local pkg_missing = 0
@@ -193,5 +194,8 @@ do "${code}02_appendix_data_quality.do"
 ** ============================================================================
 ** CLOSE
 ** ============================================================================
+** Consolidate SDID per-worker failure logs into a single summary file
+capture sdid_consolidate_failures
+
 capture log close
 

@@ -371,7 +371,11 @@ foreach data of varlist irs_sample_1 acs_period_1 acs_period_2 {
 						}
 
 						if _rc != 0 {
+							local _failed_rc = _rc
 							dis "SDID failed for `out' c=`c' exl=`exl'. Skipping."
+							sdid_log_failure, rc(`_failed_rc') script("02_narrow_sdid") ///
+								tableid("`out_txt'") outcome("`out'") c(`c') exl(`exl') ///
+								samp("narrow") context("narrow-control-pool")
 							continue
 						}
 

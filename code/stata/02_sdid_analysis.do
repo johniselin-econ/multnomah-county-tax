@@ -630,7 +630,11 @@ if ${use_parallel} == 1 {
 				}
 
 				if _rc != 0 {
+					local _failed_rc = _rc
 					dis "SDID failed for `outcome' c=`c' exl=`exl' samp=`samp_var'. Skipping."
+					sdid_log_failure, rc(`_failed_rc') script("02_sdid_analysis") ///
+						tableid("`table_id'") outcome("`outcome'") c(`c') exl(`exl') ///
+						samp("`samp_var'") context("parallel-worker")
 					continue
 				}
 
@@ -1014,7 +1018,7 @@ if ${use_parallel} == 1 {
 	timer clear 1
 	timer on 1
 
-	parallel, prog(parallel_sdid_wrapper run_sdid_table): parallel_sdid_wrapper
+	parallel, prog(parallel_sdid_wrapper run_sdid_table sdid_log_failure): parallel_sdid_wrapper
 
 	timer off 1
 	timer list 1
@@ -1243,7 +1247,11 @@ else {
 								}
 
 								if _rc != 0 {
+									local _failed_rc = _rc
 									dis "SDID failed for `out' c=`c' exl=`exl' samp=`samp'. Skipping."
+									sdid_log_failure, rc(`_failed_rc') script("02_sdid_analysis") ///
+										tableid("`out_txt'") outcome("`out'") c(`c') exl(`exl') ///
+										samp("`samp'") context("main-serial")
 									continue
 								}
 
