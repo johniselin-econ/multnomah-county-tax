@@ -752,10 +752,10 @@ gen double result_net_of_tax_semi_elast_shs = beta_kleven_shs
 gen double result_net_of_tax_semi_se_shs = beta_se_kleven_shs
 gen double result_gross_flow_elast_shs = flow_e_shs
 gen double result_gross_flow_elast_se_shs = flow_se_shs
-gen double result_stock_elast_tot_common_shs = stock_elast_total_common_shs
+gen double result_stock_elast_tot_com_shs = stock_elast_total_common_shs
 gen double result_stock_elast_tot_full_shs = stock_elast_total_full_shs
 gen double result_stock_elast_tot_ann_shs = stock_elast_total_ann_shs
-gen double result_stock_elast_imp_common_shs = stock_elast_imp_common_shs
+gen double result_stock_elast_imp_com_shs = stock_elast_imp_common_shs
 gen double result_stock_elast_imp_full_shs = stock_elast_imp_full_shs
 gen double result_stock_elast_imp_ann_shs = stock_elast_imp_ann_shs
 
@@ -786,9 +786,9 @@ order spec_sample_data spec_sample spec_outcome spec_controls spec_exclusion ///
 	result_stock_elast_imp_ann ///
 	result_net_of_tax_semi_elast_shs result_net_of_tax_semi_se_shs ///
 	result_gross_flow_elast_shs result_gross_flow_elast_se_shs ///
-	result_stock_elast_tot_common_shs result_stock_elast_tot_full_shs ///
+	result_stock_elast_tot_com_shs result_stock_elast_tot_full_shs ///
 	result_stock_elast_tot_ann_shs ///
-	result_stock_elast_imp_common_shs result_stock_elast_imp_full_shs ///
+	result_stock_elast_imp_com_shs result_stock_elast_imp_full_shs ///
 	result_stock_elast_imp_ann_shs
 
 export excel using "${results}elasticities/tbl_elasticities.xlsx", ///
@@ -981,10 +981,10 @@ post `guideh' ("recalc_components") ("result_net_of_tax_semi_elast_shs") ("Kleve
 post `guideh' ("recalc_components") ("result_net_of_tax_semi_se_shs") ("Standard error of the SHS-inclusive semi-elasticity.")
 post `guideh' ("recalc_components") ("result_gross_flow_elast_shs") ("Gross-flow elasticity (in/out) with the SHS-inclusive denominator.")
 post `guideh' ("recalc_components") ("result_gross_flow_elast_se_shs") ("Standard error of the SHS-inclusive gross-flow elasticity.")
-post `guideh' ("recalc_components") ("result_stock_elast_tot_common_shs") ("Stock elasticity on the total AGI base, 2021–2022 window, SHS-inclusive.")
+post `guideh' ("recalc_components") ("result_stock_elast_tot_com_shs") ("Stock elasticity on the total AGI base, 2021–2022 window, SHS-inclusive.")
 post `guideh' ("recalc_components") ("result_stock_elast_tot_full_shs") ("Stock elasticity on the total AGI base, full post horizon, SHS-inclusive.")
 post `guideh' ("recalc_components") ("result_stock_elast_tot_ann_shs") ("Annualized stock elasticity on the total AGI base, SHS-inclusive.")
-post `guideh' ("recalc_components") ("result_stock_elast_imp_common_shs") ("Stock elasticity on the impacted AGI base, 2021–2022 window, SHS-inclusive.")
+post `guideh' ("recalc_components") ("result_stock_elast_imp_com_shs") ("Stock elasticity on the impacted AGI base, 2021–2022 window, SHS-inclusive.")
 post `guideh' ("recalc_components") ("result_stock_elast_imp_full_shs") ("Stock elasticity on the impacted AGI base, full post horizon, SHS-inclusive.")
 post `guideh' ("recalc_components") ("result_stock_elast_imp_ann_shs") ("Annualized stock elasticity on the impacted AGI base, SHS-inclusive.")
 
