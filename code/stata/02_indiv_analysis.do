@@ -251,11 +251,14 @@ program define hdfe_catyear_plot
     if "`vce'" == "" local vce "robust"
     if `__dbg' {
         di as txt "  Command:"
-        di as txt "    reghdfe `varlist' i.`catv'##i.`yearv' if `touse' `wgt', absorb(`absorb') vce(`vce')"
+        di as txt "    reghdfe `varlist' i.`catv'##i.`yearv' if `touse' `wgt', absorb(`absorb') vce(`vce') pool(1) compact"
     }
 
+    ** pool(1) + compact: stream variables through Mata one at a time and drop
+    ** originals after demeaning to survive 19M-obs sample_2 runs. Pure memory
+    ** optimization; does not affect estimates or standard errors.
     quietly reghdfe `varlist' i.`catv'##i.`yearv' if `touse' `wgt', ///
-        absorb(`absorb') vce(`vce')
+        absorb(`absorb') vce(`vce') pool(1) compact
 
     ********************************************************************************
     ** Margins: conditional means by CAT over YEAR (save to dataset)
@@ -341,6 +344,24 @@ if `__dbgdetail' {
         if `__dbg' di as txt "  X-axis years used: `xyrs'"
 
         ********************************************************************************
+        ** Horizontal stagger: offset each CAT series by a fraction of a year so
+        ** points/CIs at the same YEAR don't stack directly on top of each other.
+        ** Offsets are centered on 0 and spread symmetrically across series.
+        ********************************************************************************
+        local cats_n : word count `cats'
+        local offset_step = 0.12
+        capture drop year_plot
+        gen double year_plot = year
+        local __ii 0
+        foreach c of local cats {
+            quietly count if cat_level == `c'
+            if r(N) == 0 continue
+            local ++__ii
+            local __off = (`__ii' - (`cats_n' + 1)/2) * `offset_step'
+            quietly replace year_plot = year + `__off' if cat_level == `c'
+        }
+
+        ********************************************************************************
         ** Plot styling: use plotplainblind palette if available (scheme-level)
         ********************************************************************************
         local __oldscheme "`c(scheme)'"
@@ -362,7 +383,6 @@ if `__dbgdetail' {
         local leg_labels ""
         local pnum 0
 
-        local cats_n : word count `cats'
         local legrows 1
         if `cats_n' > 4 local legrows 2
 
@@ -379,18 +399,18 @@ if `__dbgdetail' {
             local __key : subinstr local __key "-" "m", all
             local serieslab "`__lab_`__key''"
 
-            ** CI (excluded from legend)
+            ** CI (excluded from legend); use staggered x-coord year_plot
             if "`noci'" == "" {
                 local ++pnum
                 local plots `plots' ///
-                    (rcap ll ul year if cat_level==`c', sort ///
+                    (rcap ll ul year_plot if cat_level==`c', sort ///
                         pstyle(`pstyle') lcolor(%50))
             }
 
-            ** Line (in legend)
+            ** Line (in legend); use staggered x-coord year_plot
             local ++pnum
             local plots `plots' ///
-                (connected b year if cat_level==`c', sort ///
+                (connected b year_plot if cat_level==`c', sort ///
                     pstyle(`pstyle') lp(solid) msym(O) )
 
             local leg_order  `leg_order' `pnum'
@@ -673,6 +693,12 @@ forvalues i = 1/2 {
     if `i' == 1 local ytitle_txt "Out-migration rate (%)"
     if `i' == 2 local ytitle_txt "In-migration rate (%)"
 
+    ** Geographic FE: county for sample_1 (Multnomah, 48K obs; state is collinear
+    ** and dropped by reghdfe), state only for sample_2 (~19M obs — absorbing
+    ** county_fips_o at ~3000 levels exceeds Mata's partial_out memory).
+    if `i' == 1 local geo_fe "state_fips_o county_fips_o"
+    if `i' == 2 local geo_fe "state_fips_o"
+
     foreach cat of local catvars {
 
         ** Absorb all other categories (but not the focal one)
@@ -682,13 +708,13 @@ forvalues i = 1/2 {
         hdfe_catyear_plot out_`i' if sample_`i' == 1, ///
             cat(`cat') ///
             year(year) ///
-            absorb(state_fips_o county_fips_o `othercats') ///
-            wvar(perwt) wtype(fw) ///
+            absorb(`geo_fe' `othercats') ///
+            wvar(perwt) wtype(pw) ///
 			xtitle("ACS Survey Year (t=2)") ///
             ytitle("`ytitle_txt'") ///
             saving("${results}individual/fig_`cat'_`i'") ///
             replace
-			
+
     } // END CAT LOOP
 
 } // END SAMPLE LOOP
