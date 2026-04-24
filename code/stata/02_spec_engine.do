@@ -29,7 +29,7 @@ Purpose:        Shared engine of pure per-specification programs used by
                                               revenue losses (in $M), using
                                               the rescale-to-actual-collections
                                               formula from the current
-                                              02_revenue.do Section 12.
+                                              02_revenue_microsim.do Section 12.
 
                 It also provides the LaTeX table scaffolding helpers
                 (elast_tex_open / elast_tex_notes_open / elast_tex_close)
@@ -44,14 +44,14 @@ Callers:        02_post_spec.do (to be created, Phase A)
                 02_tables_figures.do (to be created, Phase A)
                 02_bootstrap.do (to be created, Phase B)
 
-Requires:       ${data}working/revenue_parameters.dta (from 02_revenue.do)
+Requires:       ${data}working/revenue_parameters.dta (from 02_revenue_microsim.do)
                 project_assert_manifest (from 00_stata_config.do)
 
 Testing:        This file defines programs only. To verify arithmetic matches
-                the pre-restructure 02_elasticities.do and 02_revenue.do §12
+                the pre-restructure 02_elasticities.do and 02_revenue_microsim.do §12
                 output, source this file, then run 02_post_spec.do and diff
                 spec_results.dta against elasticity_results.dta +
-                the per-spec implied_loss_i column from 02_revenue.do §12.
+                the per-spec implied_loss_i column from 02_revenue_microsim.do §12.
                 Acceptance: bit-identical numeric columns.
 
 Authors: John Iselin
@@ -120,7 +120,7 @@ end
 **     change actually refreshes the values.
 **
 ** Source of truth for scalar list: the `gen double X = scalar(X)` block
-** at the end of 02_revenue.do Section 11.
+** at the end of 02_revenue_microsim.do Section 11.
 ** ------------------------------------------------------------------
 capture program drop load_revenue_params
 program define load_revenue_params
@@ -389,7 +389,7 @@ end
 **
 ** Computes implied PFA and Oregon state revenue losses for one
 ** specification, using the "rescale to actual collections" formula
-** from the current 02_revenue.do §12:
+** from the current 02_revenue_microsim.do §12:
 **
 **     effect       = |tau| / 100                # decimal migration rate
 **     effect       *= college_agi_share         # scale for ACS subsets
@@ -424,7 +424,7 @@ capture program drop compute_spec_revenue
 program define compute_spec_revenue, rclass
 	syntax, TAU(real) MIGRATION(string) OUTSTATE(integer) DATA_TYPE(string)
 
-	** Match the 02_revenue.do §12 scaling: if data_type contains "ACS",
+	** Match the 02_revenue_microsim.do §12 scaling: if data_type contains "ACS",
 	** scale by college_agi_share — the current code treats BOTH
 	** "ACS All" and "ACS College" as college-subset, which is arguably
 	** a bug (ACS All specs don't scale) but we reproduce the existing

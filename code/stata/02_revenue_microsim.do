@@ -1,15 +1,30 @@
 /*******************************************************************************
-File Name: 		02_revenue.do
+File Name: 		02_revenue_microsim.do
 Creator: 		John Iselin
-Date Update:	February 2026
+Date Update:	April 2026  (renamed from 02_revenue.do; Section 12 removed)
 
-Purpose: 	Revenue effects of tax-induced migration from Multnomah County's
-			Preschool for All (PFA) income tax. Builds a microsimulation tax
-			model using 2019 ACS microdata, calibrates to IRS administrative
-			totals, computes baseline PFA and Oregon income tax revenue, and
-			simulates revenue loss from tax-induced out-migration via Monte Carlo.
+Purpose: 	TAXSIM-based microsimulation of Multnomah County tax quantities
+			used downstream by the Kleven-elasticity and revenue-loss
+			calculations. Builds the tax-unit sample from 2019 ACS microdata,
+			calibrates to IRS administrative totals, runs TAXSIM (or the
+			simplified fallback) for federal / state / FICA, adds PFA and
+			SHS rates, and exports revenue_parameters.dta — the canonical
+			rate-and-share artifact consumed by the spec engine.
 
-Called by: 	00_multnomah.do
+			The per-specification revenue-loss distribution (formerly
+			Section 12 of this file) now lives in 02_post_spec.do, which
+			iterates the SDID spec grid and calls compute_spec_revenue
+			from the spec engine. The rendering of fig_revenue_dist_*
+			moves to 02_tables_figures.do (Phase A, commit A4). This file
+			no longer writes any per-spec outputs.
+
+Called by:	00_multnomah.do
+
+Outputs:	${data}working/revenue_microsim.dta          full microsim panel
+			${data}working/revenue_parameters.dta        rate/share scalars
+			${data}working/revenue_parameters_manifest.dta
+			${results}revenue/tbl_revenue_summary.xlsx
+			${results}revenue/tbl_pfa_by_bracket.xlsx
 
 Authors: John Iselin
 
@@ -37,9 +52,9 @@ do "${code}00_stata_config.do"
 
 ** Start log file
 capture log close log_02rev
-log using "${logs}02_log_revenue_${date}", name(log_02rev) replace text
+log using "${logs}02_log_revenue_microsim_${date}", name(log_02rev) replace text
 
-project_set_seed, context("02_revenue.do") offset(40)
+project_set_seed, context("02_revenue_microsim.do") offset(40)
 
 ** SDID effect defaults (overwritten by Section 0B once SDID results load)
 scalar effect_agi = 0.02			// placeholder: net out-migration effect on AGI
@@ -1203,7 +1218,7 @@ compress
 save "${data}working/revenue_parameters.dta", replace
 project_build_signature, artifact("sdid_results")
 project_write_manifest using "${data}working/revenue_parameters_manifest.dta", ///
-	artifact("revenue_parameters") script("02_revenue.do") ///
+	artifact("revenue_parameters") script("02_revenue_microsim.do") ///
 	upstream("`r(signature)'")
 
 dis ""
@@ -1230,237 +1245,19 @@ dis "  avg_total_rate_w/SHS  = " %8.6f avg_total_rate_with_shs
 dis "  avg_total_rate_pre+SHS= " %8.6f avg_total_rate_pre_with_shs
 dis "  avg_total_rate_col_SHS= " %8.6f avg_total_rate_col_with_shs
 
-********************************************************************************
-** SECTION 12: Distribution of Revenue Effects Across SDID Specifications
-********************************************************************************
+** Section 12 (revenue-loss distribution across SDID specs) has moved to
+** 02_post_spec.do, which iterates the SDID spec grid and calls
+** compute_spec_revenue from 02_spec_engine.do. The figure rendering
+** (fig_revenue_dist_pfa / _oregon) moves to 02_tables_figures.do.
 
 dis ""
 dis "=============================================="
-dis "Section 12: Revenue effect distribution"
-dis "=============================================="
-
-** plotplainblind palette
-local col_fill    "86 180 233"		// sky — histogram fill
-local col_irs     "213 94 0"		// vermillion — IRS preferred
-local col_acs     "0 114 178"		// sea — ACS College preferred
-
-capture confirm file "${results}sdid/sdid_results.dta"
-if _rc == 0 {
-	project_assert_manifest using "${results}sdid/sdid_results_manifest.dta", ///
-		artifact("sdid_results")
-
-	use "${results}sdid/sdid_results.dta", clear
-
-	** Parse outcome type and migration direction
-	gen outcome_type = ""
-	replace outcome_type = "n1" if strpos(outcome, "n1_") > 0
-	replace outcome_type = "n2" if strpos(outcome, "n2_") > 0
-	replace outcome_type = "agi" if strpos(outcome, "agi_") > 0
-
-	gen migration = ""
-	replace migration = "net" if strpos(outcome, "_net_") > 0
-	replace migration = "in" if strpos(outcome, "_in_") > 0
-	replace migration = "out" if strpos(outcome, "_out_") > 0
-
-	** Parse out-of-state flag
-	gen outstate = strpos(outcome, "_outstate") > 0 | strpos(outcome, "_irs5") > 0
-
-	** Parse data type
-	gen data_type = ""
-	replace data_type = "IRS" if strpos(outcome, "_irs") > 0 & outstate == 0
-	replace data_type = "IRS (Out-of-State)" if strpos(outcome, "_irs") > 0 & outstate == 1
-	replace data_type = "ACS All" if strpos(outcome, "_acs1") > 0 & outstate == 0
-	replace data_type = "ACS College" if strpos(outcome, "_acs2") > 0 & outstate == 0
-	replace data_type = "ACS All (Out-of-State)" if strpos(outcome, "_acs1") > 0 & outstate == 1
-	replace data_type = "ACS College (Out-of-State)" if strpos(outcome, "_acs2") > 0 & outstate == 1
-
-	** Parse period
-	gen period_type = ""
-	replace period_type = "16-22" if strpos(sample_data, "16_22") > 0
-	replace period_type = "16-22" if strpos(outcome, "_irs") > 0 & period_type == ""
-	replace period_type = "16-24" if strpos(sample_data, "16_24") > 0
-
-	project_mark_preferred_main
-
-	** ================================================================
-	** (a) PFA revenue effect distribution (domestic/county-level AGI net)
-	** ================================================================
-
-	preserve
-
-	** Keep AGI net migration specs, domestic (not out-of-state)
-	keep if outcome_type == "agi" & migration == "net" & outstate == 0
-
-	qui count
-	local n_specs = r(N)
-	dis "PFA revenue distribution: `n_specs' specifications"
-
-	if `n_specs' > 0 {
-
-		** Compute implied revenue effect for each specification
-		** effect_i = abs(tau_i) / 100
-		** For ACS College specs, scale by college share of AGI since τ
-		** is estimated on college-educated migration only
-		** X_i = effect_i * total_agi_2022
-		** R_m_i = avg_mt_rate * X_i
-		** dynamic_i = baseline_pfa_revenue - R_m_i
-		** implied_loss_i = (R_m_i / dynamic_i) * actual_pfa_revenue
-		gen double effect_i = abs(tau) / 100
-		replace effect_i = effect_i * scalar(college_agi_share) ///
-			if strpos(data_type, "ACS") > 0
-		gen double X_i = effect_i * scalar(total_agi_2022)
-		gen double R_m_i = scalar(avg_mt_rate) * X_i
-		gen double dynamic_i = scalar(baseline_pfa_revenue) - R_m_i
-		gen double share_i = R_m_i / dynamic_i * 100
-		gen double implied_loss_i = (R_m_i / dynamic_i) * `actual_pfa_revenue' / 1e6
-
-		** Build individual vertical lines for each highlighted spec
-		** IRS benchmarks in vermillion, ACS College benchmarks in sea blue
-		qui count if preferred == 1
-		local n_pref = r(N)
-		local pref_overlays ""
-		local irs_j = 0
-		local acs_j = 0
-		local leg_irs = 0
-		local leg_acs = 0
-		local plot_j = 1		// plot 1 = histogram
-		forvalues i = 1/`=_N' {
-			if preferred[`i'] == 1 {
-				local ++plot_j
-				local v = implied_loss_i[`i']
-				local dt = data_type[`i']
-				if strpos("`dt'", "IRS") > 0 {
-					local ++irs_j
-					if `leg_irs' == 0 local leg_irs = `plot_j'
-					local pref_overlays `"`pref_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_irs'") lwidth(medthick) lpattern(dash))"'
-				}
-				else {
-					local ++acs_j
-					if `leg_acs' == 0 local leg_acs = `plot_j'
-					local pref_overlays `"`pref_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_acs'") lwidth(medthick) lpattern(dash))"'
-				}
-			}
-		}
-
-		** Summary
-		dis "PFA implied loss distribution ($ millions):"
-		summ implied_loss_i, detail
-
-		** Histogram with one dashed line per highlighted spec
-		twoway (histogram implied_loss_i, 								///
-				fcolor("`col_fill'") lcolor(white) lwidth(thin) 		///
-				bin(20) fraction) 										///
-			`pref_overlays',											///
-			graphregion(color(white)) 									///
-			xtitle("Implied Revenue Loss ($ millions)") 				///
-			ytitle("Fraction of Specifications") 						///
-			legend(order(`leg_irs' "IRS Benchmarks" 					///
-				`leg_acs' "ACS College Benchmarks") 					///
-				ring(1) pos(6) rows(1) size(small))
-
-		graph export "${results}revenue/fig_revenue_dist_pfa.pdf", replace
-		graph export "${results}revenue/fig_revenue_dist_pfa.jpg", ///
-			as(jpg) quality(100) replace
-
-		** Overleaf copy
-		if ${overleaf} == 1 {
-			graph export "${ol_fig}fig_revenue_dist_pfa.pdf", replace
-		}
-	}
-
-	restore
-
-	** ================================================================
-	** (b) Oregon revenue effect distribution (interstate/out-of-state AGI net)
-	** ================================================================
-
-	** Keep AGI net migration specs, out-of-state only
-	keep if outcome_type == "agi" & migration == "net" & outstate == 1
-
-	qui count
-	local n_specs = r(N)
-	dis "Oregon revenue distribution: `n_specs' specifications"
-
-	if `n_specs' > 0 {
-
-		** Compute implied revenue effect for each specification
-		** Scale ACS College specs by college share of AGI
-		gen double effect_i = abs(tau) / 100
-		replace effect_i = effect_i * scalar(college_agi_share) ///
-			if strpos(data_type, "ACS") > 0
-		gen double X_i = effect_i * scalar(total_agi_2022)
-		gen double R_m_i = scalar(avg_state_rate) * X_i
-		gen double dynamic_i = scalar(baseline_state_revenue) - R_m_i
-		gen double share_i = R_m_i / dynamic_i * 100
-		gen double implied_loss_i = (R_m_i / dynamic_i) * `actual_oregon_revenue' / 1e6
-
-		** Build individual vertical lines for each highlighted spec
-		qui count if preferred == 1
-		local n_pref = r(N)
-		local pref_overlays ""
-		local irs_j = 0
-		local acs_j = 0
-		local leg_irs = 0
-		local leg_acs = 0
-		local plot_j = 1		// plot 1 = histogram
-		forvalues i = 1/`=_N' {
-			if preferred[`i'] == 1 {
-				local ++plot_j
-				local v = implied_loss_i[`i']
-				local dt = data_type[`i']
-				if strpos("`dt'", "IRS") > 0 {
-					local ++irs_j
-					if `leg_irs' == 0 local leg_irs = `plot_j'
-					local pref_overlays `"`pref_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_irs'") lwidth(medthick) lpattern(dash))"'
-				}
-				else {
-					local ++acs_j
-					if `leg_acs' == 0 local leg_acs = `plot_j'
-					local pref_overlays `"`pref_overlays' (scatteri 0 `v' 1 `v', recast(line) lcolor("`col_acs'") lwidth(medthick) lpattern(dash))"'
-				}
-			}
-		}
-
-		** Summary
-		dis "Oregon implied loss distribution ($ millions):"
-		summ implied_loss_i, detail
-
-		** Histogram with one dashed line per highlighted spec
-		twoway (histogram implied_loss_i, 								///
-				fcolor("`col_fill'") lcolor(white) lwidth(thin)			///
-				bin(20) fraction) 										///
-			`pref_overlays',											///
-			graphregion(color(white)) 									///
-			xtitle("Implied Revenue Loss ($ millions)") 				///
-			ytitle("Fraction of Specifications") 						///
-			legend(order(`leg_irs' "IRS Benchmarks" 					///
-				`leg_acs' "ACS College Benchmarks") 					///
-				ring(1) pos(6) rows(1) size(small))
-
-		graph export "${results}revenue/fig_revenue_dist_oregon.pdf", replace
-		graph export "${results}revenue/fig_revenue_dist_oregon.jpg", ///
-			as(jpg) quality(100) replace
-
-		** Overleaf copy
-		if ${overleaf} == 1 {
-			graph export "${ol_fig}fig_revenue_dist_oregon.pdf", replace
-		}
-	}
-
-}
-else {
-	dis as error "WARNING: sdid_results.dta not found. Skipping revenue distribution plots."
-}
-
-dis ""
-dis "=============================================="
-dis "02_revenue.do complete."
+dis "02_revenue_microsim.do complete."
 dis "Output files:"
 dis "  ${results}revenue/tbl_revenue_summary.xlsx"
 dis "  ${results}revenue/tbl_pfa_by_bracket.xlsx"
-dis "  ${results}revenue/fig_revenue_dist_pfa.pdf"
-dis "  ${results}revenue/fig_revenue_dist_oregon.pdf"
 dis "  ${data}working/revenue_microsim.dta"
+dis "  ${data}working/revenue_parameters.dta"
 dis "=============================================="
 
 capture log close log_02rev

@@ -54,7 +54,7 @@ multnomah-county-tax/
 │       ├── 02_flow_analysis.do    #   PPML flow models (IRS)
 │       ├── 02_indiv_analysis.do   #   Individual-level analysis
 │       ├── 02_descriptives.do     #   Descriptive statistics + maps
-│       ├── 02_revenue.do          #   Revenue microsimulation
+│       ├── 02_revenue_microsim.do #   Revenue microsimulation
 │       ├── 02_elasticities.do     #   Migration elasticities
 │       └── 02_appendix_data_quality.do  # Appendix: IRS data quality
 │
@@ -164,7 +164,7 @@ A TAXSIM-based microsimulation calibrated to 2019 ACS microdata and IRS administ
 
 - **R** 4.1+ with packages listed below
 - **Stata 16.0** or later (tested on Stata 18/MP). The code uses `version 16.0` declarations and features such as `reghdfe`, `ppmlhdfe`, and `postfile`. Stata/MP is recommended for the parallel SDID estimation but not required (set `use_parallel = 0`).
-- **TAXSIM 35** (local installation) for the revenue microsimulation (`02_revenue.do`). See [TAXSIM setup](#5-taxsim-optional) below. If TAXSIM is not installed, the revenue script falls back to a simplified tax calculator; the fallback produces approximate results but is not the paper's preferred specification.
+- **TAXSIM 35** (local installation) for the revenue microsimulation (`02_revenue_microsim.do`). See [TAXSIM setup](#5-taxsim-optional) below. If TAXSIM is not installed, the revenue script falls back to a simplified tax calculator; the fallback produces approximate results but is not the paper's preferred specification.
 
 ### First-run expectations
 
@@ -181,7 +181,7 @@ A full first run downloads ~5 GB of raw data (13 years of ACS microdata plus IRS
 
 **Optional / non-blocking:**
 
-- **TAXSIM**: Required only for the preferred revenue estimates in `02_revenue.do`. The script includes a working fallback.
+- **TAXSIM**: Required only for the preferred revenue estimates in `02_revenue_microsim.do`. The script includes a working fallback.
 - **Overleaf sync**: Set `profile.do` with `$oth_path` to copy figures/tables to Overleaf. Skipped silently if not configured.
 - **Parallel execution**: Set `use_parallel = 1` in `00_multnomah.do` for faster SDID. Falls back to sequential if the `parallel` package is missing.
 - **Maps**: Re-run `00_multnomah.R` after Stata to generate choropleth maps from Stata output. Non-blocking; the script skips gracefully if Stata output is missing.
@@ -247,13 +247,13 @@ global oth_path "C:/Users/yourname/Dropbox/Apps/Overleaf/Your Project/"
 
 ### 5. TAXSIM (optional)
 
-The revenue microsimulation (`02_revenue.do`) uses [TAXSIM 35](https://taxsim.nber.org/taxsim35/) to compute federal and state income tax liabilities. To run the preferred revenue specification:
+The revenue microsimulation (`02_revenue_microsim.do`) uses [TAXSIM 35](https://taxsim.nber.org/taxsim35/) to compute federal and state income tax liabilities. To run the preferred revenue specification:
 
 1. Download the TAXSIM 35 executable from <https://taxsim.nber.org/taxsim35/>.
 2. Place it on your system PATH, or in the project root, so that Stata's `taxsimlocal35` command can find it.
 3. Verify by running `taxsimlocal35` on a small test file in Stata.
 
-If TAXSIM is not installed or fails, `02_revenue.do` automatically falls back to a simplified PFA/Oregon tax calculator. The fallback is functional but produces approximate results; the paper's preferred revenue tables require a working TAXSIM installation.
+If TAXSIM is not installed or fails, `02_revenue_microsim.do` automatically falls back to a simplified PFA/Oregon tax calculator. The fallback is functional but produces approximate results; the paper's preferred revenue tables require a working TAXSIM installation.
 
 ## Usage
 

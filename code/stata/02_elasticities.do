@@ -27,7 +27,7 @@ Purpose: 	Calculate Kleven-style migration semi-elasticities and flow
 			that we do not estimate.
 
 Called by: 	00_multnomah.do
-Requires:	${data}working/revenue_parameters.dta (from 02_revenue.do)
+Requires:	${data}working/revenue_parameters.dta (from 02_revenue_microsim.do)
 			${results}sdid/sdid_results.dta (from 02_sdid_analysis.do)
 			${results}sdid/sdid_event_results.dta (from 02_sdid_analysis.do)
 
@@ -183,11 +183,11 @@ dis "=============================================="
 dis "Section 0: Load parameters"
 dis "=============================================="
 
-** Load revenue parameters exported by 02_revenue.do
+** Load revenue parameters exported by 02_revenue_microsim.do
 mata: st_local("rp_exists", strofreal(fileexists("${data}working/revenue_parameters.dta")))
 if `rp_exists' == 0 {
 	dis as error "ERROR: revenue_parameters.dta not found."
-	dis as error "       Run 02_revenue.do first."
+	dis as error "       Run 02_revenue_microsim.do first."
 	log close log_02elast
 	error 601
 }
@@ -254,11 +254,11 @@ dis "  avg total+SHS rate= " %10.6f avg_total_rate_with_shs
 dis "  Δln(1−τ) total NTR= " %10.6f delta_ln_ntr_total
 dis "  Δln(1−τ) NTR+SHS  = " %10.6f delta_ln_ntr_total_shs
 
-** Sanity checks (hard errors — a scale bug in 02_revenue.do should halt
+** Sanity checks (hard errors — a scale bug in 02_revenue_microsim.do should halt
 ** the pipeline, not print a warning and produce absurd elasticities).
 if delta_t < 0.001 | delta_t > 0.05 {
 	dis as error "ERROR: avg_mt_rate = " %8.6f delta_t " outside [0.001, 0.05]"
-	dis as error "       Inspect TAXSIM v25 inputs in 02_revenue.do and verify"
+	dis as error "       Inspect TAXSIM v25 inputs in 02_revenue_microsim.do and verify"
 	dis as error "       avg_mt_rate is on the [0,1] scale (not [0,100])."
 	log close log_02elast
 	error 459
@@ -266,7 +266,7 @@ if delta_t < 0.001 | delta_t > 0.05 {
 if avg_total_rate < 0.20 | avg_total_rate > 0.55 {
 	dis as error "ERROR: avg_total_rate = " %8.6f avg_total_rate ///
 		" outside [0.20, 0.55]"
-	dis as error "       Inspect 02_revenue.do tax-total aggregation."
+	dis as error "       Inspect 02_revenue_microsim.do tax-total aggregation."
 	log close log_02elast
 	error 459
 }

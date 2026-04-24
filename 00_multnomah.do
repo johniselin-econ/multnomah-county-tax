@@ -167,8 +167,9 @@ do "${code}02_indiv_analysis.do"
 ** STAGE 5: DERIVED ESTIMATES (depend on SDID results)
 ** ============================================================================
 
-** Revenue effects of tax-induced migration
-do "${code}02_revenue.do"
+** Revenue microsim: produces revenue_parameters.dta (rates + shares)
+** Per-spec revenue-loss distribution moved to 02_post_spec.do (Phase A).
+do "${code}02_revenue_microsim.do"
 
 ** Flow and stock elasticities (depends on 02_revenue + 02_sdid_analysis)
 do "${code}02_elasticities.do"
