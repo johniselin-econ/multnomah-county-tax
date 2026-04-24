@@ -46,10 +46,15 @@ if "${use_parallel}" == "" {
         global use_parallel = 0
     }
 }
-if "${n_clusters}" == "" global n_clusters = 6
+if "${n_clusters}" == "" global n_clusters = 4
 if "${resume}" == ""     global resume = 0
 
-if "${event_study_mode}" == "" global event_study_mode "preferred"
+** Event-study mode: "all" runs event studies for every SDID spec (needed for
+** the full distribution of cum_flow_impact in 02_elasticities.do). "preferred"
+** restricts to the 4 domestic baseline specs (sample_all × c=1 × exl=1 ×
+** {irs_full_16_22, acs_16_24_col}) — much faster when you only need the
+** main table's cumulative flow impact column. Override via the orchestrator.
+if "${event_study_mode}" == "" global event_study_mode "all"
 
 if "${start_year_irs_data}" == ""     global start_year_irs_data     = 2012
 if "${start_year_irs_analysis}" == "" global start_year_irs_analysis = 2016
@@ -74,6 +79,11 @@ if "${pfa_thresh1_single}" == ""   global pfa_thresh1_single   = 125000
 if "${pfa_thresh2_single}" == ""   global pfa_thresh2_single   = 250000
 if "${pfa_thresh1_joint}" == ""    global pfa_thresh1_joint    = 200000
 if "${pfa_thresh2_joint}" == ""    global pfa_thresh2_joint    = 400000
+** Portland Metro Supportive Housing Services (SHS) — effective 2021.
+** Flat 1% on income above the PFA tier-1 thresholds ($125K single / $200K joint).
+** Used only as a sensitivity denominator for Kleven-style elasticities; SHS revenue
+** accrues to Metro, not Multnomah, so it does not enter PFA baseline calcs.
+if "${shs_rate}" == ""             global shs_rate             = 0.01
 ** Actual collections used to rescale simulation output
 if "${actual_pfa_revenue}" == ""   global actual_pfa_revenue   = 187000000
 if "${actual_oregon_revenue}" == "" global actual_oregon_revenue = 11772886000

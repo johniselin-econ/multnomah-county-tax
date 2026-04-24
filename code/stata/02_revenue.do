@@ -54,6 +54,7 @@ local pfa_thresh2_single   = ${pfa_thresh2_single}
 local pfa_thresh1_joint    = ${pfa_thresh1_joint}
 local pfa_thresh2_joint    = ${pfa_thresh2_joint}
 local pfa_rate             = ${pfa_rate}
+local shs_rate             = ${shs_rate}
 
 ** Create output directory
 capture mkdir "${results}revenue"
@@ -642,7 +643,7 @@ else {
 ** Label tax variables
 label var fiitax "Federal income tax (TAXSIM)"
 label var siitax "Oregon state income tax (TAXSIM)"
-label var fica "FICA (TAXSIM v6, employee + employer)"
+label var fica "FICA (TAXSIM v6, employee share)"
 label var taxable_income "Oregon taxable income (TAXSIM)"
 
 ** Verification
@@ -670,10 +671,20 @@ gen double pfa_tax = `pfa_rate' * max(taxable_income - pfa_thresh1, 0) ///
 	+ `pfa_rate' * max(taxable_income - pfa_thresh2, 0)
 label var pfa_tax "PFA tax liability"
 
+** SHS (Portland Metro Supportive Housing Services) — flat 1% above PFA tier-1
+** thresholds, effective 2021. Used in Kleven-denominator sensitivity only; SHS
+** revenue accrues to Metro and does not enter PFA baseline revenue.
+gen double shs_tax = `shs_rate' * max(taxable_income - pfa_thresh1, 0)
+label var shs_tax "SHS tax liability (Metro, 1% flat)"
+
 ** Summary
 dis "PFA tax distribution:"
 summ pfa_tax [aw=cal_wt], detail
 summ pfa_tax [aw=cal_wt] if pfa_tax > 0, detail
+
+dis "SHS tax distribution:"
+summ shs_tax [aw=cal_wt], detail
+summ shs_tax [aw=cal_wt] if shs_tax > 0, detail
 
 ********************************************************************************
 ** SECTION 8: Baseline Revenue
@@ -944,13 +955,40 @@ scalar avg_total_rate_pre_college = (total_federal_college_impacted ///
 dis "Average total tax rate on college-impacted (post-PFA): " %6.4f avg_total_rate_college
 dis "Average total tax rate on college-impacted (pre-PFA):  " %6.4f avg_total_rate_pre_college
 
+** ---------------------------------------------------------------------
+** SHS-inclusive total rate (sensitivity denominator for Kleven elasticities)
+** SHS, like PFA, took effect in 2021, so the pre-period SHS rate is 0.
+** Mirrors the PFA block above: *_impacted for the full impacted base,
+** *_college_impacted for the college-proxy subgroup; _with_shs and
+** _pre_with_shs apply the same post/pre split used for avg_total_rate.
+** ---------------------------------------------------------------------
+qui summ shs_tax [aw=cal_wt] if impacted == 1
+scalar total_shs_impacted = r(sum_w) * r(mean)
+scalar avg_shs_rate = total_shs_impacted / total_agi_impacted
+
+qui summ shs_tax [aw=cal_wt] if impacted == 1 & educd >= 101
+scalar total_shs_college_impacted = r(sum_w) * r(mean)
+scalar avg_shs_rate_college = total_shs_college_impacted / agi_college_impacted
+
+scalar avg_total_rate_with_shs         = avg_total_rate         + avg_shs_rate
+scalar avg_total_rate_pre_with_shs     = avg_total_rate_pre
+scalar avg_total_rate_col_with_shs     = avg_total_rate_college + avg_shs_rate_college
+scalar avg_total_rate_pre_col_with_shs = avg_total_rate_pre_college
+
+dis "Average SHS rate on impacted:          " %6.4f avg_shs_rate ///
+	" (" %5.2f avg_shs_rate*100 "%)"
+dis "Avg total rate on impacted (post+SHS): " %6.4f avg_total_rate_with_shs ///
+	" (" %5.2f avg_total_rate_with_shs*100 "%)"
+
 dis ""
 dis "  Components (impacted filers):"
 dis "    Federal:  " %6.4f total_federal_impacted / total_agi_impacted
 dis "    State:    " %6.4f total_state_tax_impacted / total_agi_impacted
 dis "    FICA:     " %6.4f total_fica_impacted / total_agi_impacted
 dis "    PFA:      " %6.4f total_mt_tax_impacted / total_agi_impacted
+dis "    SHS:      " %6.4f avg_shs_rate "  (not in avg_total_rate; see avg_total_rate_with_shs)"
 dis "    Total:    " %6.4f avg_total_rate
+dis "    Total+SHS:" %6.4f avg_total_rate_with_shs
 
 ********************************************************************************
 ** SECTION 10B: Revenue Scaling to Actual Collections
@@ -1154,6 +1192,13 @@ gen double avg_total_rate = scalar(avg_total_rate)
 gen double avg_total_rate_pre = scalar(avg_total_rate_pre)
 gen double avg_total_rate_college = scalar(avg_total_rate_college)
 gen double avg_total_rate_pre_college = scalar(avg_total_rate_pre_college)
+** SHS-inclusive companions (sensitivity denominator for Kleven elasticities)
+gen double avg_shs_rate                  = scalar(avg_shs_rate)
+gen double avg_shs_rate_college          = scalar(avg_shs_rate_college)
+gen double avg_total_rate_with_shs       = scalar(avg_total_rate_with_shs)
+gen double avg_total_rate_pre_with_shs   = scalar(avg_total_rate_pre_with_shs)
+gen double avg_total_rate_col_with_shs   = scalar(avg_total_rate_col_with_shs)
+gen double avg_total_rate_pre_col_with_shs = scalar(avg_total_rate_pre_col_with_shs)
 compress
 save "${data}working/revenue_parameters.dta", replace
 project_build_signature, artifact("sdid_results")
@@ -1180,6 +1225,10 @@ dis "  avg_total_rate        = " %8.6f avg_total_rate
 dis "  avg_total_rate_pre    = " %8.6f avg_total_rate_pre
 dis "  avg_total_rate_college= " %8.6f avg_total_rate_college
 dis "  avg_total_rate_pre_col= " %8.6f avg_total_rate_pre_college
+dis "  avg_shs_rate          = " %8.6f avg_shs_rate
+dis "  avg_total_rate_w/SHS  = " %8.6f avg_total_rate_with_shs
+dis "  avg_total_rate_pre+SHS= " %8.6f avg_total_rate_pre_with_shs
+dis "  avg_total_rate_col_SHS= " %8.6f avg_total_rate_col_with_shs
 
 ********************************************************************************
 ** SECTION 12: Distribution of Revenue Effects Across SDID Specifications
