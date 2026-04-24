@@ -71,6 +71,136 @@ log using "${logs}02_log_tables_figures_${date}", name(log_02tf) replace text
 
 project_set_seed, context("02_tables_figures.do") offset(60)
 
+** ------------------------------------------------------------------
+** Local helper programs (table + figure rendering)
+**
+** elast_inout_panel — writes one migration-direction panel of the
+** gross in/out tables. Assumes the current dataset has data_type,
+** sample, migration, migr_label, and the formatted str20 columns
+** tau_str, se_str, beta_str, beta_se_str, fe_str, fe_se_str
+** (generated once per table in the caller's preserve block).
+**
+** elast_hist_plot — writes a histogram with dashed-line overlays at
+** each preferred-spec value, colored IRS (vermillion) vs. ACS College
+** (sea blue). Exports .pdf and .png at 2400px.
+**
+** These helpers previously lived in 02_elasticities.do and moved here
+** when that file was retired in commit A5 (21c612c). 02_tables_figures.do
+** is the sole consumer; keeping them local avoids growing the engine
+** module with rendering-only code.
+** ------------------------------------------------------------------
+
+capture program drop elast_inout_panel
+program define elast_inout_panel
+	syntax, HANDLE(string) DIRECTION(string)
+
+	local N = _N
+	local prev_dt ""
+
+	forvalues i = 1/`N' {
+		if migration[`i'] != "`direction'" continue
+
+		local dt     = data_type[`i']
+		local smp    = subinstr(sample[`i'], "sample_", "", .)
+		local smp    = proper("`smp'")
+		local mg     = migr_label[`i']
+		local t_val  = tau_str[`i']
+		local se_val = se_str[`i']
+		local b      = beta_str[`i']
+		local b_se   = beta_se_str[`i']
+		local fe     = fe_str[`i']
+		local fe_se  = fe_se_str[`i']
+
+		if "`fe'" == "" local fe "--"
+		if "`fe_se'" == "" local fe_se ""
+
+		if "`prev_dt'" != "" & "`prev_dt'" != "`dt'" {
+			file write `handle' "\addlinespace" _n
+		}
+		local prev_dt "`dt'"
+
+		file write `handle' "`dt' & `smp' & `mg' & `t_val' & `b' & `fe' \\" _n
+		file write `handle' " & & & `se_val' & `b_se' & `fe_se' \\" _n
+	}
+end
+
+** NOTE: Stata `syntax` option names cannot contain underscores; use
+** colfill / colirs / colacs (not col_fill etc.).
+capture program drop elast_hist_plot
+program define elast_hist_plot
+	syntax, VAR(varname numeric) XTITLE(string asis) FILE(string) ///
+		COLFILL(string) COLIRS(string) COLACS(string) [HBINS(integer 25)]
+
+	qui count if !missing(`var')
+	if r(N) == 0 {
+		dis as text "  No non-missing `var' values — skipping `file'."
+		exit
+	}
+
+	** Compute per-bin counts so we can scale preferred-spec overlays to
+	** the histogram's max bar height.
+	qui summ `var' if !missing(`var')
+	local xmin = r(min)
+	local xmax = r(max)
+	local bw   = (`xmax' - `xmin') / `hbins'
+	tempvar bin binct
+	if `bw' > 0 {
+		qui gen `bin' = floor((`var' - `xmin') / `bw') if !missing(`var')
+		qui replace `bin' = `hbins' - 1 if `bin' == `hbins'
+		qui bysort `bin': gen `binct' = _N if !missing(`bin')
+		qui summ `binct'
+		local max_count = r(max)
+	}
+	else {
+		** Degenerate: all values equal. One bin, one bar at full count.
+		local max_count = r(N)
+	}
+
+	** Build overlay list for preferred specs, scaled to 0-to-max_count.
+	local acc ""
+	local irs_j = 0
+	local acs_j = 0
+	forvalues i = 1/`=_N' {
+		if preferred[`i'] == 1 & !missing(`var'[`i']) {
+			local v = `var'[`i']
+			local dt = data_type[`i']
+			if strpos("`dt'", "IRS") > 0 {
+				local ++irs_j
+				local acc `"`acc' (scatteri 0 `v' `max_count' `v', recast(line) lcolor("`colirs'") lwidth(medthick) lpattern(dash))"'
+			}
+			else if strpos("`dt'", "ACS College") > 0 {
+				local ++acs_j
+				local acc `"`acc' (scatteri 0 `v' `max_count' `v', recast(line) lcolor("`colacs'") lwidth(medthick) lpattern(dash))"'
+			}
+		}
+	}
+
+	** Build legend order conditionally — a layer index is valid only if
+	** the corresponding category has at least one overlay line.
+	local legorder `"1 "All Specifications""'
+	if `irs_j' > 0 {
+		local legorder `"`legorder' 2 "IRS Preferred""'
+	}
+	if `acs_j' > 0 {
+		local legacs_idx = 2 + `irs_j'
+		local legorder `"`legorder' `legacs_idx' "ACS College Preferred""'
+	}
+
+	twoway (histogram `var' if !missing(`var'), ///
+				fcolor("`colfill'") lcolor(white) lwidth(thin) ///
+				bin(`hbins') frequency) ///
+	       `acc' ///
+	    , xtitle(`"`xtitle'"') ///
+	      ytitle("Number of Specifications") ///
+	      graphregion(color(white)) ///
+	      legend(order(`legorder') ///
+	             ring(1) pos(6) rows(1) size(small) region(lcolor(white))) ///
+	      ysize(3) xsize(8)
+
+	graph export "`file'.pdf", replace
+	graph export "`file'.png", as(png) width(2400) replace
+end
+
 dis ""
 dis "=============================================="
 dis "02_tables_figures.do: render tables + figures"
