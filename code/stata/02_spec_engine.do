@@ -246,6 +246,15 @@ end
 **     r(stock_imp_ann), r(stock_imp_ann_shs)
 **         — missing when migration is not "net" or event_taus empty
 **     r(H_common), r(H_full)    — post-year counts (0 if no event_taus)
+**     r(cum_tau_common), r(cum_tau_full)         — sum of τ_h (pp) over
+**         the common (2021–common_end) and full post windows. Missing
+**         when the corresponding H is 0. Used by downstream Excel
+**         recalc_components sheets.
+**     r(ln_common_tot), r(ln_full_tot),
+**     r(ln_common_imp), r(ln_full_imp)           — Δln(S_H) accumulators
+**         (total AGI base and impacted AGI base). Stock elasticities
+**         equal these divided by stock_dln_ntr; exposed here so callers
+**         can record the raw numerator without recomputing.
 **     r(scale_total), r(scale_taxbase)    — for caller's reference
 ** ------------------------------------------------------------------
 capture program drop compute_spec_elasticities
@@ -308,9 +317,12 @@ program define compute_spec_elasticities, rclass
 	** Using `local x = expr` for a running sum loses precision because
 	** Stata formats the intermediate as a %g string on each assignment.
 	tempname H_common H_full
+	tempname cum_tau_common cum_tau_full
 	tempname ln_common_tot ln_full_tot ln_common_imp ln_full_imp
 	scalar `H_common'       = 0
 	scalar `H_full'         = 0
+	scalar `cum_tau_common' = 0
+	scalar `cum_tau_full'   = 0
 	scalar `ln_common_tot'  = 0
 	scalar `ln_full_tot'    = 0
 	scalar `ln_common_imp'  = 0
@@ -335,19 +347,27 @@ program define compute_spec_elasticities, rclass
 			}
 
 			scalar `H_full'       = `H_full' + 1
+			scalar `cum_tau_full' = `cum_tau_full' + `tau_i'
 			scalar `ln_full_tot'  = `ln_full_tot' + ln(1 + (`tau_i' / 100) * `scale_total')
 			scalar `ln_full_imp'  = `ln_full_imp' + ln(1 + (`tau_i' / 100) * `scale_taxbase')
 
 			if `yr' <= `common_end_year' {
-				scalar `H_common'      = `H_common' + 1
-				scalar `ln_common_tot' = `ln_common_tot' + ln(1 + (`tau_i' / 100) * `scale_total')
-				scalar `ln_common_imp' = `ln_common_imp' + ln(1 + (`tau_i' / 100) * `scale_taxbase')
+				scalar `H_common'       = `H_common' + 1
+				scalar `cum_tau_common' = `cum_tau_common' + `tau_i'
+				scalar `ln_common_tot'  = `ln_common_tot' + ln(1 + (`tau_i' / 100) * `scale_total')
+				scalar `ln_common_imp'  = `ln_common_imp' + ln(1 + (`tau_i' / 100) * `scale_taxbase')
 			}
 		}
 	}
 
-	return scalar H_common = `H_common'
-	return scalar H_full   = `H_full'
+	return scalar H_common       = `H_common'
+	return scalar H_full         = `H_full'
+	return scalar cum_tau_common = cond(`H_common' > 0, `cum_tau_common', .)
+	return scalar cum_tau_full   = cond(`H_full'   > 0, `cum_tau_full',   .)
+	return scalar ln_common_tot  = cond(`H_common' > 0, `ln_common_tot',  .)
+	return scalar ln_full_tot    = cond(`H_full'   > 0, `ln_full_tot',    .)
+	return scalar ln_common_imp  = cond(`H_common' > 0, `ln_common_imp',  .)
+	return scalar ln_full_imp    = cond(`H_full'   > 0, `ln_full_imp',    .)
 
 	if `H_common' > 0 {
 		return scalar stock_common         = `ln_common_tot' / `dln'

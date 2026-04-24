@@ -171,7 +171,14 @@ do "${code}02_indiv_analysis.do"
 ** Per-spec revenue-loss distribution moved to 02_post_spec.do (Phase A).
 do "${code}02_revenue_microsim.do"
 
-** Flow and stock elasticities (depends on 02_revenue + 02_sdid_analysis)
+** Per-spec elasticity + revenue-loss combiner. Reads sdid_results.dta and
+** revenue_parameters.dta; writes spec_results.dta via the spec engine.
+** Replaces the inline arithmetic previously in 02_elasticities.do §1.
+do "${code}02_post_spec.do"
+
+** Flow and stock elasticity tables + figures (to be replaced by
+** 02_tables_figures.do in Phase A commit A4; until then the legacy file
+** still renders the paper's tables from sdid_results.dta directly).
 do "${code}02_elasticities.do"
 
 ** Observation count table
