@@ -350,6 +350,149 @@ save_map(map2_minimal, filepath2_minimal, width = 10, height = 8)
 save_map(map2_full, filepath2_full, width = 10, height = 8)
 
 # ============================================================
+# MAP 2 (TAX) — Border close-up shaded by Table 1 average tax rate
+#   Rate = mean of the $150K and $300K marginal-tax-rate columns in
+#   Table 1 (02_descriptives.do). Two overlapping geographies drive
+#   the mix: county (PFA is Multnomah-wide) and Metro district (SHS
+#   applies only inside the Metro polygon). Every county that
+#   straddles Metro is split along that boundary:
+#
+#     Multnomah  INSIDE Metro (state + Metro + PFA): 13.15
+#     Multnomah  OUTSIDE Metro (state + PFA):        12.15
+#     Wash-OR / Clackamas INSIDE Metro (state+Metro): 10.90
+#     Wash-OR / Clackamas OUTSIDE Metro (state):      9.90
+#     Other OR counties (state only):                 9.90
+#     Washington State counties (no income tax):      0.00
+# ============================================================
+
+filepath2_tax <- file.path(maps_dir, "map2_tax.png")
+
+# Metro district as a single polygon, clipped to the close-up view
+metro_poly_reg <- metro |>
+  sf::st_make_valid() |>
+  sf::st_union() |>
+  sf::st_intersection(square_box)
+
+# Split a county polygon into inside-Metro / outside-Metro pieces,
+# tagging each with the appropriate tax rate.
+split_by_metro <- function(cnty, rate_in, rate_out) {
+  inside  <- suppressWarnings(sf::st_intersection(cnty, metro_poly_reg))
+  outside <- suppressWarnings(sf::st_difference(cnty, metro_poly_reg))
+  dplyr::bind_rows(
+    dplyr::mutate(inside,  avg_tax_rate = rate_in),
+    dplyr::mutate(outside, avg_tax_rate = rate_out)
+  )
+}
+
+# Keep the full Multnomah polygon separately for the emphasis outline;
+# the fill layer below uses the Metro-split version.
+multnomah_outline <- or_cty_reg |> dplyr::filter(GEOID == "41051")
+
+multnomah_split <- split_by_metro(
+  multnomah_outline,
+  rate_in  = 13.15,  # state + Metro + PFA
+  rate_out = 12.15   # state + PFA (no Metro SHS)
+)
+wash_or_split <- split_by_metro(
+  or_cty_reg |> dplyr::filter(GEOID == "41067"),
+  rate_in = 10.9, rate_out = 9.9
+)
+clack_split <- split_by_metro(
+  or_cty_reg |> dplyr::filter(GEOID == "41005"),
+  rate_in = 10.9, rate_out = 9.9
+)
+
+other_or_tax <- or_cty_reg |>
+  dplyr::filter(!GEOID %in% c("41051", "41067", "41005")) |>
+  dplyr::mutate(avg_tax_rate = 9.9)
+
+wa_cty_tax <- wa_cty_reg |>
+  dplyr::mutate(avg_tax_rate = 0)
+
+cty_tax <- dplyr::bind_rows(
+  multnomah_split, wash_or_split, clack_split, other_or_tax, wa_cty_tax
+) |>
+  dplyr::mutate(
+    rate_label = factor(
+      sprintf("%.2f%%", avg_tax_rate),
+      levels = c("0.00%", "9.90%", "10.90%", "12.15%", "13.15%")
+    )
+  )
+
+# State outlines (clipped to close-up) for clear state borders
+or_state_reg <- sf::st_union(or_cty_reg)
+wa_state_reg <- sf::st_union(wa_cty_reg)
+
+# Labels: Multnomah + neighbouring counties named in Table 1 / close-up
+tax_label_counties <- c(
+  "Multnomah", "Washington", "Clackamas",
+  "Marion", "Yamhill", "Columbia",
+  "Clark", "Skamania"
+)
+
+tax_label_centroids <- dplyr::bind_rows(or_cty_reg, wa_cty_reg) |>
+  dplyr::filter(NAME %in% tax_label_counties) |>
+  sf::st_centroid()
+
+# Discrete blue palette: one tint per tax regime.  Using scale_fill_manual
+# ensures the small 9.9 -> 10.9 step is visually distinct, which a
+# continuous gradient across 0-13 could not show clearly.
+tax_palette <- c(
+  "0.00%"  = "gray96",
+  "9.90%"  = ppb_tint(PPB_SEA, 0.80),
+  "10.90%" = ppb_tint(PPB_SEA, 0.60),
+  "12.15%" = ppb_tint(PPB_SEA, 0.35),
+  "13.15%" = ppb_tint(PPB_SEA, 0.10)
+)
+
+map2_tax <- ggplot() +
+  geom_sf(
+    data = cty_tax,
+    aes(fill = rate_label),
+    color = "gray55", linewidth = 0.3
+  ) +
+  # State borders on top for clarity (OR/WA)
+  geom_sf(data = or_state_reg, fill = NA, color = "gray20", linewidth = 0.7) +
+  geom_sf(data = wa_state_reg, fill = NA, color = "gray20", linewidth = 0.7) +
+  # Emphasise full Multnomah County with a heavier outline
+  geom_sf(
+    data = multnomah_outline, fill = NA,
+    color = "black", linewidth = 0.7
+  ) +
+  geom_sf_text(
+    data = tax_label_centroids |> dplyr::filter(NAME == "Multnomah"),
+    aes(label = NAME),
+    nudge_x = 10000, nudge_y = -5000,
+    size = 4, fontface = "bold"
+  ) +
+  geom_sf_text(
+    data = tax_label_centroids |> dplyr::filter(NAME != "Multnomah"),
+    aes(label = NAME),
+    size = 3
+  ) +
+  geom_sf_text(
+    data = sf::st_centroid(metro_poly_reg), aes(label = "METRO"),
+    color = ppb_shade(PPB_SEA, 0.35), size = 3, fontface = "bold"
+  ) +
+  scale_fill_manual(
+    values = tax_palette,
+    name   = "Avg. marginal\ntax rate",
+    drop   = FALSE
+  ) +
+  map_bg_theme() +
+  coord_sf(expand = FALSE) +
+  theme(
+    legend.position = "right",
+    legend.key.width  = grid::unit(0.5, "cm"),
+    legend.key.height = grid::unit(0.5, "cm"),
+    legend.text  = element_text(color = "black"),
+    legend.title = element_text(color = "black")
+  ) +
+  guides(fill = guide_legend(reverse = TRUE))
+
+save_map(map2_tax, filepath2_tax, width = 10, height = 8)
+
+# ============================================================
 # COMBINED MAP — Overview with inset close-up
 # ============================================================
 
