@@ -260,16 +260,17 @@ qui {
 			}
 		}
 
-		** Elasticities
+		** Elasticities (option names have no underscores — Stata `syntax`
+		** doesn't support them reliably; see note in 02_spec_engine.do)
 		if "`mig_i'" == "net" {
 			compute_spec_elasticities, tau(`tau_i') se(`se_i') ///
-				pre_mean(`pre_mean_i') migration("`mig_i'") ///
-				data_type("`dt_i'") event_taus(`etau')
+				premean(`pre_mean_i') migration("`mig_i'") ///
+				datatype("`dt_i'") eventtaus(`etau')
 		}
 		else {
 			compute_spec_elasticities, tau(`tau_i') se(`se_i') ///
-				pre_mean(`pre_mean_i') migration("`mig_i'") ///
-				data_type("`dt_i'")
+				premean(`pre_mean_i') migration("`mig_i'") ///
+				datatype("`dt_i'")
 		}
 
 		replace beta_kleven        = r(beta)          in `i'
@@ -305,7 +306,7 @@ qui {
 
 		** Revenue
 		compute_spec_revenue, tau(`tau_i') migration("`mig_i'") ///
-			outstate(`os_i') data_type("`dt_i'")
+			outstate(`os_i') datatype("`dt_i'")
 		replace pfa_loss   = r(pfa_loss)   in `i'
 		replace state_loss = r(state_loss) in `i'
 

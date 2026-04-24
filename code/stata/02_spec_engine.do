@@ -259,10 +259,21 @@ end
 ** ------------------------------------------------------------------
 capture program drop compute_spec_elasticities
 program define compute_spec_elasticities, rclass
-	syntax, TAU(real) SE(real) PRE_MEAN(real) ///
-		MIGRATION(string) DATA_TYPE(string) ///
-		[EVENT_TAUS(name) PFA_START_YEAR(integer 2021) ///
-		 COMMON_END_YEAR(integer 2022)]
+	** NOTE: Stata `syntax` option names cannot contain underscores reliably
+	** — they cause the program-call to hang in batch mode. Option names
+	** here are concatenated (premean, datatype, eventtaus, pfastart,
+	** commonend) for that reason. See also elast_hist_plot header note.
+	syntax, TAU(real) SE(real) PREMEAN(real) ///
+		MIGRATION(string) DATATYPE(string) ///
+		[EVENTTAUS(name) PFASTART(integer 2021) ///
+		 COMMONEND(integer 2022)]
+
+	** Map to intuitive locals used in the body
+	local pre_mean       `premean'
+	local data_type      `"`datatype'"'
+	local event_taus     `eventtaus'
+	local pfa_start_year `pfastart'
+	local common_end_year `commonend'
 
 	** Subgroup indicator — ACS College outcomes migrate only a
 	** fraction of total AGI, so scale accordingly.
@@ -360,8 +371,18 @@ program define compute_spec_elasticities, rclass
 		}
 	}
 
-	return scalar H_common       = `H_common'
-	return scalar H_full         = `H_full'
+	** H counts: return 0 only if the stock block ran and found no post rows;
+	** return missing (.) when the stock block didn't execute at all (non-net
+	** spec, or net spec without event_taus). Matches pre-restructure
+	** 02_elasticities.do which left H_common/H_full missing for merge-misses.
+	if "`migration'" == "net" & "`event_taus'" != "" {
+		return scalar H_common = `H_common'
+		return scalar H_full   = `H_full'
+	}
+	else {
+		return scalar H_common = .
+		return scalar H_full   = .
+	}
 	return scalar cum_tau_common = cond(`H_common' > 0, `cum_tau_common', .)
 	return scalar cum_tau_full   = cond(`H_full'   > 0, `cum_tau_full',   .)
 	return scalar ln_common_tot  = cond(`H_common' > 0, `ln_common_tot',  .)
@@ -442,7 +463,10 @@ end
 ** ------------------------------------------------------------------
 capture program drop compute_spec_revenue
 program define compute_spec_revenue, rclass
-	syntax, TAU(real) MIGRATION(string) OUTSTATE(integer) DATA_TYPE(string)
+	** Syntax option names are concatenated (datatype not data_type) for
+	** the same batch-mode reason documented in compute_spec_elasticities.
+	syntax, TAU(real) MIGRATION(string) OUTSTATE(integer) DATATYPE(string)
+	local data_type `"`datatype'"'
 
 	** Match the 02_revenue_microsim.do §12 scaling: if data_type contains "ACS",
 	** scale by college_agi_share — the current code treats BOTH
