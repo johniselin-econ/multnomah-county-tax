@@ -176,10 +176,10 @@ do "${code}02_revenue_microsim.do"
 ** Replaces the inline arithmetic previously in 02_elasticities.do §1.
 do "${code}02_post_spec.do"
 
-** Flow and stock elasticity tables + figures (to be replaced by
-** 02_tables_figures.do in Phase A commit A4; until then the legacy file
-** still renders the paper's tables from sdid_results.dta directly).
-do "${code}02_elasticities.do"
+** Elasticity tables + figures (also revenue-loss distribution histograms,
+** previously in 02_revenue.do §12). Reads spec_results.dta produced by
+** 02_post_spec.do. Replaces 02_elasticities.do, retired in Phase A commit A5.
+do "${code}02_tables_figures.do"
 
 ** Observation count table
 do "${code}02_diagnostics.do"

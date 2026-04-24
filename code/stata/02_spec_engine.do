@@ -60,10 +60,11 @@ For more information, contact john.iselin@yale.edu
 *******************************************************************************/
 
 ** ------------------------------------------------------------------
-** LaTeX table scaffolding — reused across table-generating drivers.
-** Duplicated from 02_elasticities.do so that any script that sources
-** 02_spec_engine.do gets these helpers. The duplicate is removed from
-** 02_elasticities.do when that file is retired in Phase A A5.
+** LaTeX table scaffolding — reused across table-generating drivers
+** (02_tables_figures.do and any future bootstrap-table driver).
+** Originally lived in 02_elasticities.do; moved here in commit A1 and
+** became the single definition after 02_elasticities.do was retired
+** in Phase A A5.
 ** ------------------------------------------------------------------
 
 ** Open a threeparttable with caption/label and begin the tabular.

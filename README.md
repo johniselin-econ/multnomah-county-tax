@@ -55,7 +55,9 @@ multnomah-county-tax/
 │       ├── 02_indiv_analysis.do   #   Individual-level analysis
 │       ├── 02_descriptives.do     #   Descriptive statistics + maps
 │       ├── 02_revenue_microsim.do #   Revenue microsimulation
-│       ├── 02_elasticities.do     #   Migration elasticities
+│       ├── 02_spec_engine.do      #   Shared per-spec programs (engine)
+│       ├── 02_post_spec.do         #   Per-spec elasticity + revenue-loss combiner
+│       ├── 02_tables_figures.do   #   LaTeX tables + figures renderer
 │       └── 02_appendix_data_quality.do  # Appendix: IRS data quality
 │
 ├── data/
