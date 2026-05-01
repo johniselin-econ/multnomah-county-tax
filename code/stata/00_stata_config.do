@@ -36,6 +36,12 @@ if "${master_seed}" == ""            global master_seed = 56403
 if "${artifact_schema_version}" == "" global artifact_schema_version "2026-03-15"
 if "${preferred_spec_version}" == ""  global preferred_spec_version "2026-03-main"
 
+** ------------------------------------------------------------------
+** Run-control fallbacks. The orchestrator (00_multnomah.do PROJECT
+** GLOBALS — RUN-CONTROL FLAGS section) sets each of these explicitly,
+** so the lazy-sets here become no-ops in a full pipeline run. They
+** stay as safety nets for callee scripts run standalone.
+** ------------------------------------------------------------------
 capture which parallel
 local has_parallel = (_rc == 0)
 if "${use_parallel}" == "" {
@@ -53,7 +59,8 @@ if "${resume}" == ""     global resume = 0
 ** the full distribution of stock elasticity in 02_post_spec.do). "preferred"
 ** restricts to the 4 domestic baseline specs (sample_all × c=1 × exl=1 ×
 ** {irs_full_16_22, acs_16_24_col}) — much faster when you only need the
-** main table's cumulative stock column. Override via the orchestrator.
+** main table's cumulative stock column. Orchestrator override in PROJECT
+** GLOBALS — RUN-CONTROL FLAGS.
 if "${event_study_mode}" == "" global event_study_mode "all"
 
 if "${start_year_irs_data}" == ""     global start_year_irs_data     = 2012
@@ -67,7 +74,8 @@ if "${end_yy_irs_agi}" == ""       global end_yy_irs_agi       = 22
 if "${start_yy_irs_county}" == ""  global start_yy_irs_county  = 12
 if "${end_yy_irs_county}" == ""    global end_yy_irs_county    = 22
 
-** Overleaf sync (default off; set to 1 in profile.do with oth_path)
+** Overleaf sync (default off; orchestrator panel sets explicitly, then the
+** profile.do block in 00_multnomah.do auto-promotes to 1 if oth_path defined)
 if "${overleaf}" == "" global overleaf = 0
 
 ** ------------------------------------------------------------------
@@ -84,9 +92,15 @@ if "${pfa_thresh2_joint}" == ""    global pfa_thresh2_joint    = 400000
 ** Used only as a sensitivity denominator for Kleven-style elasticities; SHS revenue
 ** accrues to Metro, not Multnomah, so it does not enter PFA baseline calcs.
 if "${shs_rate}" == ""             global shs_rate             = 0.01
-** Actual collections used to rescale simulation output
-if "${actual_pfa_revenue}" == ""   global actual_pfa_revenue   = 187000000
-if "${actual_oregon_revenue}" == "" global actual_oregon_revenue = 11772886000
+** Actual collections used to rescale simulation output.
+** actual_pfa_revenue: Multnomah County PFA collections (county-level tax).
+** statewide_oregon_revenue: Oregon STATEWIDE individual income tax collections.
+**   The Multnomah-resident share is computed at runtime in 02_revenue_microsim.do
+**   (statewide × Multnomah's IRS AGI share) and stored in actual_oregon_revenue,
+**   so the table comparison is apples-to-apples with the simulated baseline
+**   (which is also Multnomah-resident-only).
+if "${actual_pfa_revenue}" == ""        global actual_pfa_revenue        = 187000000
+if "${statewide_oregon_revenue}" == ""  global statewide_oregon_revenue  = 11772886000
 ** CPI-U inflation factor, 2019 annual -> 2022 annual (BLS series CUUR0000SA0)
 if "${cpi_2019_to_2022}" == ""     global cpi_2019_to_2022     = 1.136
 
@@ -94,6 +108,19 @@ capture mkdir "${results}"
 capture mkdir "${logs}"
 
 set scheme plotplainblind
+
+** ------------------------------------------------------------------
+** plotplainblind palette (RGB) — shared by SDID and elasticity spec curves
+** so both renderers pull from one source of truth. Scoped as globals
+** rather than locals so 02_sdid_analysis.do, 02_tables_figures.do, and
+** future renderers can reference them without redeclaring.
+** ------------------------------------------------------------------
+if "${col_sig_notpref}" == ""   global col_sig_notpref   "0 114 178"     // sea (p7)        — sig, not preferred
+if "${col_insig_notpref}" == "" global col_insig_notpref "86 180 233"    // sky (p3)        — insig, not preferred
+if "${col_sig_pref}" == ""      global col_sig_pref      "213 94 0"      // vermillion (p6) — sig, preferred
+if "${col_insig_pref}" == ""    global col_insig_pref    "230 159 0"     // orangebrown (p8)— insig, preferred
+if "${col_zero}" == ""          global col_zero          "204 121 167"   // reddish (p5)    — zero line
+if "${col_ref}" == ""           global col_ref           "153 153 153"   // gs10 (p2)       — reference lines
 
 ** ------------------------------------------------------------------
 ** Pre-flight: required SSC packages

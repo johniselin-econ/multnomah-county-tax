@@ -14,7 +14,7 @@ Purpose: 	TAXSIM-based microsimulation of Multnomah County tax quantities
 			The per-specification revenue-loss distribution (formerly
 			Section 12 of this file) now lives in 02_post_spec.do, which
 			iterates the SDID spec grid and calls compute_spec_revenue
-			from the spec engine. The rendering of fig_revenue_dist_*
+			from the spec engine. The rendering of fig_speccurve_revenue_*
 			moves to 02_tables_figures.do (Phase A, commit A4). This file
 			no longer writes any per-spec outputs.
 
@@ -60,10 +60,13 @@ project_set_seed, context("02_revenue_microsim.do") offset(40)
 scalar effect_agi = 0.02			// placeholder: net out-migration effect on AGI
 scalar effect_agi_oregon = 0.02		// placeholder: Oregon-level effect
 
-** Pull calibration + policy parameters from 00_stata_config.do globals
+** Pull calibration + policy parameters from 00_stata_config.do globals.
+** statewide_oregon_revenue is the STATEWIDE Oregon individual income tax total;
+** the Multnomah-resident share (actual_oregon_revenue) is computed in Section 3
+** once the IRS county-AGI file has been read.
 local cpi_2019_to_2022     = ${cpi_2019_to_2022}
 local actual_pfa_revenue   = ${actual_pfa_revenue}
-local actual_oregon_revenue = ${actual_oregon_revenue}
+local statewide_oregon_revenue = ${statewide_oregon_revenue}
 local pfa_thresh1_single   = ${pfa_thresh1_single}
 local pfa_thresh2_single   = ${pfa_thresh2_single}
 local pfa_thresh1_joint    = ${pfa_thresh1_joint}
@@ -318,6 +321,17 @@ save `acs_data'
 ** Import 2019 IRS county data
 import delimited "${data}irs/19incyallagi.csv", clear
 
+** Capture Oregon statewide AGI (countyfips == 0 is the state-total row).
+** Used below to compute Multnomah's share of statewide individual income tax.
+** Drop agi_stub == 0 (the "all" row) to match the Multnomah bracket-sum
+** aggregation that follows. Scaling by 1000 mirrors the per-bracket
+** rescale below (IRS publishes A00100 in thousands of dollars).
+preserve
+keep if statefips == 41 & countyfips == 0 & agi_stub != 0
+qui summ a00100
+scalar total_oregon_agi_2019 = r(sum) * 1000
+restore
+
 ** Keep Multnomah County
 keep if statefips == 41 & countyfips == 51
 
@@ -352,6 +366,27 @@ list agi_stub irs_n1 irs_mars2 irs_agi irs_wages, sep(0)
 qui summ irs_agi
 scalar total_irs_agi_2019 = r(sum)
 dis "Total Multnomah County AGI (2019): $" %15.0fc total_irs_agi_2019
+
+** ----------------------------------------------------------------
+** Multnomah's share of statewide Oregon individual income tax.
+** statewide_oregon_revenue (set in 00_stata_config.do) is statewide collections;
+** scaling by Multnomah's IRS AGI share converts it to a Multnomah-resident
+** figure that is apples-to-apples with the simulated baseline_state_revenue
+** (which is computed from the Multnomah-only TAXSIM sample).
+** Caveat: AGI share understates Multnomah's tax share because Oregon's PIT is
+** progressive and Multnomah skews higher-income; replace with a DOR county-of-
+** residence figure or simulated-tax share if greater accuracy is needed.
+** ----------------------------------------------------------------
+scalar multnomah_agi_share   = total_irs_agi_2019 / total_oregon_agi_2019
+scalar actual_oregon_revenue = `statewide_oregon_revenue' * multnomah_agi_share
+local  actual_oregon_revenue = scalar(actual_oregon_revenue)
+** Expose to the spec engine, which reads ${actual_oregon_revenue}
+global actual_oregon_revenue = scalar(actual_oregon_revenue)
+
+dis "Total Oregon statewide AGI (2019):     $" %15.0fc total_oregon_agi_2019
+dis "Multnomah AGI share of state:           " %8.4f multnomah_agi_share
+dis "Statewide Oregon income tax revenue:   $" %15.0fc `statewide_oregon_revenue'
+dis "Multnomah-share Oregon revenue:        $" %15.0fc actual_oregon_revenue
 
 ** Save as tempfile
 tempfile irs_targets
@@ -1071,42 +1106,52 @@ dis "--- Scaled to Actual Revenue ---"
 dis "Actual PFA revenue:                      $" %15.0fc `actual_pfa_revenue'
 dis "Implied PFA loss from migration:         $" %15.0fc pfa_implied_loss
 dis ""
-dis "Actual Oregon revenue:                   $" %15.0fc `actual_oregon_revenue'
+dis "Statewide Oregon revenue (reference):    $" %15.0fc `statewide_oregon_revenue'
+dis "Multnomah AGI share of state:             " %8.4f multnomah_agi_share
+dis "Actual Oregon revenue (Multnomah share): $" %15.0fc `actual_oregon_revenue'
 dis "Implied Oregon loss from migration:      $" %15.0fc oregon_implied_loss
 dis "=================================================================="
 
-** Export summary table to Excel
+** Export summary table to Excel.
+** Both "Baseline Oregon revenue (simulated)" (row 7) and "Actual Oregon revenue,
+** Multnomah share" (row 13) are scoped to Multnomah-resident Oregon individual
+** income tax, so the comparison is apples-to-apples. Rows 11-12 show the
+** statewide reference figure and the AGI share used to scale it for context.
 preserve
 clear
-set obs 12
+set obs 14
 
 gen str60 metric = ""
 gen double value = .
 
-replace metric = "Baseline PFA revenue (simulated)"        in 1
-replace value = baseline_pfa_revenue                       in 1
-replace metric = "PFA migration loss (simulated)"          in 2
-replace value = mt_revenue_loss                            in 2
-replace metric = "PFA dynamic revenue (simulated)"         in 3
-replace value = pfa_dynamic_revenue                        in 3
-replace metric = "PFA migration share (%)"                 in 4
-replace value = pfa_migration_share * 100                  in 4
-replace metric = "Actual PFA revenue"                      in 5
-replace value = `actual_pfa_revenue'                       in 5
-replace metric = "Implied PFA loss from migration"         in 6
-replace value = pfa_implied_loss                           in 6
-replace metric = "Baseline Oregon revenue (simulated)"     in 7
-replace value = baseline_state_revenue                     in 7
-replace metric = "Oregon migration loss (simulated)"       in 8
-replace value = oregon_revenue_loss                        in 8
-replace metric = "Oregon dynamic revenue (simulated)"      in 9
-replace value = oregon_dynamic_revenue                     in 9
-replace metric = "Oregon migration share (%)"              in 10
-replace value = oregon_migration_share * 100               in 10
-replace metric = "Actual Oregon revenue"                   in 11
-replace value = `actual_oregon_revenue'                    in 11
-replace metric = "Implied Oregon loss from migration"      in 12
-replace value = oregon_implied_loss                        in 12
+replace metric = "Baseline PFA revenue (simulated)"            in 1
+replace value = baseline_pfa_revenue                           in 1
+replace metric = "PFA migration loss (simulated)"              in 2
+replace value = mt_revenue_loss                                in 2
+replace metric = "PFA dynamic revenue (simulated)"             in 3
+replace value = pfa_dynamic_revenue                            in 3
+replace metric = "PFA migration share (%)"                     in 4
+replace value = pfa_migration_share * 100                      in 4
+replace metric = "Actual PFA revenue"                          in 5
+replace value = `actual_pfa_revenue'                           in 5
+replace metric = "Implied PFA loss from migration"             in 6
+replace value = pfa_implied_loss                               in 6
+replace metric = "Baseline Oregon revenue, Multnomah (simulated)" in 7
+replace value = baseline_state_revenue                         in 7
+replace metric = "Oregon migration loss (simulated)"           in 8
+replace value = oregon_revenue_loss                            in 8
+replace metric = "Oregon dynamic revenue (simulated)"          in 9
+replace value = oregon_dynamic_revenue                         in 9
+replace metric = "Oregon migration share (%)"                  in 10
+replace value = oregon_migration_share * 100                   in 10
+replace metric = "Statewide Oregon revenue (reference)"        in 11
+replace value = `statewide_oregon_revenue'                     in 11
+replace metric = "Multnomah AGI share of state (%)"            in 12
+replace value = multnomah_agi_share * 100                      in 12
+replace metric = "Actual Oregon revenue, Multnomah share"      in 13
+replace value = `actual_oregon_revenue'                        in 13
+replace metric = "Implied Oregon loss from migration"          in 14
+replace value = oregon_implied_loss                            in 14
 
 export excel "${results}revenue/tbl_revenue_summary.xlsx", ///
 	firstrow(variables) replace
@@ -1203,6 +1248,11 @@ gen double pfa_migration_share = scalar(pfa_migration_share)
 gen double oregon_migration_share = scalar(oregon_migration_share)
 gen double pfa_implied_loss = scalar(pfa_implied_loss)
 gen double oregon_implied_loss = scalar(oregon_implied_loss)
+** Multnomah-share scaling of statewide Oregon individual income tax
+gen double total_oregon_agi_2019 = scalar(total_oregon_agi_2019)
+gen double multnomah_agi_share   = scalar(multnomah_agi_share)
+gen double actual_oregon_revenue = scalar(actual_oregon_revenue)
+gen double statewide_oregon_revenue = `statewide_oregon_revenue'
 gen double avg_total_rate = scalar(avg_total_rate)
 gen double avg_total_rate_pre = scalar(avg_total_rate_pre)
 gen double avg_total_rate_college = scalar(avg_total_rate_college)
@@ -1236,6 +1286,9 @@ dis "  pfa_migration_share   = " %8.6f pfa_migration_share
 dis "  oregon_migration_share= " %8.6f oregon_migration_share
 dis "  pfa_implied_loss      = $" %15.0fc pfa_implied_loss
 dis "  oregon_implied_loss   = $" %15.0fc oregon_implied_loss
+dis "  multnomah_agi_share   = " %8.6f multnomah_agi_share
+dis "  actual_oregon_revenue = $" %15.0fc actual_oregon_revenue
+dis "  statewide_oregon_rev  = $" %15.0fc `statewide_oregon_revenue'
 dis "  avg_total_rate        = " %8.6f avg_total_rate
 dis "  avg_total_rate_pre    = " %8.6f avg_total_rate_pre
 dis "  avg_total_rate_college= " %8.6f avg_total_rate_college
@@ -1248,7 +1301,7 @@ dis "  avg_total_rate_col_SHS= " %8.6f avg_total_rate_col_with_shs
 ** Section 12 (revenue-loss distribution across SDID specs) has moved to
 ** 02_post_spec.do, which iterates the SDID spec grid and calls
 ** compute_spec_revenue from 02_spec_engine.do. The figure rendering
-** (fig_revenue_dist_pfa / _oregon) moves to 02_tables_figures.do.
+** (fig_speccurve_revenue_pfa / _oregon) moves to 02_tables_figures.do.
 
 dis ""
 dis "=============================================="

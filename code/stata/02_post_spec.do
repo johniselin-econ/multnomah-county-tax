@@ -382,7 +382,7 @@ capture label var stock_elast_imp_full_shs     "Stock elasticity +SHS (impacted 
 capture label var stock_elast_imp_ann_shs      "Annualized stock elasticity +SHS (impacted AGI)"
 
 label var pfa_loss   "Implied PFA revenue loss ($M; net-domestic specs only)"
-label var state_loss "Implied Oregon state revenue loss ($M; net-outstate specs only)"
+label var state_loss "Implied Oregon revenue loss from Multnomah out-migration ($M; net-outstate specs only)"
 
 ********************************************************************************
 ** SECTION 8: Save

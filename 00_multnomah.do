@@ -71,12 +71,8 @@ if _rc {
     di as error "  Package not found: blindschemes (scheme plotplainblind)"
     local pkg_missing = 1
 }
-** parallel is optional (controlled by use_parallel flag below)
-capture which parallel
-if _rc {
-    di as txt "  Note: parallel not installed. Setting use_parallel = 0."
-    global use_parallel = 0
-}
+** parallel is optional — handled by the use_parallel auto-downgrade block
+** below the PROJECT GLOBALS panel.
 if `pkg_missing' {
     di as error _n "ERROR: Required Stata packages are missing."
     di as error "See STATA_REQUIREMENTS.txt for install instructions."
@@ -85,11 +81,51 @@ if `pkg_missing' {
 
 
 ** ============================================================================
-** PROJECT GLOBALS
+** PROJECT GLOBALS — RUN-CONTROL FLAGS
 ** ============================================================================
-** Defaults are defined in 00_stata_config.do. Override below only when needed.
+** Single source of truth for run-mode decisions. Flags here run *after*
+** 00_stata_config.do, so they unconditionally override any defaults set
+** there or elsewhere. Lazy `if "${var}" == ""` fallbacks in callee files
+** (e.g., 02_bootstrap.do) remain as safety nets for standalone do-file
+** runs but are no-ops when this orchestrator drives the pipeline.
 
-** Directories — set working directory to project root before running
+** ----------------------------------------------------------------
+** Bootstrap
+** ----------------------------------------------------------------
+global run_bootstrap         = 1 		// 1 to (re)run bootstrap; 0 to skip the stage
+global bootstrap_reps        = 100		// 20=smoke, 100=stress, 500=publication
+global show_bootstrap_cis    = 1		// 1 to render rcap whiskers on spec curves (requires bootstrap_cis.dta)
+global ci_level              = 95		// 90, 95, or 99 — percentile CI level for bootstrap_cis.dta
+
+** ----------------------------------------------------------------
+** Parallel execution
+** ----------------------------------------------------------------
+global use_parallel          = 1		// 1 to use Vega `parallel` ado; auto-downgrades to 0 if package missing
+global n_clusters            = 4		// worker count; setup_parallel caps to floor(physical_cores / processors_max)
+global resume                = 0		// 1 to skip bootstrap reps whose draw .dta already exists
+
+** ----------------------------------------------------------------
+** Output mode
+** ----------------------------------------------------------------
+global event_study_mode      "all"     // "all" | "main" | "none" — which event studies the SDID stage runs
+global overleaf              = 0       // 1 to copy figures/tables to ${oth_path}; auto-set to 1 below if profile.do defines oth_path
+
+** Auto-downgrade use_parallel if the `parallel` ado isn't installed.
+** User intent of 1 means "use parallel if available", not "fail if missing".
+capture which parallel
+if _rc & ${use_parallel} == 1 {
+    di as txt "  Note: `parallel` package not installed. Downgrading use_parallel 1 -> 0."
+    global use_parallel = 0
+}
+
+
+** ============================================================================
+** PROJECT PATHS & LOGGING
+** ============================================================================
+** Working directory, Overleaf sync, output directories, log file. Path
+** defaults live in 00_stata_config.do; this section only overrides as needed.
+
+** Set working directory to project root before running
 cd "${dir}"
 
 ** Overleaf sync (optional) — set oth_path and overleaf=1 in profile.do (gitignored)
@@ -175,6 +211,24 @@ do "${code}02_revenue_microsim.do"
 ** revenue_parameters.dta; writes spec_results.dta via the spec engine.
 ** Replaces the inline arithmetic previously in 02_elasticities.do §1.
 do "${code}02_post_spec.do"
+
+** Donor-cluster bootstrap for highlighted-spec CIs (Phase B3+).
+** Gated by ${run_bootstrap} from the PROJECT GLOBALS panel above.
+**
+** Two-stage pipeline (post Phase B7 migration to the `parallel` ado):
+**   1. 02_bootstrap.do        — runs all reps and writes the canonical
+**                               bootstrap_draws.dta. Branches on
+**                               ${use_parallel}: parallel mode fires
+**                               ${n_clusters} workers via Vega's
+**                               `parallel` package; serial mode runs
+**                               in-process. Same output either way.
+**   2. 02_bootstrap_tables.do — collapses bootstrap_draws.dta to
+**                               percentile CIs in bootstrap_cis.dta,
+**                               keyed by spec_id (uses ${ci_level}).
+if ${run_bootstrap} == 1 {
+	do "${code}02_bootstrap.do"
+	do "${code}02_bootstrap_tables.do"
+}
 
 ** Elasticity tables + figures (also revenue-loss distribution histograms,
 ** previously in 02_revenue.do §12). Reads spec_results.dta produced by
