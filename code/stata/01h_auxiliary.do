@@ -56,8 +56,9 @@ gen mfcc_infant_med = mfccinfant / me
 gen mfcc_toddler_med = mfcctoddler / me
 gen mfcc_preschool_med = mfccpreschool / me
 
-** Drop unnecc. variables
-drop me mcinfant mctoddler mcpreschool mfcc*
+** Drop the source columns. List `mfcc` siblings explicitly — `mfcc*` would
+** also match the freshly-generated mfcc_*_med columns and silently delete them.
+drop me mcinfant mctoddler mcpreschool mfccinfant mfcctoddler mfccpreschool
 
 ** Inflate forwards by two years, by county and variable
 local ct = ${end_year_acs} - 2022 + 1
