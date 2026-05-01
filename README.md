@@ -16,15 +16,19 @@ This project analyzes whether the Multnomah County tax policy change affected mi
 
 ## Project Structure
 
-```
+Primary entry points (preferred three-stage workflow):
 
-Primary R entry points:
-- `00_download_data.R` runs the R-managed downloads before Stata.
-- `00_post_stata.R` runs maps and other post-Stata R outputs.
-- `00_multnomah.R` remains available as a backward-compatible wrapper that runs both R stages.
+- `00_download_data.R` — R-managed downloads (run FIRST)
+- `00_multnomah.do` — Stata pipeline (run SECOND)
+- `00_post_stata.R` — post-Stata R outputs, e.g., maps (run THIRD)
+- `00_multnomah.R` — legacy wrapper that runs both R stages in sequence; remains usable
+
+```
 multnomah-county-tax/
-├── 00_multnomah.R                 # R orchestrator (run FIRST)
-├── 00_multnomah.do                # Stata orchestrator (run SECOND)
+├── 00_download_data.R             # R data downloads (Stage 1)
+├── 00_multnomah.do                # Stata orchestrator (Stage 2)
+├── 00_post_stata.R                # Post-Stata R outputs (Stage 3)
+├── 00_multnomah.R                 # Legacy wrapper for both R stages
 │
 ├── code/
 │   ├── R/                         # R scripts
@@ -57,6 +61,8 @@ multnomah-county-tax/
 │       ├── 02_revenue_microsim.do #   Revenue microsimulation
 │       ├── 02_spec_engine.do      #   Shared per-spec programs (engine)
 │       ├── 02_post_spec.do         #   Per-spec elasticity + revenue-loss combiner
+│       ├── 02_bootstrap.do        #   Donor-cluster bootstrap driver (parallel via Vega's parallel ado)
+│       ├── 02_bootstrap_tables.do #   Collapses draws to percentile CIs (bootstrap_cis.dta)
 │       ├── 02_tables_figures.do   #   LaTeX tables + figures renderer
 │       └── 02_appendix_data_quality.do  # Appendix: IRS data quality
 │
@@ -137,7 +143,9 @@ The primary analysis uses SDID to estimate the causal effect on migration:
 - **Treatment period**: Post-2020
 - **Outcomes**: Migration rates (in, out, net) for returns (n1), exemptions (n2), and AGI
 - **Donor pools**: All counties, urban top 5%, top-25%-urban COVID match, demographic match, and top-25%-urban stringency match
-- **Highlighted SDID specifications**: IRS vs. ACS College, each shown with all-counties and stringency-matched donor pools
+- **Highlighted SDID specifications**: IRS vs. ACS College, each shown with all-counties and stringency-matched donor pools. Beyond per-spec event-study plots, the pipeline emits **preferred-spec event-study overlays** in `${results}sdid/preferred_overlays/` that combine these specs onto shared axes:
+  - **Donor-pool overlay** (12 figs, 2 lines per fig) — `fig_overlay_donorpool_<sample_data>_<migr>_eventstudy.{pdf,jpg}`. Compares `sample_all` vs `sample_stringency` for each (sample_data × migration).
+  - **Dataset overlay** (6 figs, 4 lines per fig) — `fig_overlay_dataset_{instate,outstate}_<migr>_eventstudy.{pdf,jpg}`. Compares IRS × ACS College × {all, stringency} per (scope × migration). Same color palette (warm = IRS, cool = ACS, saturated = all-counties, lighter = stringency).
 - **Data sources**: IRS county flows (2016–2022), ACS microdata (2016–2024)
 
 ### Difference-in-Differences (DiD)
@@ -156,11 +164,43 @@ Poisson pseudo-maximum likelihood (PPML) gravity models on IRS county-to-county 
 
 ### Specification Curve Analysis
 
-Robustness is assessed across all combinations of data source, sample, outcome, and covariate specification, visualized in specification curve plots.
+Robustness is assessed across all combinations of data source, sample, outcome, and covariate specification. Three families of spec curves share the same visual language — four-color (significant × preferred) encoding, ranked point estimates with optional bootstrap-CI whiskers, and an indicator-dot panel below showing which features each spec uses:
+
+- **SDID τ̂** — `${results}sdid/spec_curves/fig_speccurve_<otype>_<migr>{,_outstate}.{pdf,jpg}`, written by `02_sdid_analysis.do`. Treatment effect on the migration rate.
+- **Derived elasticities** — `${results}elasticities/fig_speccurve_elast_beta_{net,in,out}{,_shs}.{pdf,png}` (Kleven semi-elasticity β) and `fig_speccurve_elast_stock{,_shs}.{pdf,png}` (stock elasticity). Rendered by `02_tables_figures.do`.
+- **Implied revenue losses** — `${results}revenue/fig_speccurve_revenue_{pfa,oregon}.{pdf,png}`. Same renderer.
+
+Bootstrap percentile-CI whiskers are added to the elasticity and revenue spec curves when `${show_bootstrap_cis} = 1` and `bootstrap_cis.dta` exists; otherwise they degrade to ranked-dot scatters. SDID curves use analytic placebo CIs from `sdid_results.dta`.
 
 ### Revenue Microsimulation
 
 A TAXSIM-based microsimulation calibrated to 2019 ACS microdata and IRS administrative totals estimates PFA revenue under counterfactual no-migration scenarios. Quantifies fiscal cost of tax-induced out-migration for both the county (PFA) and the state (Oregon income tax).
+
+The Oregon revenue comparison in `tbl_revenue_summary.xlsx` is scoped to **Multnomah-resident** Oregon individual income tax, not statewide collections. The simulated baseline (TAXSIM `siitax` summed over the Multnomah ACS sample) is by construction Multnomah-only; to keep the actual-revenue benchmark on the same scope, statewide collections (`${statewide_oregon_revenue}` in `00_stata_config.do`) are scaled by Multnomah's IRS AGI share at runtime in `02_revenue_microsim.do`. The result is stored in `${actual_oregon_revenue}` and consumed by the spec engine. Statewide Oregon income-tax revenue is preserved as a reference row in the summary table so the scaling is visible. Caveat: AGI share understates Multnomah's tax share because Oregon's PIT is progressive and Multnomah skews higher-income; a future refinement could scale by simulated-tax share or pull a DOR county-of-residence figure.
+
+### Bootstrap Confidence Intervals
+
+The published elasticity and revenue-loss tables show donor-cluster bootstrap percentile CIs alongside point estimates. The procedure:
+
+- **Resampling unit**: counties in the donor pool, sampled with replacement; the treated unit (Multnomah) stays fixed across reps.
+- **Per-rep work**: refit SDID on the resampled panel with `vce(off)` (the inner solver skips its own placebo inference; uncertainty comes from the outer rep loop), recompute Kleven semi-elasticity, gross flow elasticity, horizon-H stock elasticity, and revenue-loss objects via the shared engine.
+- **Seeds**: each rep's seed is `master_seed + bootstrap_seed_offset + 997 * rep` — fully deterministic and independent of how reps are partitioned across workers.
+- **Reps**: 20 for development smoke (`bootstrap_reps = 20`), 100 for stress, 500 for publication tables.
+- **Output**: `results/bootstrap/bootstrap_draws.dta` (one row per (rep, spec)) → `results/bootstrap/bootstrap_cis.dta` (one row per spec, with `<var>_median`, `<var>_lo`, `<var>_hi`, `<var>_n` columns at 95% by default; override `${ci_level}` to 90 or 99).
+
+**Invocation** (bundled into the orchestrator under `${run_bootstrap} = 1`):
+
+```stata
+do "code/stata/02_bootstrap.do"           // runs all reps; writes bootstrap_draws.dta
+do "code/stata/02_bootstrap_tables.do"    // collapses to percentile CIs
+```
+
+`02_bootstrap.do` branches on `${use_parallel}`:
+
+- **`use_parallel = 1`** (default if Vega's `parallel` ado is installed): fires `${n_clusters}` workers via `parallel`, each Stata sub-process getting `c(processors_max)` cores. Aggregation is in-process — no shell scripts, no separate combine step. Cross-platform: works on Windows / macOS / Linux without modification.
+- **`use_parallel = 0`** (serial fallback): runs the rep loop in-process. Identical output by construction — the per-rep seed `master_seed + bootstrap_seed_offset + 997 * rep` is partition-independent, so serial and parallel produce bit-identical `bootstrap_draws.dta` (verified via the V2.5 parity test in `sandbox/_v25_parity_test.do`).
+
+`setup_parallel` (in `01a_programs.do`) auto-caps `${n_clusters}` to `floor(physical_cores / processors_max)` to avoid CPU oversubscription. Override `${n_clusters}` and `${bootstrap_reps}` directly to change the worker count and rep budget. To install the `parallel` ado: `net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace`.
 
 ## Prerequisites
 
