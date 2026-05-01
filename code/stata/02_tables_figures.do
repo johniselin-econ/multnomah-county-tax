@@ -21,7 +21,8 @@ Called by:      00_multnomah.do (starting in commit A5)
 Requires:       ${results}elasticities/spec_results.dta (from 02_post_spec.do)
                 ${data}working/revenue_parameters.dta (scalars for table notes)
                 02_spec_engine.do (sourced at top — provides elast_tex_* and
-                                   elast_inout_panel and elast_hist_plot helpers)
+                                   elast_inout_panel helpers; elast_speccurve_plot
+                                   is defined locally in this file)
 
 Outputs:        ${results}elasticities/
                     tbl_elasticities.tex            main table (PFA)
@@ -33,14 +34,21 @@ Outputs:        ${results}elasticities/
                     tbl_elasticities.xlsx           5 sheets
                     preferred_net_stock.csv
                     preferred_net_stock_shs.csv
-                    fig_elast_beta_{net,in,out}{,_shs}.{pdf,png}
-                    fig_elast_stock_net_common{,_shs}.{pdf,png}
+                    fig_speccurve_elast_beta_{net,in,out}{,_shs}.{pdf,png}
+                    fig_speccurve_elast_stock{,_shs}.{pdf,png}
                 ${results}revenue/
-                    fig_revenue_dist_pfa.{pdf,png}
-                    fig_revenue_dist_oregon.{pdf,png}
+                    fig_speccurve_revenue_pfa.{pdf,png}
+                    fig_speccurve_revenue_oregon.{pdf,png}
+                ${results}sdid/preferred_overlays/
+                    fig_overlay_donorpool_<sdtag>_<migr>_eventstudy.{pdf,jpg}   (12 figs)
+                    fig_overlay_dataset_<scope>_<migr>_eventstudy.{pdf,jpg}    (6 figs)
                 ${ol_tab}/, ${ol_fig}/ if ${overleaf}==1 (copies)
 
 Authors: John Iselin
+
+TODO: 
+1) Check to be sure revenue figures are annual!
+2) Check color alignment of figures - make sure dashed lines are colored / labeled correctly
 
 For more information, contact john.iselin@yale.edu
 *******************************************************************************/
@@ -72,6 +80,32 @@ log using "${logs}02_log_tables_figures_${date}", name(log_02tf) replace text
 project_set_seed, context("02_tables_figures.do") offset(60)
 
 ** ------------------------------------------------------------------
+** Bootstrap-CI flag (Phase B5).
+**
+** When ${show_bootstrap_cis} == 1, the highlighted LaTeX tables render
+** percentile CIs `[lo, hi]` on the second line beneath each point
+** estimate (replacing the `(SE)` line, since analytic vce(placebo) SEs
+** are not run-to-run reproducible — see V1 verification, 2026-04-27).
+** Default 0 (current point-estimate-only output, byte-identical to
+** pre-B5 behavior).
+**
+** Requires bootstrap_cis.dta on disk; produced by:
+**   do "${code}02_bootstrap.do"        (parallel via Stata `parallel` ado, or
+**                                       serial when use_parallel=0)
+**   do "${code}02_bootstrap_tables.do"
+** ------------------------------------------------------------------
+if "${show_bootstrap_cis}" == "" global show_bootstrap_cis = 0
+if ${show_bootstrap_cis} == 1 {
+	capture confirm file "${results}bootstrap/bootstrap_cis.dta"
+	if _rc != 0 {
+		dis as error "ERROR: \${show_bootstrap_cis}=1 but ${results}bootstrap/bootstrap_cis.dta not found."
+		dis as error "       Run 02_bootstrap.do + 02_bootstrap_tables.do first."
+		log close log_02tf
+		error 601
+	}
+}
+
+** ------------------------------------------------------------------
 ** Local helper programs (table + figure rendering)
 **
 ** elast_inout_panel — writes one migration-direction panel of the
@@ -80,9 +114,12 @@ project_set_seed, context("02_tables_figures.do") offset(60)
 ** tau_str, se_str, beta_str, beta_se_str, fe_str, fe_se_str
 ** (generated once per table in the caller's preserve block).
 **
-** elast_hist_plot — writes a histogram with dashed-line overlays at
-** each preferred-spec value, colored IRS (vermillion) vs. ACS College
-** (sea blue). Exports .pdf and .png at 2400px.
+** elast_speccurve_plot — writes a specification-curve plot with
+** ranked point estimates (and bootstrap CI whiskers if available) in
+** the upper zone, plus a configurable indicator-dot panel below.
+** Mirrors the SDID spec-curve template at 02_sdid_analysis.do:1452-1828.
+** Exports .pdf and .png at 2400px. Replaced the old elast_hist_plot
+** histogram view.
 **
 ** These helpers previously lived in 02_elasticities.do and moved here
 ** when that file was retired in commit A5 (21c612c). 02_tables_figures.do
@@ -92,7 +129,18 @@ project_set_seed, context("02_tables_figures.do") offset(60)
 
 capture program drop elast_inout_panel
 program define elast_inout_panel
-	syntax, HANDLE(string) DIRECTION(string)
+	** BETACIVAR / FLOWCIVAR: variable names of the pre-built CI
+	** strings in the working dataset. Default to the non-SHS columns;
+	** SHS callers override to flow_semi_shs_ci_str / flow_e_shs_ci_str.
+	** Only consulted when ${show_bootstrap_cis} == 1.
+	** Note the concatenated option names: Stata's `syntax` parser
+	** does not reliably accept option names containing underscores
+	** (see compute_spec_elasticities's header note for the full story).
+	syntax, HANDLE(string) DIRECTION(string) ///
+		[BETACIVAR(name) FLOWCIVAR(name)]
+
+	if "`betacivar'" == "" local betacivar flow_semi_ci_str
+	if "`flowcivar'" == "" local flowcivar flow_e_ci_str
 
 	local N = _N
 	local prev_dt ""
@@ -120,86 +168,278 @@ program define elast_inout_panel
 		local prev_dt "`dt'"
 
 		file write `handle' "`dt' & `smp' & `mg' & `t_val' & `b' & `fe' \\" _n
-		file write `handle' " & & & `se_val' & `b_se' & `fe_se' \\" _n
+		if ${show_bootstrap_cis} == 1 {
+			local tau_ci  = tau_ci_str[`i']
+			local beta_ci = `betacivar'[`i']
+			local fe_ci   = `flowcivar'[`i']
+			if "`fe_ci'" == "" local fe_ci ""
+			file write `handle' " & & & `tau_ci' & `beta_ci' & `fe_ci' \\" _n
+		}
+		else {
+			file write `handle' " & & & `se_val' & `b_se' & `fe_se' \\" _n
+		}
 	}
 end
 
-** NOTE: Stata `syntax` option names cannot contain underscores; use
-** colfill / colirs / colacs (not col_fill etc.).
-capture program drop elast_hist_plot
-program define elast_hist_plot
-	syntax, VAR(varname numeric) XTITLE(string asis) FILE(string) ///
-		COLFILL(string) COLIRS(string) COLACS(string) [HBINS(integer 25)]
+** ------------------------------------------------------------------
+** elast_speccurve_plot
+**
+** Specification-curve plot for derived elasticities and revenue losses.
+** Mirrors the SDID spec-curve template at 02_sdid_analysis.do:1452-1828
+** so the figures share visual language. Replaces the old elast_hist_plot
+** histogram view.
+**
+** Coefficient zone (top): point estimates ranked ascending by `var`,
+** colored by (significant × preferred). Whiskers from `lovar`/`hivar`
+** when supplied (typically the bootstrap CI columns merged from
+** bootstrap_cis.dta); falls back to dot-only when those columns are
+** absent or all-missing.
+**
+** Indicator zone (bottom): one row per spec_* dummy in INDICATORS().
+** Dummies are constructed on the fly from `sample`, `data_type`, and
+** `period_type`, so the helper does not require schema additions to
+** spec_results.dta.
+**
+** Required syntax:
+**     elast_speccurve_plot, var(<num>) ytitle("...") file("...") ///
+**         indicators("name1 name2 ...")                          ///
+**         [lovar(<colname>) hivar(<colname>)]                    ///
+**         [colsignotpref("...") colinsignotpref("...")           ///
+**          colsigpref("...")    colinsigpref("...")              ///
+**          colzero("...")]
+**
+** ytitle is the metric label rendered on the y-axis (e.g.,
+** "{&beta} = ({&tau}/100) / {&Delta}ln(1{&minus}{&tau})"). In the
+** legacy elast_hist_plot signature the same string was passed as
+** xtitle because the metric was the x-axis of the histogram.
+**
+** lovar/hivar take *string* column names rather than `varname numeric`
+** so the caller can reference bootstrap CI columns that exist only when
+** ${show_bootstrap_cis} == 1. The helper validates with `confirm numeric
+** variable` internally and falls back to dot-only when columns are
+** absent or all-missing.
+**
+** Color args default to the ${col_*} globals set in 00_stata_config.do.
+** Recognized indicator names (each maps to one row of dots):
+**     spec_irs spec_irs_outstate spec_acs_all spec_acs_all_outstate
+**     spec_acs_col spec_acs_col_outstate
+**     spec_all spec_stringency spec_urban95 spec_demog spec_covid
+**     spec_16_22 spec_16_24
+**     spec_covars spec_excl2020
+**
+** Side effects: drops temporary spec_*, tau_*pref, ci_*pref, y_*, and
+** spec_rank columns it creates. Operates on the current dataset
+** in-memory and assumes the caller has already filtered to the
+** relevant subset (e.g., by migration / outstate).
+** ------------------------------------------------------------------
+capture program drop elast_speccurve_plot
+program define elast_speccurve_plot
+	** Accept LOVAR / HIVAR as strings (not varname numeric) so callers can
+	** name columns that exist only when ${show_bootstrap_cis}==1. We confirm
+	** them ourselves below; callers don't need to branch on the flag.
+	syntax , VAR(varname numeric) YTITLE(string asis) FILE(string)        ///
+		INDICATORS(string)                                                ///
+		[ LOVAR(string) HIVAR(string)                                     ///
+		  COLSIGNOTPREF(string) COLINSIGNOTPREF(string)                   ///
+		  COLSIGPREF(string)    COLINSIGPREF(string)                      ///
+		  COLZERO(string) ]
 
-	qui count if !missing(`var')
+	** Color defaults from globals
+	if "`colsignotpref'"   == "" local colsignotpref   "${col_sig_notpref}"
+	if "`colinsignotpref'" == "" local colinsignotpref "${col_insig_notpref}"
+	if "`colsigpref'"      == "" local colsigpref      "${col_sig_pref}"
+	if "`colinsigpref'"    == "" local colinsigpref    "${col_insig_pref}"
+	if "`colzero'"         == "" local colzero         "${col_zero}"
+
+	** Drop rows where var is missing — a spec without a defined estimate
+	** has nothing to plot. Operates on a temporary working copy via preserve
+	** so the caller's data is untouched on exit.
+	preserve
+	qui keep if !missing(`var')
+	qui count
 	if r(N) == 0 {
 		dis as text "  No non-missing `var' values — skipping `file'."
+		restore
 		exit
 	}
+	local n_specs = r(N)
 
-	** Compute per-bin counts so we can scale preferred-spec overlays to
-	** the histogram's max bar height.
-	qui summ `var' if !missing(`var')
-	local xmin = r(min)
-	local xmax = r(max)
-	local bw   = (`xmax' - `xmin') / `hbins'
-	tempvar bin binct
-	if `bw' > 0 {
-		qui gen `bin' = floor((`var' - `xmin') / `bw') if !missing(`var')
-		qui replace `bin' = `hbins' - 1 if `bin' == `hbins'
-		qui bysort `bin': gen `binct' = _N if !missing(`bin')
-		qui summ `binct'
-		local max_count = r(max)
-	}
-	else {
-		** Degenerate: all values equal. One bin, one bar at full count.
-		local max_count = r(N)
-	}
+	** Sort and rank — ascending by `var`, ties broken arbitrarily.
+	sort `var'
+	gen long spec_rank = _n
 
-	** Build overlay list for preferred specs, scaled to 0-to-max_count.
-	local acc ""
-	local irs_j = 0
-	local acs_j = 0
-	forvalues i = 1/`=_N' {
-		if preferred[`i'] == 1 & !missing(`var'[`i']) {
-			local v = `var'[`i']
-			local dt = data_type[`i']
-			if strpos("`dt'", "IRS") > 0 {
-				local ++irs_j
-				local acc `"`acc' (scatteri 0 `v' `max_count' `v', recast(line) lcolor("`colirs'") lwidth(medthick) lpattern(dash))"'
-			}
-			else if strpos("`dt'", "ACS College") > 0 {
-				local ++acs_j
-				local acc `"`acc' (scatteri 0 `v' `max_count' `v', recast(line) lcolor("`colacs'") lwidth(medthick) lpattern(dash))"'
-			}
+	** Decide whether bootstrap CIs are usable. Both lovar and hivar must
+	** be supplied, both must exist as numeric variables in memory, AND at
+	** least one row must have both non-missing.
+	local has_ci = 0
+	if "`lovar'" != "" & "`hivar'" != "" {
+		capture confirm numeric variable `lovar'
+		local lovar_ok = (_rc == 0)
+		capture confirm numeric variable `hivar'
+		local hivar_ok = (_rc == 0)
+		if `lovar_ok' & `hivar_ok' {
+			qui count if !missing(`lovar') & !missing(`hivar')
+			if r(N) > 0 local has_ci = 1
 		}
 	}
 
-	** Build legend order conditionally — a layer index is valid only if
-	** the corresponding category has at least one overlay line.
-	local legorder `"1 "All Specifications""'
-	if `irs_j' > 0 {
-		local legorder `"`legorder' 2 "IRS Preferred""'
-	}
-	if `acs_j' > 0 {
-		local legacs_idx = 2 + `irs_j'
-		local legorder `"`legorder' `legacs_idx' "ACS College Preferred""'
+	** Four-category split on (significant, preferred).
+	gen double v_sig_notpref   = `var' if significant == 1 & preferred == 0
+	gen double v_insig_notpref = `var' if significant == 0 & preferred == 0
+	gen double v_sig_pref      = `var' if significant == 1 & preferred == 1
+	gen double v_insig_pref    = `var' if significant == 0 & preferred == 1
+
+	if `has_ci' {
+		gen double cilo_sig_notpref   = `lovar' if significant == 1 & preferred == 0
+		gen double cihi_sig_notpref   = `hivar' if significant == 1 & preferred == 0
+		gen double cilo_insig_notpref = `lovar' if significant == 0 & preferred == 0
+		gen double cihi_insig_notpref = `hivar' if significant == 0 & preferred == 0
+		gen double cilo_sig_pref      = `lovar' if significant == 1 & preferred == 1
+		gen double cihi_sig_pref      = `hivar' if significant == 1 & preferred == 1
+		gen double cilo_insig_pref    = `lovar' if significant == 0 & preferred == 1
+		gen double cihi_insig_pref    = `hivar' if significant == 0 & preferred == 1
 	}
 
-	twoway (histogram `var' if !missing(`var'), ///
-				fcolor("`colfill'") lcolor(white) lwidth(thin) ///
-				bin(`hbins') frequency) ///
-	       `acc' ///
-	    , xtitle(`"`xtitle'"') ///
-	      ytitle("Number of Specifications") ///
-	      graphregion(color(white)) ///
-	      legend(order(`legorder') ///
-	             ring(1) pos(6) rows(1) size(small) region(lcolor(white))) ///
-	      ysize(3) xsize(8)
+	** y-axis range for the coefficient zone. Use CI extremes if available,
+	** otherwise the var range, with a small pad.
+	if `has_ci' {
+		qui summ `lovar'
+		local y_min = r(min)
+		qui summ `hivar'
+		local y_max = r(max)
+	}
+	else {
+		qui summ `var'
+		local y_min = r(min)
+		local y_max = r(max)
+	}
+	if missing(`y_min') | missing(`y_max') {
+		** Degenerate guard — should not happen given the n>0 check above.
+		local y_min = 0
+		local y_max = 1
+	}
+	local pad = max((`y_max' - `y_min') * 0.05, 0.0001)
+	local y_min = `y_min' - `pad'
+	local y_max = `y_max' + `pad'
+	local data_range = `y_max' - `y_min'
+
+	** Adaptive tick step for the coefficient zone — six bins cover the full
+	** range of metrics this helper sees (β ≈ 0.05 → state_loss ≈ 100s).
+	if      `data_range' >= 100  local tick_step = 25
+	else if `data_range' >= 50   local tick_step = 10
+	else if `data_range' >= 20   local tick_step = 5
+	else if `data_range' >= 5    local tick_step = 1
+	else if `data_range' >= 2    local tick_step = 0.5
+	else if `data_range' >= 0.5  local tick_step = 0.1
+	else                          local tick_step = 0.05
+	local tick_lo = floor(`y_min' / `tick_step') * `tick_step'
+	local tick_hi =  ceil(`y_max' / `tick_step') * `tick_step'
+
+	** Indicator zone scales with the data range so the same template works
+	** for elasticities (β ~ 0–0.5) and revenue losses ($M, range 10–60+).
+	** Separator sits 15% of data_range below y_min; rows step down by 7%.
+	local sep_y    = `y_min' - 0.15 * `data_range'
+	local row_step = 0.07 * `data_range'
+	local ind_top  = `sep_y' - `row_step'
+
+	** Build spec_* dummies on the fly (caller may have filtered, so dummies
+	** can be all-zero on some rows; that's fine — the y_<name> = . path
+	** suppresses dots for those rows).
+	gen byte spec_all              = sample == "sample_all"
+	gen byte spec_stringency       = sample == "sample_stringency"
+	gen byte spec_urban95          = sample == "sample_urban95"
+	gen byte spec_demog            = sample == "sample_demog"
+	gen byte spec_covid            = sample == "sample_urban75_covid"
+	gen byte spec_covars           = controls == 1
+	gen byte spec_excl2020         = exclusion == 1
+	gen byte spec_irs              = data_type == "IRS"
+	gen byte spec_irs_outstate     = data_type == "IRS (Out-of-State)"
+	gen byte spec_acs_all          = data_type == "ACS All"
+	gen byte spec_acs_all_outstate = data_type == "ACS All (Out-of-State)"
+	gen byte spec_acs_col          = data_type == "ACS College"
+	gen byte spec_acs_col_outstate = data_type == "ACS College (Out-of-State)"
+	gen byte spec_16_22            = period_type == "16-22"
+	gen byte spec_16_24            = period_type == "16-24"
+
+	** Indicator label dictionary. Order in `indicators` is presentation
+	** order, top to bottom.
+	local lbl_spec_all              `"All Counties"'
+	local lbl_spec_urban95          `"Urban (Top 5%)"'
+	local lbl_spec_covid            `"COVID Match"'
+	local lbl_spec_demog            `"Demographic Match"'
+	local lbl_spec_stringency       `"Stringency Match"'
+	local lbl_spec_covars           `"Covariates"'
+	local lbl_spec_excl2020         `"Excl. 2020"'
+	local lbl_spec_irs              `"IRS"'
+	local lbl_spec_irs_outstate     `"IRS (Out-of-State)"'
+	local lbl_spec_acs_all          `"ACS All"'
+	local lbl_spec_acs_all_outstate `"ACS All (Out-of-State)"'
+	local lbl_spec_acs_col          `"ACS College"'
+	local lbl_spec_acs_col_outstate `"ACS College (Out-of-State)"'
+	local lbl_spec_16_22            `"16-22"'
+	local lbl_spec_16_24            `"16-24"'
+
+	** For each requested indicator, generate y-coord var and accumulate
+	** scatter layers + ylabel pairs.
+	local ind_layers `""'
+	local ind_ylabels `""'
+	local row_idx = 0
+	foreach ind_name of local indicators {
+		capture confirm variable `ind_name'
+		if _rc != 0 {
+			dis as error "elast_speccurve_plot: unrecognized indicator `ind_name'"
+			restore
+			exit 198
+		}
+		local row_idx = `row_idx' + 1
+		local ypos = `ind_top' - (`row_idx' - 1) * `row_step'
+		gen double y_`ind_name' = `ypos' if `ind_name' == 1
+		local ind_layers `"`ind_layers' (scatter y_`ind_name' spec_rank, mc("`colsignotpref'") ms(O) msize(vsmall))"'
+		local ind_ylabels `"`ind_ylabels' `ypos' "`lbl_`ind_name''" "'
+	}
+
+	** Coefficient-zone layers. rcaps only if we have CIs.
+	local coef_layers `""'
+	if `has_ci' {
+		local coef_layers `"`coef_layers' (rcap cilo_sig_notpref   cihi_sig_notpref   spec_rank, lc("`colsignotpref'")   lw(vthin))"'
+		local coef_layers `"`coef_layers' (rcap cilo_insig_notpref cihi_insig_notpref spec_rank, lc("`colinsignotpref'") lw(vthin))"'
+		local coef_layers `"`coef_layers' (rcap cilo_sig_pref      cihi_sig_pref      spec_rank, lc("`colsigpref'")      lw(thin))"'
+		local coef_layers `"`coef_layers' (rcap cilo_insig_pref    cihi_insig_pref    spec_rank, lc("`colinsigpref'")    lw(thin))"'
+	}
+	** Scatter layers — these are the four legend entries (5..8 if CIs, 1..4 if not).
+	local coef_layers `"`coef_layers' (scatter v_sig_notpref   spec_rank, mc("`colsignotpref'")   ms(O) msize(vsmall))"'
+	local coef_layers `"`coef_layers' (scatter v_insig_notpref spec_rank, mc("`colinsignotpref'") ms(O) msize(vsmall))"'
+	local coef_layers `"`coef_layers' (scatter v_sig_pref      spec_rank, mc("`colsigpref'")      ms(D) msize(small))"'
+	local coef_layers `"`coef_layers' (scatter v_insig_pref    spec_rank, mc("`colinsigpref'")    ms(D) msize(small))"'
+
+	** Legend points to the four scatter layers regardless of rcap presence.
+	if `has_ci' {
+		local leg_order `"5 "Sig. (p<0.05)" 6 "Insig." 7 "Sig., Preferred" 8 "Insig., Preferred""'
+	}
+	else {
+		local leg_order `"1 "Sig. (p<0.05)" 2 "Insig." 3 "Sig., Preferred" 4 "Insig., Preferred""'
+	}
+
+	twoway `coef_layers' `ind_layers'                                                       ///
+		, yline(`sep_y', lc(gs12) lp(solid) lw(vthin))                                     ///
+		  yline(0, lc("`colzero'") lp(dash))                                               ///
+		  ylabel(`tick_lo'(`tick_step')`tick_hi', labsize(vsmall) nogrid)                  ///
+		  ylabel(`ind_ylabels', labsize(vsmall) angle(0) notick nogrid add)                ///
+		  legend(order(`leg_order') rows(1) pos(6) size(vsmall))                           ///
+		  ytitle(`"`ytitle'"', size(vsmall))                                               ///
+		  xtitle("Specification (ranked by estimate)", size(vsmall))                       ///
+		  xlabel(none)                                                                      ///
+		  xscale(range(0.5 `=`n_specs'+0.5'))                                              ///
+		  graphregion(color(white))                                                        ///
+		  ysize(5) xsize(8)
 
 	graph export "`file'.pdf", replace
 	graph export "`file'.png", as(png) width(2400) replace
+	dis as text "  Wrote `file'.{pdf,png} (`n_specs' specs, has_ci=`has_ci')"
+
+	restore
 end
+
 
 dis ""
 dis "=============================================="
@@ -247,6 +487,51 @@ scalar delta_t = avg_mt_rate
 ** ------------------------------------------------------------------
 use "${results}elasticities/spec_results.dta", clear
 dis "Loaded " _N " spec rows."
+
+** ------------------------------------------------------------------
+** Optional bootstrap-CI merge (Phase B5).
+**
+** Joins bootstrap_cis.dta onto the highlighted-spec subset by the
+** common keys. After the merge, the dataset has both point-estimate
+** columns (tau, beta_kleven, stock_elast_*) AND CI columns
+** (tau_lo, flow_semi_lo, stock_total_common_lo, ...). Note the naming
+** asymmetry: spec_results stores Kleven semi-ε as `beta_kleven`
+** while bootstrap_cis stores it as `flow_semi` (matching what
+** compute_spec_elasticities returns as r(beta)). The rendering code
+** below knows the mapping; we don't rename either side.
+**
+** After merge, pre-compute `<var>_ci_str` columns once so each of the
+** six LaTeX tables can pull them via [i] indexing in its render loop
+** without redoing the formatting.
+** ------------------------------------------------------------------
+if ${show_bootstrap_cis} == 1 {
+	merge m:1 sample_data sample migration outstate controls exclusion ///
+		using "${results}bootstrap/bootstrap_cis.dta", ///
+		keep(master match) ///
+		keepusing(*_lo *_hi *_median *_n) nogen
+	dis "Merged bootstrap CIs onto " _N " rows."
+
+	** Pre-compute CI strings for every CI-relevant column. Some specs
+	** legitimately have missing CIs (stock_* on in/out specs, etc.) —
+	** those get an empty string and the render loop blanks that cell.
+	foreach v in tau flow_semi flow_semi_shs flow_e flow_e_shs ///
+		stock_total_common stock_total_common_shs ///
+		stock_total_full   stock_total_full_shs ///
+		stock_total_ann    stock_total_ann_shs ///
+		stock_imp_common   stock_imp_common_shs ///
+		stock_imp_full     stock_imp_full_shs ///
+		stock_imp_ann      stock_imp_ann_shs ///
+		pfa_loss state_loss {
+		capture confirm variable `v'_lo
+		if _rc == 0 {
+			gen str30 `v'_ci_str = ""
+			replace `v'_ci_str = ///
+				"[" + strtrim(string(`v'_lo, "%9.3f")) + ", " + ///
+					strtrim(string(`v'_hi, "%9.3f")) + "]" ///
+				if !missing(`v'_lo) & !missing(`v'_hi)
+		}
+	}
+}
 
 ********************************************************************************
 ** SECTION 1: LaTeX tables
@@ -308,7 +593,15 @@ forvalues i = 1/`N' {
 	local prev_dt "`dt'"
 
 	file write `fh' "`dt' & `smp' & `t_val' & `b' & `stock' \\" _n
-	file write `fh' " & & `se_val' & `b_se' & \\" _n
+	if ${show_bootstrap_cis} == 1 {
+		local tau_ci   = tau_ci_str[`i']
+		local beta_ci  = flow_semi_ci_str[`i']
+		local stock_ci = stock_total_common_ci_str[`i']
+		file write `fh' " & & `tau_ci' & `beta_ci' & `stock_ci' \\" _n
+	}
+	else {
+		file write `fh' " & & `se_val' & `b_se' & \\" _n
+	}
 }
 
 elast_tex_notes_open, handle(`fh')
@@ -328,8 +621,7 @@ file write `fh' "Positive values indicate that the AGI stock shrinks when the ta
 file write `fh' "Average effective PFA rate: `pfa_pct'\%; average total tax rate on impacted filers: `total_pct'\%. " _n
 file write `fh' "FICA reflects the employee share only. " _n
 file write `fh' "Flow elasticities for gross migration are in Appendix Table~\ref{tab:elasticities_inout}. " _n
-file write `fh' "Standard errors in parentheses are reported for $\hat{\tau}$ and $\beta$ only; " _n
-file write `fh' "the current pipeline does not export joint event-study covariance matrices for the stock elasticity." _n
+elast_tex_notes_inference, handle(`fh') stock
 elast_tex_close, handle(`fh')
 
 file close `fh'
@@ -392,6 +684,15 @@ forvalues i = 1/`N' {
 	local prev_dt "`dt'"
 
 	file write `fh2' "`dt' & `smp' & `t_val' & `dln' & `b' & `sc' & `sf' & `sa' \\" _n
+	if ${show_bootstrap_cis} == 1 {
+		** dln_ntr is a fixed denominator (no CI) — blank that column.
+		local tau_ci   = tau_ci_str[`i']
+		local beta_ci  = flow_semi_ci_str[`i']
+		local sc_ci    = stock_total_common_ci_str[`i']
+		local sf_ci    = stock_total_full_ci_str[`i']
+		local sa_ci    = stock_total_ann_ci_str[`i']
+		file write `fh2' " & & `tau_ci' & & `beta_ci' & `sc_ci' & `sf_ci' & `sa_ci' \\" _n
+	}
 }
 
 elast_tex_notes_open, handle(`fh2')
@@ -401,6 +702,7 @@ file write `fh2' "Flow semi-elasticity is $\beta = (\hat{\tau}/100)/\Delta\ln(1-
 file write `fh2' "Stock elasticities are calculated on the total AGI base from cumulated net-migration event-study effects: $\varepsilon_{\text{stock},H} = \Delta\ln S_H / \Delta\ln(1-t)$. " _n
 file write `fh2' "Common uses the 2021--2022 IRS-ACS overlap window, Full uses all available post years, and Annualized equals Full divided by the number of post years. " _n
 file write `fh2' "Positive stock elasticities indicate that the AGI stock shrinks when the tax rate rises because the after-tax rate falls. " _n
+elast_tex_notes_inference, handle(`fh2') stock
 elast_tex_close, handle(`fh2')
 
 file close `fh2'
@@ -459,7 +761,7 @@ file write `fh' "Sign convention: $\beta = (\hat{\tau}/100) / \Delta\ln(1-\tau_\
 file write `fh' "For out-migration, \emph{negative} $\beta$ indicates a larger outflow when the tax rate rises; " _n
 file write `fh' "for in-migration, \emph{positive} $\beta$ indicates a smaller inflow. " _n
 file write `fh' "Average effective PFA rate: `pfa_pct'\%; total rate on impacted filers: `total_pct'\%. " _n
-file write `fh' "Standard errors in parentheses, derived from SDID bootstrap SEs." _n
+elast_tex_notes_inference, handle(`fh')
 elast_tex_close, handle(`fh')
 
 file close `fh'
@@ -516,7 +818,16 @@ forvalues i = 1/`N' {
 	local prev_dt "`dt'"
 
 	file write `fh_shs' "`dt' & `smp' & `t_val' & `b' & `stock' \\" _n
-	file write `fh_shs' " & & `se_val' & `b_se' & \\" _n
+	if ${show_bootstrap_cis} == 1 {
+		** SHS variant: beta + stock columns use _shs CI variables.
+		local tau_ci   = tau_ci_str[`i']
+		local beta_ci  = flow_semi_shs_ci_str[`i']
+		local stock_ci = stock_total_common_shs_ci_str[`i']
+		file write `fh_shs' " & & `tau_ci' & `beta_ci' & `stock_ci' \\" _n
+	}
+	else {
+		file write `fh_shs' " & & `se_val' & `b_se' & \\" _n
+	}
 }
 
 elast_tex_notes_open, handle(`fh_shs')
@@ -526,7 +837,7 @@ file write `fh_shs' "SHS applies throughout Metro (Multnomah, Washington, and Cl
 file write `fh_shs' "so including it in $\Delta\ln(1-\tau_\text{total})$ produces a more conservative (smaller in magnitude) $\beta$. " _n
 file write `fh_shs' "Average effective SHS rate on impacted filers: `shs_pct'\%; total rate including SHS: `total_shs_pct'\%. " _n
 file write `fh_shs' "Point estimates of $\hat{\tau}$ are unchanged relative to Table~\ref{tab:elasticities} — only the denominator differs. " _n
-file write `fh_shs' "Standard errors in parentheses treat revenue parameters as known." _n
+elast_tex_notes_inference, handle(`fh_shs') stock
 elast_tex_close, handle(`fh_shs')
 
 file close `fh_shs'
@@ -590,6 +901,16 @@ forvalues i = 1/`N' {
 	local prev_dt "`dt'"
 
 	file write `fh2_shs' "`dt' & `smp' & `t_val' & `dln' & `b' & `sc' & `sf' & `sa' \\" _n
+	if ${show_bootstrap_cis} == 1 {
+		** SHS variant: beta + stock columns use _shs CI variables.
+		** dln_ntr is a fixed denominator (no CI) — blank that column.
+		local tau_ci   = tau_ci_str[`i']
+		local beta_ci  = flow_semi_shs_ci_str[`i']
+		local sc_ci    = stock_total_common_shs_ci_str[`i']
+		local sf_ci    = stock_total_full_shs_ci_str[`i']
+		local sa_ci    = stock_total_ann_shs_ci_str[`i']
+		file write `fh2_shs' " & & `tau_ci' & & `beta_ci' & `sc_ci' & `sf_ci' & `sa_ci' \\" _n
+	}
 }
 
 elast_tex_notes_open, handle(`fh2_shs')
@@ -597,6 +918,7 @@ file write `fh2_shs' "SHS-inclusive version of Table~\ref{tab:elasticities_stock
 file write `fh2_shs' "$\Delta\ln(1-t)$ and all elasticity columns use the combined PFA + Metro SHS denominator. " _n
 file write `fh2_shs' "Average effective SHS rate on impacted filers: `shs_pct'\%. " _n
 file write `fh2_shs' "Interpretation and sign conventions follow Table~\ref{tab:elasticities_stock_compare}." _n
+elast_tex_notes_inference, handle(`fh2_shs') stock
 elast_tex_close, handle(`fh2_shs')
 
 file close `fh2_shs'
@@ -636,20 +958,23 @@ sort data_type sample migration
 file write `fh_shs_io' "\addlinespace" _n
 file write `fh_shs_io' "\multicolumn{6}{l}{\textit{Panel A: Out-Migration}} \\" _n
 file write `fh_shs_io' "\addlinespace" _n
-elast_inout_panel, handle(`fh_shs_io') direction("out")
+elast_inout_panel, handle(`fh_shs_io') direction("out") ///
+	betacivar(flow_semi_shs_ci_str) flowcivar(flow_e_shs_ci_str)
 
 file write `fh_shs_io' "\addlinespace[0.75em]" _n
 file write `fh_shs_io' "\midrule" _n
 file write `fh_shs_io' "\addlinespace" _n
 file write `fh_shs_io' "\multicolumn{6}{l}{\textit{Panel B: In-Migration}} \\" _n
 file write `fh_shs_io' "\addlinespace" _n
-elast_inout_panel, handle(`fh_shs_io') direction("in")
+elast_inout_panel, handle(`fh_shs_io') direction("in") ///
+	betacivar(flow_semi_shs_ci_str) flowcivar(flow_e_shs_ci_str)
 
 elast_tex_notes_open, handle(`fh_shs_io')
 file write `fh_shs_io' "SHS-inclusive version of Table~\ref{tab:elasticities_inout}. " _n
 file write `fh_shs_io' "Denominator includes PFA + Metro SHS 1\%; $\hat{\tau}$ is unchanged. " _n
 file write `fh_shs_io' "Average effective SHS rate on impacted filers: `shs_pct'\%; total rate including SHS: `total_shs_pct'\%. " _n
 file write `fh_shs_io' "Sign conventions follow Table~\ref{tab:elasticities_inout}." _n
+elast_tex_notes_inference, handle(`fh_shs_io')
 elast_tex_close, handle(`fh_shs_io')
 
 file close `fh_shs_io'
@@ -908,7 +1233,7 @@ post `guideh' ("recalc_components") ("spec_migration") ("Migration-flow type: ne
 post `guideh' ("recalc_components") ("spec_outstate") ("Equals 1 for out-of-state migration outcomes and 0 for national outcomes.")
 post `guideh' ("recalc_components") ("input_tau_pp") ("Estimated SDID treatment effect in percentage points.")
 post `guideh' ("recalc_components") ("input_tau_decimal") ("Estimated SDID treatment effect converted from percentage points to decimal units.")
-post `guideh' ("recalc_components") ("input_tau_se_pp") ("Bootstrap standard error for the SDID treatment effect, in percentage points.")
+post `guideh' ("recalc_components") ("input_tau_se_pp") ("Placebo-inference standard error for the SDID treatment effect, in percentage points. This is sdid's vce(placebo) SE, not the donor-cluster bootstrap CI exported in bootstrap_cis.")
 post `guideh' ("recalc_components") ("input_pre_mean_rate") ("Pre-period mean migration rate used as the base for gross-flow elasticities.")
 post `guideh' ("recalc_components") ("input_delta_pfa_rate") ("Average PFA tax-rate increase used for semi-elasticity calculations.")
 post `guideh' ("recalc_components") ("input_avg_tot_rate_post") ("Average post-policy total tax rate for the impacted filer base.")
@@ -931,9 +1256,9 @@ post `guideh' ("recalc_components") ("input_ln_stock_chg_full_total") ("Cumulati
 post `guideh' ("recalc_components") ("input_ln_stock_chg_common_imp") ("Cumulative log change in the impacted AGI stock over the common IRS-ACS post window.")
 post `guideh' ("recalc_components") ("input_ln_stock_chg_full_imp") ("Cumulative log change in the impacted AGI stock over the full available post window.")
 post `guideh' ("recalc_components") ("result_net_of_tax_semi_elast") ("Net-of-tax semi-elasticity: SDID effect divided by the change in the log net-of-tax rate.")
-post `guideh' ("recalc_components") ("result_net_of_tax_semi_se") ("Standard error for the net-of-tax semi-elasticity.")
+post `guideh' ("recalc_components") ("result_net_of_tax_semi_se") ("Standard error for the net-of-tax semi-elasticity. Propagated from the SDID treatment-effect placebo SE; treats revenue and tax parameters as fixed. Donor-cluster bootstrap percentile CIs are exported separately to bootstrap_cis.")
 post `guideh' ("recalc_components") ("result_gross_flow_elast") ("Gross-flow elasticity for in- or out-migration, using the pre-period gross flow mean as the base.")
-post `guideh' ("recalc_components") ("result_gross_flow_elast_se") ("Standard error for the gross-flow elasticity.")
+post `guideh' ("recalc_components") ("result_gross_flow_elast_se") ("Standard error for the gross-flow elasticity. Propagated from the SDID treatment-effect placebo SE; treats revenue and tax parameters as fixed.")
 post `guideh' ("recalc_components") ("result_stock_elast_total_common") ("Cumulative stock elasticity on the total AGI base over the common IRS-ACS post window.")
 post `guideh' ("recalc_components") ("result_stock_elast_total_full") ("Cumulative stock elasticity on the total AGI base over the full available post window.")
 post `guideh' ("recalc_components") ("result_stock_elast_total_ann") ("Annualized cumulative stock elasticity on the total AGI base over the full available post window.")
@@ -978,9 +1303,9 @@ post `guideh' ("recalc_components") ("input_avg_tot_rate_pre_col_shs") ("Pre-pol
 post `guideh' ("recalc_components") ("input_dln_ntr_total_col_shs") ("Change in log net-of-tax rate including SHS for the college proxy subgroup.")
 post `guideh' ("recalc_components") ("input_stock_dln_ntr_shs") ("Specification-specific Δln(1−τ) including SHS used in stock elasticity.")
 post `guideh' ("recalc_components") ("result_net_of_tax_semi_elast_shs") ("Kleven semi-elasticity β computed with the PFA+SHS denominator.")
-post `guideh' ("recalc_components") ("result_net_of_tax_semi_se_shs") ("Standard error of the SHS-inclusive semi-elasticity.")
+post `guideh' ("recalc_components") ("result_net_of_tax_semi_se_shs") ("Standard error of the SHS-inclusive semi-elasticity. Propagated from the SDID treatment-effect placebo SE; treats SHS rate and other revenue parameters as fixed.")
 post `guideh' ("recalc_components") ("result_gross_flow_elast_shs") ("Gross-flow elasticity (in/out) with the SHS-inclusive denominator.")
-post `guideh' ("recalc_components") ("result_gross_flow_elast_se_shs") ("Standard error of the SHS-inclusive gross-flow elasticity.")
+post `guideh' ("recalc_components") ("result_gross_flow_elast_se_shs") ("Standard error of the SHS-inclusive gross-flow elasticity. Propagated from the SDID treatment-effect placebo SE; treats revenue parameters as fixed.")
 post `guideh' ("recalc_components") ("result_stock_elast_tot_com_shs") ("Stock elasticity on the total AGI base, 2021–2022 window, SHS-inclusive.")
 post `guideh' ("recalc_components") ("result_stock_elast_tot_full_shs") ("Stock elasticity on the total AGI base, full post horizon, SHS-inclusive.")
 post `guideh' ("recalc_components") ("result_stock_elast_tot_ann_shs") ("Annualized stock elasticity on the total AGI base, SHS-inclusive.")
@@ -1006,10 +1331,57 @@ post `guideh' ("run_parameters") ("avg_total_rate_pre_col_shs") ("Pre-policy tot
 post `guideh' ("run_parameters") ("delta_ln_ntr_total_shs") ("Change in log net-of-tax rate for the main impacted filer base, SHS-inclusive.")
 post `guideh' ("run_parameters") ("delta_ln_ntr_total_col_shs") ("Change in log net-of-tax rate for the college proxy subgroup, SHS-inclusive.")
 
+** Bootstrap CI sheet (Phase B5). One row per highlighted spec; for each
+** CI variable v, columns are v_median, v_lo, v_hi, v_n. Sheet only
+** populated when ${show_bootstrap_cis} == 1; the variable_guide
+** entries below stay regardless so the workbook structure is stable.
+post `guideh' ("bootstrap_cis") ("spec_id") ("Highlighted-spec identifier (1..24); matches the spec grid in 02_bootstrap.do.")
+post `guideh' ("bootstrap_cis") ("sample_data") ("Source panel block: irs_full_16_22, irs_outstate_full_16_22, acs_16_24_col, or acs_outstate_16_24_col.")
+post `guideh' ("bootstrap_cis") ("sample") ("Donor-pool sample: sample_all or sample_stringency.")
+post `guideh' ("bootstrap_cis") ("migration") ("Migration direction: net, in, or out.")
+post `guideh' ("bootstrap_cis") ("outstate") ("1 if the spec uses out-of-state migration data, 0 otherwise.")
+post `guideh' ("bootstrap_cis") ("data_type") ("Presentation label: IRS, IRS (Out-of-State), ACS College, or ACS College (Out-of-State).")
+post `guideh' ("bootstrap_cis") ("controls") ("Always 1 in the bootstrap subset (covariates included).")
+post `guideh' ("bootstrap_cis") ("exclusion") ("Always 1 in the bootstrap subset (year 2020 dropped from estimation).")
+post `guideh' ("bootstrap_cis") ("tau_median") ("Bootstrap median of the SDID coefficient τ̂ on the migration rate (pp).")
+post `guideh' ("bootstrap_cis") ("tau_lo") ("Lower percentile of τ̂ across donor-cluster bootstrap reps.")
+post `guideh' ("bootstrap_cis") ("tau_hi") ("Upper percentile of τ̂ across donor-cluster bootstrap reps.")
+post `guideh' ("bootstrap_cis") ("tau_n") ("Number of non-missing bootstrap reps used for τ̂.")
+post `guideh' ("bootstrap_cis") ("flow_semi_*") ("Median/lo/hi/n for the Kleven semi-elasticity β. Suffix _shs is the SHS-inclusive variant.")
+post `guideh' ("bootstrap_cis") ("flow_e_*") ("Median/lo/hi/n for the gross flow elasticity (in/out only). Suffix _shs is the SHS-inclusive variant.")
+post `guideh' ("bootstrap_cis") ("stock_total_common_*") ("Median/lo/hi/n for the total-AGI stock elasticity over the common 2021–2022 window (net specs only). Suffix _shs is SHS-inclusive.")
+post `guideh' ("bootstrap_cis") ("stock_total_full_*") ("Total-AGI stock elasticity over the full post horizon. Suffix _shs is SHS-inclusive.")
+post `guideh' ("bootstrap_cis") ("stock_total_ann_*") ("Annualized total-AGI stock elasticity. Suffix _shs is SHS-inclusive.")
+post `guideh' ("bootstrap_cis") ("stock_imp_common_*") ("Impacted-AGI stock elasticity over the common 2021–2022 window. Suffix _shs is SHS-inclusive.")
+post `guideh' ("bootstrap_cis") ("stock_imp_full_*") ("Impacted-AGI stock elasticity over the full post horizon. Suffix _shs is SHS-inclusive.")
+post `guideh' ("bootstrap_cis") ("stock_imp_ann_*") ("Annualized impacted-AGI stock elasticity. Suffix _shs is SHS-inclusive.")
+post `guideh' ("bootstrap_cis") ("pfa_loss_*") ("Implied PFA revenue loss in $M (in-state net specs only).")
+post `guideh' ("bootstrap_cis") ("state_loss_*") ("Implied Oregon revenue loss attributable to Multnomah out-migration, in $M (out-of-state net specs only). Scaled to Multnomah's IRS AGI share of statewide individual income tax.")
+
 postclose `guideh'
 use `guide', clear
 export excel using "${results}elasticities/tbl_elasticities.xlsx", ///
 	sheet("variable_guide") firstrow(variables) sheetreplace
+restore
+
+** ------------------------------------------------------------------
+** New sheet: bootstrap_cis (Phase B5).
+** Mirrors results/bootstrap/bootstrap_cis.dta. Empty when
+** ${show_bootstrap_cis} == 0 — we still write a 1-row placeholder so
+** the sheet exists in the workbook contract regardless of flag state.
+** ------------------------------------------------------------------
+preserve
+if ${show_bootstrap_cis} == 1 {
+	use "${results}bootstrap/bootstrap_cis.dta", clear
+}
+else {
+	clear
+	set obs 1
+	gen str40 _placeholder = "Bootstrap CIs not generated this run."
+	gen str120 _hint = "Re-run with: global show_bootstrap_cis = 1; do ${code}02_tables_figures.do"
+}
+export excel using "${results}elasticities/tbl_elasticities.xlsx", ///
+	sheet("bootstrap_cis") firstrow(variables) sheetreplace
 restore
 
 ** Reload the spec dataset for Section 3 (figures)
@@ -1024,12 +1396,14 @@ dis "=============================================="
 dis "Section 3: Elasticity distribution figures"
 dis "=============================================="
 
-** plotplainblind palette
-local col_fill "86 180 233"		// sky — histogram fill
-local col_irs  "213 94 0"		// vermillion — IRS preferred
-local col_acs  "0 114 178"		// sea — ACS College preferred
+** Indicator templates — see elast_speccurve_plot header for the dictionary.
+** β and stock-ε figures are not pre-filtered by outstate, so they show all
+** six data_type rows. PFA / state revenue figures are pre-filtered to one
+** outstate value each; the call sites use the leaner instate / outstate
+** variants below in Section 4.
+local indic_universal `"spec_irs spec_irs_outstate spec_acs_all spec_acs_all_outstate spec_acs_col spec_acs_col_outstate spec_all spec_stringency spec_urban95 spec_demog spec_covid spec_16_22 spec_16_24 spec_covars spec_excl2020"'
 
-** ---- β histograms (PFA + SHS) for each migration direction ----
+** ---- β spec curves (PFA + SHS) for each migration direction ----
 foreach migr in "net" "in" "out" {
 
 	if "`migr'" == "net" local migr_title "Net"
@@ -1056,22 +1430,24 @@ foreach migr in "net" "in" "out" {
 	dis as text "Kleven semi-elasticity beta distribution (`migr'):"
 	summ beta_kleven, detail
 
-	elast_hist_plot, var(beta_kleven) ///
-		xtitle(`"{&beta} = ({&tau}/100) / {&Delta}ln(1{&minus}{&tau}{subscript:total})"') ///
-		file("${results}elasticities/fig_elast_beta_`migr'") ///
-		colfill("`col_fill'") colirs("`col_irs'") colacs("`col_acs'")
+	elast_speccurve_plot, var(beta_kleven) ///
+		ytitle(`"{&beta} = ({&tau}/100) / {&Delta}ln(1{&minus}{&tau}{subscript:total})"') ///
+		file("${results}elasticities/fig_speccurve_elast_beta_`migr'") ///
+		indicators("`indic_universal'") ///
+		lovar(flow_semi_lo) hivar(flow_semi_hi)
 
 	dis as text "Kleven semi-elasticity beta distribution (`migr'), +SHS:"
 	summ beta_kleven_shs, detail
-	elast_hist_plot, var(beta_kleven_shs) ///
-		xtitle(`"{&beta} (PFA+SHS) = ({&tau}/100) / {&Delta}ln(1{&minus}{&tau}{subscript:total+SHS})"') ///
-		file("${results}elasticities/fig_elast_beta_`migr'_shs") ///
-		colfill("`col_fill'") colirs("`col_irs'") colacs("`col_acs'")
+	elast_speccurve_plot, var(beta_kleven_shs) ///
+		ytitle(`"{&beta} (PFA+SHS) = ({&tau}/100) / {&Delta}ln(1{&minus}{&tau}{subscript:total+SHS})"') ///
+		file("${results}elasticities/fig_speccurve_elast_beta_`migr'_shs") ///
+		indicators("`indic_universal'") ///
+		lovar(flow_semi_shs_lo) hivar(flow_semi_shs_hi)
 
 	restore
 }
 
-** ---- Stock ε histograms (net migration only; PFA + SHS) ----
+** ---- Stock-ε spec curves (net migration only; PFA + SHS) ----
 preserve
 keep if migration == "net"
 
@@ -1081,10 +1457,11 @@ if r(N) > 0 {
 	dis as text "Stock elasticity distribution (net, 2021-2022 window):"
 	summ stock_elast_total_common if !missing(stock_elast_total_common), detail
 
-	elast_hist_plot, var(stock_elast_total_common) ///
-		xtitle(`"{&epsilon}{subscript:stock,H} = {&Delta}ln S{subscript:H} / {&Delta}ln(1{&minus}{&tau}{subscript:total})"') ///
-		file("${results}elasticities/fig_elast_stock_net_common") ///
-		colfill("`col_fill'") colirs("`col_irs'") colacs("`col_acs'")
+	elast_speccurve_plot, var(stock_elast_total_common) ///
+		ytitle(`"{&epsilon}{subscript:stock,H} = {&Delta}ln S{subscript:H} / {&Delta}ln(1{&minus}{&tau}{subscript:total})"') ///
+		file("${results}elasticities/fig_speccurve_elast_stock") ///
+		indicators("`indic_universal'") ///
+		lovar(stock_total_common_lo) hivar(stock_total_common_hi)
 }
 
 qui count if !missing(stock_elast_total_common_shs)
@@ -1092,30 +1469,32 @@ if r(N) > 0 {
 	dis as text "Stock elasticity distribution (net, 2021-2022 window, +SHS):"
 	summ stock_elast_total_common_shs if !missing(stock_elast_total_common_shs), detail
 
-	elast_hist_plot, var(stock_elast_total_common_shs) ///
-		xtitle(`"{&epsilon}{subscript:stock,H} (PFA+SHS) = {&Delta}ln S{subscript:H} / {&Delta}ln(1{&minus}{&tau}{subscript:total+SHS})"') ///
-		file("${results}elasticities/fig_elast_stock_net_common_shs") ///
-		colfill("`col_fill'") colirs("`col_irs'") colacs("`col_acs'")
+	elast_speccurve_plot, var(stock_elast_total_common_shs) ///
+		ytitle(`"{&epsilon}{subscript:stock,H} (PFA+SHS) = {&Delta}ln S{subscript:H} / {&Delta}ln(1{&minus}{&tau}{subscript:total+SHS})"') ///
+		file("${results}elasticities/fig_speccurve_elast_stock_shs") ///
+		indicators("`indic_universal'") ///
+		lovar(stock_total_common_shs_lo) hivar(stock_total_common_shs_hi)
 }
 restore
 
-** Overleaf copy for elasticity figures. Preserve legacy filename
-** fig_elasticity_dist_net.pdf as a copy of fig_elast_beta_net.pdf so the
-** manuscript's \includegraphics paths don't need updating.
+** Overleaf copy for elasticity spec-curve figures. Preserve the legacy
+** fig_elasticity_dist_net.pdf alias (now sourced from the new spec-curve
+** β-net file) so manuscript \includegraphics paths that still reference the
+** old name continue to resolve.
 if "${overleaf}" == "1" {
 	foreach base in ///
-		fig_elast_beta_net fig_elast_beta_in fig_elast_beta_out ///
-		fig_elast_beta_net_shs fig_elast_beta_in_shs fig_elast_beta_out_shs ///
-		fig_elast_stock_net_common fig_elast_stock_net_common_shs {
+		fig_speccurve_elast_beta_net fig_speccurve_elast_beta_in fig_speccurve_elast_beta_out ///
+		fig_speccurve_elast_beta_net_shs fig_speccurve_elast_beta_in_shs fig_speccurve_elast_beta_out_shs ///
+		fig_speccurve_elast_stock fig_speccurve_elast_stock_shs {
 		capture confirm file "${results}elasticities/`base'.pdf"
 		if _rc == 0 {
 			copy "${results}elasticities/`base'.pdf" ///
 				"${ol_fig}`base'.pdf", replace
 		}
 	}
-	capture confirm file "${results}elasticities/fig_elast_beta_net.pdf"
+	capture confirm file "${results}elasticities/fig_speccurve_elast_beta_net.pdf"
 	if _rc == 0 {
-		copy "${results}elasticities/fig_elast_beta_net.pdf" ///
+		copy "${results}elasticities/fig_speccurve_elast_beta_net.pdf" ///
 			"${ol_fig}fig_elasticity_dist_net.pdf", replace
 	}
 }
@@ -1126,12 +1505,19 @@ if "${overleaf}" == "1" {
 ** Restored here from the pre-A2 02_revenue.do §12. pfa_loss (for net-domestic
 ** specs) and state_loss (for net-outstate specs) are already populated in
 ** spec_results.dta by 02_post_spec.do calling compute_spec_revenue — the job
-** of this section is just to histogram them with preferred-spec overlays.
+** of this section is just to render them as spec curves via
+** elast_speccurve_plot, with bootstrap CI whiskers when available.
 
 dis ""
 dis "=============================================="
 dis "Section 4: Revenue-loss distribution figures"
 dis "=============================================="
+
+** Indicator templates for revenue spec curves. PFA loss is defined only
+** for outstate==0 (net-domestic); the indicator template drops the
+** outstate data_type rows. State loss is the mirror — outstate==1 only.
+local indic_instate  `"spec_irs spec_acs_all spec_acs_col spec_all spec_stringency spec_urban95 spec_demog spec_covid spec_16_22 spec_16_24 spec_covars spec_excl2020"'
+local indic_outstate `"spec_irs_outstate spec_acs_all_outstate spec_acs_col_outstate spec_all spec_stringency spec_urban95 spec_demog spec_covid spec_16_22 spec_16_24 spec_covars spec_excl2020"'
 
 ** PFA: net-domestic specs, pfa_loss column
 preserve
@@ -1143,13 +1529,14 @@ if r(N) > 0 {
 	dis "PFA implied loss distribution ($ millions), " _N " specs:"
 	summ pfa_loss, detail
 
-	elast_hist_plot, var(pfa_loss) ///
-		xtitle("Implied PFA Revenue Loss ($ millions)") ///
-		file("${results}revenue/fig_revenue_dist_pfa") ///
-		colfill("`col_fill'") colirs("`col_irs'") colacs("`col_acs'")
+	elast_speccurve_plot, var(pfa_loss) ///
+		ytitle("Implied PFA Revenue Loss ($ millions)") ///
+		file("${results}revenue/fig_speccurve_revenue_pfa") ///
+		indicators("`indic_instate'") ///
+		lovar(pfa_loss_lo) hivar(pfa_loss_hi)
 }
 else {
-	dis as text "No pfa_loss values available — skipping fig_revenue_dist_pfa."
+	dis as text "No pfa_loss values available — skipping fig_speccurve_revenue_pfa."
 }
 restore
 
@@ -1163,19 +1550,20 @@ if r(N) > 0 {
 	dis "Oregon implied loss distribution ($ millions), " _N " specs:"
 	summ state_loss, detail
 
-	elast_hist_plot, var(state_loss) ///
-		xtitle("Implied Oregon State Revenue Loss ($ millions)") ///
-		file("${results}revenue/fig_revenue_dist_oregon") ///
-		colfill("`col_fill'") colirs("`col_irs'") colacs("`col_acs'")
+	elast_speccurve_plot, var(state_loss) ///
+		ytitle("Implied Oregon Revenue Loss from Multnomah Out-Migration ($ millions)") ///
+		file("${results}revenue/fig_speccurve_revenue_oregon") ///
+		indicators("`indic_outstate'") ///
+		lovar(state_loss_lo) hivar(state_loss_hi)
 }
 else {
-	dis as text "No state_loss values available — skipping fig_revenue_dist_oregon."
+	dis as text "No state_loss values available — skipping fig_speccurve_revenue_oregon."
 }
 restore
 
-** Overleaf copy for revenue-dist figures.
+** Overleaf copy for revenue spec-curve figures.
 if "${overleaf}" == "1" {
-	foreach base in fig_revenue_dist_pfa fig_revenue_dist_oregon {
+	foreach base in fig_speccurve_revenue_pfa fig_speccurve_revenue_oregon {
 		capture confirm file "${results}revenue/`base'.pdf"
 		if _rc == 0 {
 			copy "${results}revenue/`base'.pdf" ///
@@ -1185,7 +1573,212 @@ if "${overleaf}" == "1" {
 }
 
 ********************************************************************************
-** SECTION 5: Summary
+** SECTION 5: Preferred-spec event-study overlays
+********************************************************************************
+** Reads sdid_event_results.dta (preferred==1 rows) and writes 18 overlay
+** figures into ${results}sdid/preferred_overlays/. Two complementary views:
+**   Set 1 (12 figs): donor-pool comparison — sample_all vs
+**     sample_stringency, one figure per (sample_data × migration).
+**   Set 2 (6 figs): donor-pool × dataset — IRS vs ACS College ×
+**     sample_all vs sample_stringency, one figure per (scope × migration).
+** In-state and out-of-state stay on separate figures.
+
+dis ""
+dis "=============================================="
+dis "Section 5: Preferred-spec event-study overlays"
+dis "=============================================="
+
+capture mkdir "${results}sdid/preferred_overlays"
+
+capture confirm file "${results}sdid/sdid_event_results.dta"
+if _rc != 0 {
+	dis as error "  sdid_event_results.dta not found — skipping overlay figures."
+}
+else {
+
+** Migration-direction display labels.
+local lbl_migr_net `"Net AGI Migration"'
+local lbl_migr_in  `"AGI In-Migration"'
+local lbl_migr_out `"AGI Out-Migration"'
+
+** sample_data display labels.
+local lbl_sd_irs_full_16_22          `"IRS"'
+local lbl_sd_acs_16_24_col           `"ACS College"'
+local lbl_sd_irs_outstate_full_16_22 `"IRS (Out-of-State)"'
+local lbl_sd_acs_outstate_16_24_col  `"ACS College (Out-of-State)"'
+
+** ----------------------------------------------------------------
+** Set 1 — donor-pool overlay (2 lines per figure; 12 figures)
+** ----------------------------------------------------------------
+** sample_all = vermillion (col_sig_pref); sample_stringency = sea
+** (col_sig_notpref). x-offset ±0.10 to disambiguate same-year rcaps.
+
+preserve
+use "${results}sdid/sdid_event_results.dta", clear
+keep if preferred == 1
+keep if regexm(outcome, "^agi_")    // restrict to AGI outcomes; n1/n2 share preferred flag
+
+** Short tag per sample_data for tidy filenames.
+gen str40 sd_tag = ""
+replace sd_tag = "irs"              if sample_data == "irs_full_16_22"
+replace sd_tag = "acs_col"          if sample_data == "acs_16_24_col"
+replace sd_tag = "irs_outstate"     if sample_data == "irs_outstate_full_16_22"
+replace sd_tag = "acs_col_outstate" if sample_data == "acs_outstate_16_24_col"
+
+foreach sd in irs_full_16_22 acs_16_24_col irs_outstate_full_16_22 acs_outstate_16_24_col {
+	foreach migr in net in out {
+
+		preserve
+		keep if sample_data == "`sd'"
+		keep if regexm(outcome, "_`migr'_rate_")
+		keep if inlist(sample, "sample_all", "sample_stringency")
+
+		qui count
+		if r(N) == 0 {
+			dis "  Set 1 skip — no rows for `sd' / `migr'."
+			restore
+			continue
+		}
+
+		local sdtag = sd_tag[1]
+		local sd_label `"`lbl_sd_`sd''"'
+		local migr_label `"`lbl_migr_`migr''"'
+
+		** x-offset by sample.
+		gen double event_year_off = event_year
+		replace event_year_off = event_year_off - 0.10 if sample == "sample_all"
+		replace event_year_off = event_year_off + 0.10 if sample == "sample_stringency"
+
+		** Group-masked tau / lo / hi so each gets its own twoway layer.
+		gen double tau_g1  = event_tau   if sample == "sample_all"
+		gen double lo_g1   = event_ci_lo if sample == "sample_all"
+		gen double hi_g1   = event_ci_hi if sample == "sample_all"
+		gen double tau_g2  = event_tau   if sample == "sample_stringency"
+		gen double lo_g2   = event_ci_lo if sample == "sample_stringency"
+		gen double hi_g2   = event_ci_hi if sample == "sample_stringency"
+
+		twoway (rcap lo_g1 hi_g1 event_year_off, lc("${col_sig_pref}")    lw(medthin)) ///
+		       (scatter tau_g1 event_year_off,   mc("${col_sig_pref}")    ms(O) msize(small)) ///
+		       (rcap lo_g2 hi_g2 event_year_off, lc("${col_sig_notpref}") lw(medthin)) ///
+		       (scatter tau_g2 event_year_off,   mc("${col_sig_notpref}") ms(O) msize(small)), ///
+		    yline(0, lc("${col_zero}") lp(dash))                          ///
+		    xline(2020.5, lc(black) lp(solid))                            ///
+		    xlabel(2016(1)2024, labsize(small))                           ///
+		    ylabel(, format(%9.1f) labsize(small))                        ///
+		    legend(order(2 "All Counties" 4 "Stringency Match")           ///
+		           rows(1) pos(6) size(small) region(lcolor(white)))      ///
+		    title(`"`sd_label', `migr_label': Donor Pool Comparison"',    ///
+		          size(medsmall))                                          ///
+		    ytitle(`"Event-study coefficient {&tau}{subscript:t} (pp)"', size(small)) ///
+		    xtitle("Year", size(small))                                   ///
+		    graphregion(color(white)) ysize(4) xsize(7)
+
+		local fbase "${results}sdid/preferred_overlays/fig_overlay_donorpool_`sdtag'_`migr'_eventstudy"
+		graph export "`fbase'.pdf", replace
+		graph export "`fbase'.jpg", as(jpg) quality(100) replace
+		dis as text "  Set 1: wrote `sdtag' / `migr'"
+
+		restore
+	} // END migr
+} // END sd
+restore
+
+** ----------------------------------------------------------------
+** Set 2 — donor-pool × dataset overlay (4 lines per figure; 6 figures)
+** ----------------------------------------------------------------
+** Color mnemonic: warm = IRS, cool = ACS College, saturated = all,
+** lighter = stringency. x-offsets -0.15 / -0.05 / +0.05 / +0.15.
+
+preserve
+use "${results}sdid/sdid_event_results.dta", clear
+keep if preferred == 1
+keep if regexm(outcome, "^agi_")
+
+foreach scope in instate outstate {
+	if "`scope'" == "instate" {
+		local sd_irs irs_full_16_22
+		local sd_acs acs_16_24_col
+		local scope_label `"In-State"'
+	}
+	else {
+		local sd_irs irs_outstate_full_16_22
+		local sd_acs acs_outstate_16_24_col
+		local scope_label `"Out-of-State"'
+	}
+
+	foreach migr in net in out {
+
+		preserve
+		keep if inlist(sample_data, "`sd_irs'", "`sd_acs'")
+		keep if inlist(sample, "sample_all", "sample_stringency")
+		keep if regexm(outcome, "_`migr'_rate_")
+
+		qui count
+		if r(N) == 0 {
+			dis "  Set 2 skip — no rows for `scope' / `migr'."
+			restore
+			continue
+		}
+
+		local migr_label `"`lbl_migr_`migr''"'
+
+		** x-offset by (data × pool).
+		gen double event_year_off = event_year
+		replace event_year_off = event_year_off - 0.15 if sample_data == "`sd_irs'" & sample == "sample_all"
+		replace event_year_off = event_year_off - 0.05 if sample_data == "`sd_irs'" & sample == "sample_stringency"
+		replace event_year_off = event_year_off + 0.05 if sample_data == "`sd_acs'" & sample == "sample_all"
+		replace event_year_off = event_year_off + 0.15 if sample_data == "`sd_acs'" & sample == "sample_stringency"
+
+		** Group masks (IRS = g1/g2; ACS = g3/g4).
+		gen double tau_g1 = event_tau   if sample_data == "`sd_irs'" & sample == "sample_all"
+		gen double lo_g1  = event_ci_lo if sample_data == "`sd_irs'" & sample == "sample_all"
+		gen double hi_g1  = event_ci_hi if sample_data == "`sd_irs'" & sample == "sample_all"
+		gen double tau_g2 = event_tau   if sample_data == "`sd_irs'" & sample == "sample_stringency"
+		gen double lo_g2  = event_ci_lo if sample_data == "`sd_irs'" & sample == "sample_stringency"
+		gen double hi_g2  = event_ci_hi if sample_data == "`sd_irs'" & sample == "sample_stringency"
+		gen double tau_g3 = event_tau   if sample_data == "`sd_acs'" & sample == "sample_all"
+		gen double lo_g3  = event_ci_lo if sample_data == "`sd_acs'" & sample == "sample_all"
+		gen double hi_g3  = event_ci_hi if sample_data == "`sd_acs'" & sample == "sample_all"
+		gen double tau_g4 = event_tau   if sample_data == "`sd_acs'" & sample == "sample_stringency"
+		gen double lo_g4  = event_ci_lo if sample_data == "`sd_acs'" & sample == "sample_stringency"
+		gen double hi_g4  = event_ci_hi if sample_data == "`sd_acs'" & sample == "sample_stringency"
+
+		twoway (rcap lo_g1 hi_g1 event_year_off, lc("${col_sig_pref}")      lw(medthin)) ///
+		       (scatter tau_g1 event_year_off,   mc("${col_sig_pref}")      ms(O) msize(small)) ///
+		       (rcap lo_g2 hi_g2 event_year_off, lc("${col_insig_pref}")    lw(medthin)) ///
+		       (scatter tau_g2 event_year_off,   mc("${col_insig_pref}")    ms(O) msize(small)) ///
+		       (rcap lo_g3 hi_g3 event_year_off, lc("${col_sig_notpref}")   lw(medthin)) ///
+		       (scatter tau_g3 event_year_off,   mc("${col_sig_notpref}")   ms(O) msize(small)) ///
+		       (rcap lo_g4 hi_g4 event_year_off, lc("${col_insig_notpref}") lw(medthin)) ///
+		       (scatter tau_g4 event_year_off,   mc("${col_insig_notpref}") ms(O) msize(small)), ///
+		    yline(0, lc("${col_zero}") lp(dash))                            ///
+		    xline(2020.5, lc(black) lp(solid))                              ///
+		    xlabel(2016(1)2024, labsize(small))                             ///
+		    ylabel(, format(%9.1f) labsize(small))                          ///
+		    legend(order(2 "IRS, All"           4 "IRS, Stringency"         ///
+		                 6 "ACS College, All"   8 "ACS College, Stringency") ///
+		           rows(2) pos(6) size(small) region(lcolor(white)))        ///
+		    title(`"`scope_label', `migr_label': Dataset and Donor Pool Comparison"', ///
+		          size(medsmall))                                            ///
+		    ytitle(`"Event-study coefficient {&tau}{subscript:t} (pp)"', size(small)) ///
+		    xtitle("Year", size(small))                                     ///
+		    graphregion(color(white)) ysize(4) xsize(7)
+
+		local fbase "${results}sdid/preferred_overlays/fig_overlay_dataset_`scope'_`migr'_eventstudy"
+		graph export "`fbase'.pdf", replace
+		graph export "`fbase'.jpg", as(jpg) quality(100) replace
+		dis as text "  Set 2: wrote `scope' / `migr'"
+
+		restore
+	} // END migr
+} // END scope
+restore
+
+} // END else (sdid_event_results.dta exists)
+
+
+********************************************************************************
+** SECTION 6: Summary
 ********************************************************************************
 
 dis ""
@@ -1201,10 +1794,12 @@ dis "  ${results}elasticities/tbl_elasticities_stock_compare_shs.tex"
 dis "  ${results}elasticities/tbl_elasticities.xlsx"
 dis "  ${results}elasticities/preferred_net_stock.csv"
 dis "  ${results}elasticities/preferred_net_stock_shs.csv"
-dis "  ${results}elasticities/fig_elast_beta_{net,in,out}{,_shs}.{pdf,png}"
-dis "  ${results}elasticities/fig_elast_stock_net_common{,_shs}.{pdf,png}"
-dis "  ${results}revenue/fig_revenue_dist_pfa.{pdf,png}"
-dis "  ${results}revenue/fig_revenue_dist_oregon.{pdf,png}"
+dis "  ${results}elasticities/fig_speccurve_elast_beta_{net,in,out}{,_shs}.{pdf,png}"
+dis "  ${results}elasticities/fig_speccurve_elast_stock{,_shs}.{pdf,png}"
+dis "  ${results}revenue/fig_speccurve_revenue_pfa.{pdf,png}"
+dis "  ${results}revenue/fig_speccurve_revenue_oregon.{pdf,png}"
+dis "  ${results}sdid/preferred_overlays/fig_overlay_donorpool_*_eventstudy.{pdf,jpg}"
+dis "  ${results}sdid/preferred_overlays/fig_overlay_dataset_*_eventstudy.{pdf,jpg}"
 dis "=============================================="
 
 capture log close log_02tf
