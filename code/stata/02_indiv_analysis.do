@@ -543,6 +543,15 @@ if `__dbgdetail' {
             if "`replace'" != "" graph export "`outpath'", as(pdf) replace
             else                graph export "`outpath'", as(pdf)
 
+            ** Mirror PDF to Overleaf when overleaf sync is on. The
+            ** appendix figures (fig_cat_educ_*, fig_cat_age_*) are
+            ** \input by updated.tex; this hook keeps them in sync.
+            if "${overleaf}" == "1" & "${ol_fig}" != "" {
+                local fname : subinstr local outpath "${results}individual/" ""
+                local fname : subinstr local fname "${results}" ""
+                capture copy "`outpath'" "${ol_fig}`fname'", replace
+            }
+
         }   // END PDF EXPORT
 
     restore    // END PRESERVE BLOCK
