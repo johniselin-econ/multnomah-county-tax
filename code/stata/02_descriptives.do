@@ -55,6 +55,18 @@ if "${dir}" == "" {
 if "${code}" == "" global code "${dir}/code/stata/"
 do "${code}00_stata_config.do"
 
+** Source profile.do for Overleaf sync globals when run standalone (the
+** orchestrator does this in 00_multnomah.do; replicate here so this script
+** writes to Overleaf either way).
+if "${ol_tab}" == "" {
+    capture do "${dir}/profile.do"
+    if "${oth_path}" != "" {
+        global ol_fig "${oth_path}figures/"
+        global ol_tab "${oth_path}tables/"
+        global overleaf = 1
+    }
+}
+
 ** Start log file
 capture log close log_02
 log using "${logs}02_log_descriptives_${date}", replace text name(log_02)
@@ -1623,23 +1635,35 @@ local cond_sample_stringency     "sample_stringency == 1"
 
 ** Build one matrix per data source (6 rows x 8 cols):
 **   Cols: 1=N, 2=out_pre, 3=out_post, 4=in_pre, 5=in_post, 6=net_pre, 7=net_post, 8=net_chg
-tempname M_IRS M_ACS
-matrix `M_IRS' = J(6, 8, .)
-matrix `M_ACS' = J(6, 8, .)
-matrix colnames `M_IRS' = N out_pre out_post in_pre in_post net_pre net_post net_chg
-matrix colnames `M_ACS' = N out_pre out_post in_pre in_post net_pre net_post net_chg
-matrix rownames `M_IRS' = mult all urban95 urban_covid demog stringency
-matrix rownames `M_ACS' = mult all urban95 urban_covid demog stringency
+**
+** Three panels: IRS (irs), ACS all-25+ (acs1), ACS College (acs2). Each uses
+** the same five donor-pool definitions. The N-counties column for each panel
+** is computed against the panel's own observable universe -- IRS sees ~3,140
+** counties; ACS only identifies ~389 counties (and not every donor pool
+** member is in that ACS-389 set).
+tempname M_IRS M_ACS1 M_ACS2
+foreach m in `M_IRS' `M_ACS1' `M_ACS2' {
+    matrix `m' = J(6, 8, .)
+    matrix colnames `m' = N out_pre out_post in_pre in_post net_pre net_post net_chg
+    matrix rownames `m' = mult all urban95 urban_covid demog stringency
+}
 
-** Capture pool county counts using a single year-snapshot (pools are
-** time-invariant; year == 2019 gives a clean snapshot).
+** Build per-panel observability flags from a single year-snapshot.
+** has_<src> = 1 iff the county has a non-missing AGI rate in that source.
 preserve
 keep if year == 2019
+gen byte has_irs  = !missing(agi_out_rate_irs)
+gen byte has_acs1 = !missing(agi_out_rate_acs1)
+gen byte has_acs2 = !missing(agi_out_rate_acs2)
+
 local row = 1
 foreach pool of local pool_list {
-    qui count if `cond_`pool''
+    qui count if `cond_`pool'' & has_irs == 1
     matrix `M_IRS'[`row', 1] = r(N)
-    matrix `M_ACS'[`row', 1] = r(N)
+    qui count if `cond_`pool'' & has_acs1 == 1
+    matrix `M_ACS1'[`row', 1] = r(N)
+    qui count if `cond_`pool'' & has_acs2 == 1
+    matrix `M_ACS2'[`row', 1] = r(N)
     local ++row
 }
 restore
@@ -1664,34 +1688,41 @@ foreach pool of local pool_list {
 }
 restore
 
-** ---- ACS panel: pre = 2018-2019, post = 2021-2024 ----
-preserve
-keep if inrange(year, 2018, 2024) & year != 2020
-gen byte period_post = inrange(year, 2021, 2024)
+** ---- ACS panels: pre = 2018-2019, post = 2021-2024.
+**      Loop over (matrix, suffix) pairs to fill all-25+ and college panels.
+foreach acs_pair in "M_ACS1 acs1" "M_ACS2 acs2" {
+    local matname  : word 1 of `acs_pair'
+    local src      : word 2 of `acs_pair'
 
-local row = 1
-foreach pool of local pool_list {
-    foreach dir in "out" "in" "net" {
-        local col_off = cond("`dir'" == "out", 1, cond("`dir'" == "in", 3, 5))
-        foreach per in 0 1 {
-            qui summ agi_`dir'_rate_acs2 if `cond_`pool'' & period_post == `per'
-            local col = `col_off' + 1 + `per'
-            matrix `M_ACS'[`row', `col'] = r(mean)
+    preserve
+    keep if inrange(year, 2018, 2024) & year != 2020
+    gen byte period_post = inrange(year, 2021, 2024)
+
+    local row = 1
+    foreach pool of local pool_list {
+        foreach dir in "out" "in" "net" {
+            local col_off = cond("`dir'" == "out", 1, cond("`dir'" == "in", 3, 5))
+            foreach per in 0 1 {
+                qui summ agi_`dir'_rate_`src' if `cond_`pool'' & period_post == `per'
+                local col = `col_off' + 1 + `per'
+                matrix ``matname''[`row', `col'] = r(mean)
+            }
         }
+        matrix ``matname''[`row', 8] = ``matname''[`row', 7] - ``matname''[`row', 6]
+        local ++row
     }
-    matrix `M_ACS'[`row', 8] = `M_ACS'[`row', 7] - `M_ACS'[`row', 6]
-    local ++row
+    restore
 }
-restore
 
 mat list `M_IRS'
-mat list `M_ACS'
+mat list `M_ACS1'
+mat list `M_ACS2'
 
-** ---- CSV export for QA ----
+** ---- CSV export for QA (18 rows = 3 panels x 6 pools) ----
 preserve
 clear
-set obs 12
-gen str8  panel    = ""
+set obs 18
+gen str10 panel    = ""
 gen str40 pool     = ""
 gen long  N        = .
 gen double out_pre = .
@@ -1701,30 +1732,25 @@ gen double in_post = .
 gen double net_pre = .
 gen double net_post = .
 gen double net_chg = .
-forvalues r = 1/6 {
-    replace panel    = "IRS"  in `r'
-    replace pool     = `"`pool_label_`: word `r' of `pool_list'''"' in `r'
-    replace N        = `M_IRS'[`r', 1] in `r'
-    replace out_pre  = `M_IRS'[`r', 2] in `r'
-    replace out_post = `M_IRS'[`r', 3] in `r'
-    replace in_pre   = `M_IRS'[`r', 4] in `r'
-    replace in_post  = `M_IRS'[`r', 5] in `r'
-    replace net_pre  = `M_IRS'[`r', 6] in `r'
-    replace net_post = `M_IRS'[`r', 7] in `r'
-    replace net_chg  = `M_IRS'[`r', 8] in `r'
-}
-forvalues r = 1/6 {
-    local rr = `r' + 6
-    replace panel    = "ACS"  in `rr'
-    replace pool     = `"`pool_label_`: word `r' of `pool_list'''"' in `rr'
-    replace N        = `M_ACS'[`r', 1] in `rr'
-    replace out_pre  = `M_ACS'[`r', 2] in `rr'
-    replace out_post = `M_ACS'[`r', 3] in `rr'
-    replace in_pre   = `M_ACS'[`r', 4] in `rr'
-    replace in_post  = `M_ACS'[`r', 5] in `rr'
-    replace net_pre  = `M_ACS'[`r', 6] in `rr'
-    replace net_post = `M_ACS'[`r', 7] in `rr'
-    replace net_chg  = `M_ACS'[`r', 8] in `rr'
+
+local p_off = 0
+foreach panel_pair in "IRS M_IRS" "ACS M_ACS1" "ACS_College M_ACS2" {
+    local plabel : word 1 of `panel_pair'
+    local pmat   : word 2 of `panel_pair'
+    forvalues r = 1/6 {
+        local rr = `r' + `p_off'
+        replace panel    = "`plabel'" in `rr'
+        replace pool     = `"`pool_label_`: word `r' of `pool_list'''"' in `rr'
+        replace N        = ``pmat''[`r', 1] in `rr'
+        replace out_pre  = ``pmat''[`r', 2] in `rr'
+        replace out_post = ``pmat''[`r', 3] in `rr'
+        replace in_pre   = ``pmat''[`r', 4] in `rr'
+        replace in_post  = ``pmat''[`r', 5] in `rr'
+        replace net_pre  = ``pmat''[`r', 6] in `rr'
+        replace net_post = ``pmat''[`r', 7] in `rr'
+        replace net_chg  = ``pmat''[`r', 8] in `rr'
+    }
+    local p_off = `p_off' + 6
 }
 export delimited "${results}tables/table1_combined.csv", replace
 restore
@@ -1757,14 +1783,22 @@ file write `fh' `"\cmidrule(lr){3-4} \cmidrule(lr){5-6} \cmidrule(lr){7-8}"' _n
 file write `fh' `" & counties & Pre & Post & Pre & Post & Pre & Post & change (pp) \\"' _n
 file write `fh' `"\midrule"' _n
 
-foreach panel in IRS ACS {
-    if "`panel'" == "IRS" {
-        local matname "`M_IRS'"
-        local panel_hdr "Panel A: IRS (Pre = 2018--2019; Post = 2021--2022)"
-    }
-    else {
-        local matname "`M_ACS'"
-        local panel_hdr "Panel B: ACS College (Pre = 2018--2019; Post = 2021--2024)"
+** Per-panel header: letter -> (tempname-LOCAL-name, header text). Storing
+** the local-name string (e.g., "M_IRS") rather than the resolved tempname
+** lets us double-dereference at use time: ``matname'' resolves first to
+** "M_IRS", then to the actual tempname.
+local matname_A "M_IRS"
+local matname_B "M_ACS1"
+local matname_C "M_ACS2"
+local hdr_A     "Panel A: IRS (Pre = 2018--2019; Post = 2021--2022)"
+local hdr_B     "Panel B: ACS, all 25+ (Pre = 2018--2019; Post = 2021--2024)"
+local hdr_C     "Panel C: ACS, college-educated (Pre = 2018--2019; Post = 2021--2024)"
+
+foreach letter in A B C {
+    local matname  "`matname_`letter''"
+    local panel_hdr "`hdr_`letter''"
+
+    if "`letter'" != "A" {
         file write `fh' `"\midrule"' _n
         file write `fh' `"\addlinespace[0.4em]"' _n
     }
@@ -1775,11 +1809,11 @@ foreach panel in IRS ACS {
         local pool : word `r' of `pool_list'
         local lab  "`pool_label_`pool''"
 
-        local nC : di %12.0fc `matname'[`r', 1]
+        local nC : di %12.0fc ``matname''[`r', 1]
         local nC = strtrim("`nC'")
         local cells ""
         forvalues c = 2/8 {
-            local v : di %5.2f `matname'[`r', `c']
+            local v : di %5.2f ``matname''[`r', `c']
             local v = strtrim("`v'")
             local cells "`cells' & `v'"
         }
@@ -1793,9 +1827,10 @@ file write `fh' `"\bottomrule"' _n
 file write `fh' `"\end{tabular}"' _n
 file write `fh' `"\begin{tablenotes}[flushleft]"' _n
 file write `fh' `"\small"' _n
-file write `fh' `"\item \textit{Notes:} AGI in-, out-, and net-migration rates as a percentage of each county's base filing population, averaged over the indicated pre and post periods (2020 dropped). Means within each donor pool are simple county-level means (each county weighted equally), matching the SDID donor-pool construction. The 2018--2019 pre-period is shared across panels; the IRS post-period is 2021--2022 (the last year IRS county-to-county data is currently available), while the ACS post-period is extended through 2024."' _n
+file write `fh' `"\item \textit{Notes:} AGI in-, out-, and net-migration rates as a percentage of each county's base filing population, averaged over the indicated pre and post periods (2020 dropped). Means within each donor pool are simple county-level means (each county weighted equally), matching the SDID donor-pool construction. The 2018--2019 pre-period is shared across panels; the IRS post-period is 2021--2022 (the last year IRS county-to-county data is currently available), while the ACS post-periods are extended through 2024."' _n
+file write `fh' `"\item \textit{N counties.} Counts reflect each panel's observable universe at year~2019: IRS covers nearly all U.S.\ counties, while the public-use ACS only identifies about 389 counties of residence, so the ACS panels show smaller donor-pool counts than the IRS panel."' _n
 file write `fh' `"\item \textit{Donor pools.} The all-donor-counties pool is the broad SDID benchmark: all U.S.\ counties excluding Alaska, Hawaii, California, Washington, and non-Multnomah Oregon counties. Urban top-5\% restricts to counties in the top 5\% of urban-share. Urban-Covid match restricts to the urban top-25\% k-means cluster matched to Multnomah on Covid case and death trajectories. Demographic match k-means clusters on pre-treatment per-capita income, population, urban share, and age distribution. Stringency match restricts to the urban top-25\% k-means cluster matched on JII Covid policy stringency duration. See Appendix~B for full donor-pool construction details."' _n
-file write `fh' `"\item Source: IRS SOI county-to-county migration flows (Panel~A); ACS microdata, college-educated subsample (Panel~B)."' _n
+file write `fh' `"\item Source: IRS SOI county-to-county migration flows (Panel~A); ACS microdata, all 25+ subsample (Panel~B); ACS microdata, college-educated subsample (Panel~C)."' _n
 file write `fh' `"\end{tablenotes}"' _n
 file write `fh' `"\end{threeparttable}"' _n
 file write `fh' `"\end{table}"' _n
