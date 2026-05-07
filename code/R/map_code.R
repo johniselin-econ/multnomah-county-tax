@@ -625,7 +625,7 @@ filepath_combined_tax <- file.path(maps_dir, "map_combined_tax.png")
 LEG_H <- 0.10
 
 map_combined_tax <- ggdraw() +
-  draw_plot(map1_with_box,
+  draw_plot(map1_with_box_full,
             x = 0, y = LEG_H,
             width = INSET_MAIN_W, height = 1 - LEG_H) +
   draw_plot(map2_tax_inset,
