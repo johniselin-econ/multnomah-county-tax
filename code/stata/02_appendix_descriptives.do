@@ -28,6 +28,8 @@ Purpose:        Build the three method-specific descriptive-statistics tables
                 emitted as a separate .tex file so updated.tex can \input
                 them independently.
 
+Called by:      00_multnomah.do (Stage 6: Appendix & Robustness)
+
 Inputs:         ${data}working/sdid_analysis_data.dta            (Table A)
                 ${data}working/irs_county_flow.dta               (Table B)
                 ${data}working/acs_county_gross_25plus.dta       (Table B ACS-county list; Table C)

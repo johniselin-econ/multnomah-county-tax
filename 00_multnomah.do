@@ -169,14 +169,10 @@ do "${code}01_clean_data.do"
 
 
 ** ============================================================================
-** STAGE 2: DESCRIPTIVE ANALYSIS
+** STAGE 2: CAUSAL ANALYSIS
 ** ============================================================================
-do "${code}02_descriptives.do"
-
-
-** ============================================================================
-** STAGE 3: CAUSAL ANALYSIS
-** ============================================================================
+** SDID stage produces sdid_analysis_data.dta and sdid_results.dta consumed
+** by Stage 3 (descriptives Table 1) and Stage 4 (derived estimates).
 
 ** IRS county-level flow regressions
 do "${code}02_flow_analysis.do"
@@ -185,23 +181,29 @@ do "${code}02_flow_analysis.do"
 do "${code}02_did_analysis.do"
 
 ** Synthetic difference-in-differences (main specification)
-** Produces sdid_results.dta used by downstream scripts
 do "${code}02_sdid_analysis.do"
 
 
 ** ============================================================================
-** STAGE 4: ROBUSTNESS
+** STAGE 3: DESCRIPTIVE TABLES & CONDITIONAL MEANS
 ** ============================================================================
+** Runs after SDID prep so Table 1's Multnomah-vs-donor-pool comparison can
+** read sdid_analysis_data.dta. The earlier sections of 02_descriptives.do
+** read raw cleaned inputs and could run in Stage 1, but keeping descriptives
+** together avoids splitting the file.
 
-** SDID with narrow control pool (21 similar cities)
-do "${code}02_narrow_sdid.do"
+** Combined descriptives: flow comparisons (consumed by R/map_code.R),
+** Table 2 (Multnomah + neighbors), stringency KDPs, and Table 1 (combined).
+do "${code}02_descriptives.do"
 
-** Individual-level person-year event study
+** ACS individual-level conditional-mean migration regressions (Fig 9, etc.).
+** Reclassified from Stage 4 (Robustness) to Stage 3: these produce primary
+** descriptive evidence on who is moving, not robustness checks.
 do "${code}02_indiv_analysis.do"
 
 
 ** ============================================================================
-** STAGE 5: DERIVED ESTIMATES (depend on SDID results)
+** STAGE 4: DERIVED ESTIMATES (depend on SDID results)
 ** ============================================================================
 
 ** Revenue microsim: produces revenue_parameters.dta (rates + shares)
@@ -236,21 +238,34 @@ if ${run_bootstrap} == 1 {
 ** 02_post_spec.do. Replaces 02_elasticities.do, retired in Phase A commit A5.
 do "${code}02_tables_figures.do"
 
-** Observation count table
+
+** ============================================================================
+** STAGE 5: DIAGNOSTICS & SAMPLE COUNTS
+** ============================================================================
+** Observation count table for the four primary methods (SDID, narrow SDID,
+** flows, DiD). Supplemental counts for otherout SDID live in Stage 6 alongside
+** that script.
 do "${code}02_diagnostics.do"
 
 
 ** ============================================================================
-** STAGE 6: SUPPLEMENTAL ANALYSES & APPENDIX
+** STAGE 6: APPENDIX & ROBUSTNESS
 ** ============================================================================
 
-** SDID on non-migration IRS outcomes (returns, AGI, wages, income)
+** Method-specific descriptive tables (Appendix A1: SDID / IRS-Flow / ACS).
+** Reads sdid_analysis_data.dta + irs_county_flow.dta + acs_county_gross_25plus.dta.
+do "${code}02_appendix_descriptives.do"
+
+** SDID with narrow control pool (21 similar cities) -- robustness sidebar.
+do "${code}02_narrow_sdid.do"
+
+** SDID on non-migration IRS outcomes (returns, AGI, wages, income).
 do "${code}02_otherout_sdid.do"
 
-** Supplemental obs counts for otherout SDID
+** Supplemental obs counts for otherout SDID (must run after 02_otherout_sdid).
 do "${code}02_diagnostics_supp.do"
 
-** Appendix B: IRS data quality (extended 2012-2022 window)
+** Appendix B: IRS data quality (extended 2012-2022 window).
 do "${code}02_appendix_data_quality.do"
 
 
