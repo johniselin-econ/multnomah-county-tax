@@ -442,91 +442,150 @@ dis "Wrote `_outfile'"
 
 
 ********************************************************************************
-** TABLE A1.C: ACS descriptives
+** TABLE A1.C / Appendix Table A3: ACS sample descriptives, individual-level
 ********************************************************************************
 **
-** Two panels (out-migration sample / in-migration sample) × 2 rows
-** (Multnomah / non-Multnomah counties) × 4 numeric columns:
-** N county-years, total persons (weighted), total dollars (weighted),
-** total households (weighted).
+** Restructured (May 2026): drop the in-migration panel (it was nearly identical
+** to out-migration), transpose so Multnomah and Non-Multnomah are COLUMNS, and
+** organize stats into three panels:
 **
-** The acs_county_gross_25plus.dta file is already aggregated at the
-** county-year level with weighted person/household/dollar counts. We
-** sum the relevant flow categories to get aggregate ACS-sample sizes
-** for the out- and in-migration estimating samples.
+**   Panel A (Size)         counties, persons, households, total income
+**   Panel B (Means+Medians) age, household income, county/state migration rates
+**   Panel C (Tabulations)   shares of individuals by # children, education, age bin
 **
-** Categories (as documented in the data prep):
-**   _1 = non-movers (lived in same county at t-1 and t)
-**   _2 = same-state movers
-**   _3 = domestic movers (cross-county)
-**   _4 = international movers
-**   _5 = interstate movers
-**
-** Out-migration sample: those living in county i at t-1 (i.e., everyone
-** in the county base, including movers OUT). The denominator for the
-** out-migration RATE is _out_1 + _out_2 + ... totals.
-**
-** In-migration sample: those NOT living in county i at t-1 who could
-** have moved IN. Approximated by the in-flow categories.
+** Switches input from acs_county_gross_25plus.dta (county-year aggregates) to
+** acs_migration_file.dta (individual-level microdata) so we can compute means /
+** medians / tabulations directly with person weights.
 
 dis ""
-dis "--- Table A1.C: ACS descriptives ---"
+dis "--- Table A1.C / A3: ACS individual-level descriptives ---"
 
-** Use the all-25+ panel for the rows (all-25+ matches the SDID ACS-all
-** specifications; the college subsample has a parallel structure but
-** is shown by the SDID descriptives table above).
+use "${data}working/acs_migration_file.dta", clear
 
-use "${data}working/acs_county_gross_25plus.dta", clear
+** Replicate the analytical-sample filters from 02_indiv_analysis.do so this
+** descriptive table reflects the same universe used for paper estimates.
 keep if inrange(year, 2016, 2024)
+drop if qmigplc1 == 4                    // bad migration place
+drop if inlist(state_fips_o, 2, 15)      // Alaska / Hawaii origin
+drop if inlist(state_fips_d, 2, 15)      // Alaska / Hawaii destination
+drop if ftotinc < 0                      // negative family income
+drop if age < 25                         // 25+ subsample
 
-capture confirm variable multnomah
-if _rc {
-    gen byte multnomah = (state_fips == 41 & county_fips == 51)
-}
+** Multnomah origin flag (single column split)
+gen byte mult = (state_fips_o == 41 & county_fips_o == 51)
 
-** Build per-row totals and sum over county-years.
-** persons_*_*: counts of individuals (weighted by perwt) by category;
-** sum across categories 1..5 for the total in-county base. Movers cross
-** county lines = categories 3 (domestic) + 5 (interstate).
-foreach pre in out in {
-    gen double persons_`pre'_base    = persons_`pre'_1 + persons_`pre'_2 + persons_`pre'_3 ///
-        + persons_`pre'_4 + persons_`pre'_5
-    gen double persons_`pre'_movers  = persons_`pre'_3 + persons_`pre'_5
-    gen double households_`pre'_base = households_`pre'_1 + households_`pre'_2 + households_`pre'_3 ///
-        + households_`pre'_4 + households_`pre'_5
-    gen double dollars_`pre'_base    = dollars_`pre'_1 + dollars_`pre'_2 + dollars_`pre'_3 ///
-        + dollars_`pre'_4 + dollars_`pre'_5
-}
+** Migration indicators (using IPUMS migrate1: 1=non-mover, 2=same-state move,
+** 3=different-state move, 4=abroad, 9=unknown).
+gen byte cty_mover   = inlist(migrate1, 2, 3)
+gen byte state_mover = (migrate1 == 3)
 
-** Build the 4-row sample-size matrix.
-** Rows: 1=Out/Multnomah, 2=Out/non-Multnomah, 3=In/Multnomah, 4=In/non-Multnomah.
-** Cols: 1=N county-years, 2=persons, 3=households, 4=dollars, 5=migration rate (%).
-** Renamed from M_ACS to avoid collision with the same name in 02_descriptives_supp.do.
+** Education collapsed to 4 categories (IPUMS educd):
+**   <=64       HS or less (no schooling through HS grad / GED)
+**   65..81     Some college or associate's
+**   100..101   Bachelor's
+**   >=110      Graduate (Master's, professional, doctorate)
+gen byte educ_cat = .
+replace educ_cat = 1 if educd <= 64
+replace educ_cat = 2 if educd >= 65  & educd <= 81
+replace educ_cat = 3 if educd >= 100 & educd <= 101
+replace educ_cat = 4 if educd >= 110
+label define lb_educ_cat 1 "HS or less" 2 "Some college / Assoc." 3 "Bachelor's" 4 "Graduate", replace
+label values educ_cat lb_educ_cat
+
+** Number of children categories (0, 1, 2, 3+)
+gen byte nchild_cat = .
+replace nchild_cat = 1 if nchild == 0
+replace nchild_cat = 2 if nchild == 1
+replace nchild_cat = 3 if nchild == 2
+replace nchild_cat = 4 if nchild >= 3 & !missing(nchild)
+
+** Age bins
+gen byte age_cat = .
+replace age_cat = 1 if inrange(age, 25, 34)
+replace age_cat = 2 if inrange(age, 35, 44)
+replace age_cat = 3 if inrange(age, 45, 54)
+replace age_cat = 4 if inrange(age, 55, 64)
+replace age_cat = 5 if age >= 65
+
+** ---- Build a 23-row x 2-col results matrix ----
+** Rows (in order):
+**   Panel A (4): N counties, persons, households, total income
+**   Panel B (6): mean age, median age, mean hh income, median hh income,
+**                mean county migration rate, mean state migration rate
+**   Panel C kids   (4): % nchild=0/1/2/3+
+**   Panel C educ   (4): % HS/Some college/Bachelor's/Graduate
+**   Panel C age    (5): % 25-34/35-44/45-54/55-64/65+
 tempname M_ACS_SAMP
-matrix `M_ACS_SAMP' = J(4, 5, .)
-matrix colnames `M_ACS_SAMP' = Nyears persons households dollars rate
+matrix `M_ACS_SAMP' = J(23, 2, .)
 
-local row = 0
-foreach pre in out in {
-    foreach mult in 1 0 {
-        local ++row
-        qui count if multnomah == `mult'
-        matrix `M_ACS_SAMP'[`row', 1] = r(N)
-        qui summ persons_`pre'_base if multnomah == `mult', meanonly
-        local base_sum = r(sum)
-        matrix `M_ACS_SAMP'[`row', 2] = `base_sum'
-        qui summ households_`pre'_base if multnomah == `mult', meanonly
-        matrix `M_ACS_SAMP'[`row', 3] = r(sum)
-        qui summ dollars_`pre'_base if multnomah == `mult', meanonly
-        matrix `M_ACS_SAMP'[`row', 4] = r(sum)
-        qui summ persons_`pre'_movers if multnomah == `mult', meanonly
-        matrix `M_ACS_SAMP'[`row', 5] = cond(`base_sum' > 0, 100 * r(sum) / `base_sum', .)
+** Helper: column index 1 = Multnomah (mult==1), 2 = Non-Multnomah (mult==0)
+local col_M 1
+local col_N 2
+
+** Panel A row 1: distinct counties of origin
+foreach m in 1 0 {
+    local c = cond(`m' == 1, `col_M', `col_N')
+    qui distinct fips_o if mult == `m'
+    matrix `M_ACS_SAMP'[1, `c'] = r(ndistinct)
+}
+
+** Panel A rows 2-4: weighted persons, households, total income
+foreach m in 1 0 {
+    local c = cond(`m' == 1, `col_M', `col_N')
+    qui summ perwt if mult == `m', meanonly
+    matrix `M_ACS_SAMP'[2, `c'] = r(sum)
+    qui summ hhwt if mult == `m' & hh_head == 1, meanonly
+    matrix `M_ACS_SAMP'[3, `c'] = r(sum)
+    tempvar hhinc_w
+    gen double `hhinc_w' = hhwt * ftotinc if mult == `m' & hh_head == 1
+    qui summ `hhinc_w', meanonly
+    matrix `M_ACS_SAMP'[4, `c'] = r(sum)
+    drop `hhinc_w'
+}
+
+** Panel B rows 5-10: means and medians (age, hh income), migration rates
+foreach m in 1 0 {
+    local c = cond(`m' == 1, `col_M', `col_N')
+    qui summ age [aw = perwt] if mult == `m', detail
+    matrix `M_ACS_SAMP'[5, `c'] = r(mean)
+    matrix `M_ACS_SAMP'[6, `c'] = r(p50)
+
+    qui summ ftotinc [aw = hhwt] if mult == `m' & hh_head == 1, detail
+    matrix `M_ACS_SAMP'[7, `c'] = r(mean)
+    matrix `M_ACS_SAMP'[8, `c'] = r(p50)
+
+    qui summ cty_mover [aw = perwt] if mult == `m', meanonly
+    matrix `M_ACS_SAMP'[9, `c'] = 100 * r(mean)
+    qui summ state_mover [aw = perwt] if mult == `m', meanonly
+    matrix `M_ACS_SAMP'[10, `c'] = 100 * r(mean)
+}
+
+** Panel C: weighted shares of categorical variables (rows 11-23)
+foreach m in 1 0 {
+    local c = cond(`m' == 1, `col_M', `col_N')
+    qui summ perwt if mult == `m', meanonly
+    local denom = r(sum)
+
+    ** Number of children: rows 11-14 for k=1..4
+    forvalues k = 1/4 {
+        qui summ perwt if mult == `m' & nchild_cat == `k', meanonly
+        matrix `M_ACS_SAMP'[10 + `k', `c'] = 100 * r(sum) / `denom'
+    }
+    ** Education: rows 15-18 for k=1..4
+    forvalues k = 1/4 {
+        qui summ perwt if mult == `m' & educ_cat == `k', meanonly
+        matrix `M_ACS_SAMP'[14 + `k', `c'] = 100 * r(sum) / `denom'
+    }
+    ** Age bins: rows 19-23 for k=1..5
+    forvalues k = 1/5 {
+        qui summ perwt if mult == `m' & age_cat == `k', meanonly
+        matrix `M_ACS_SAMP'[18 + `k', `c'] = 100 * r(sum) / `denom'
     }
 }
 
 mat list `M_ACS_SAMP'
 
-** Write tex
+** ---- Write LaTeX table ----
 local _dests `""${results}tables/tableA1_acs.tex""'
 if ${overleaf} == 1 {
     local _dests `"`_dests' "${ol_tab}tableA1_acs.tex""'
@@ -534,60 +593,133 @@ if ${overleaf} == 1 {
 foreach _outfile of local _dests {
 tempname fh
 file open `fh' using "`_outfile'", write replace
-file write `fh' "% Appendix Table A1.C: ACS descriptives" _n
-file write `fh' "% Generated by 02_appendix_descriptives.do (item 11)" _n
+
+file write `fh' "% Appendix Table A1.C / A3: ACS individual-level descriptives" _n
+file write `fh' "% Generated by 02_appendix_descriptives.do" _n
 file write `fh' `"\begin{table}[htbp]"' _n
 file write `fh' `"\centering"' _n
 file write `fh' `"\begin{threeparttable}"' _n
 file write `fh' `"\footnotesize"' _n
-file write `fh' `"\caption{ACS Microdata: Out- and In-Migration Sample Descriptives}"' _n
+file write `fh' `"\caption{ACS Microdata: Sample Descriptives}"' _n
 file write `fh' `"\label{tab:tableA1_acs}"' _n
-file write `fh' `"\setlength{\tabcolsep}{4pt}"' _n
-file write `fh' `"\begin{tabular}{l r r r r r}"' _n
+file write `fh' `"\setlength{\tabcolsep}{6pt}"' _n
+file write `fh' `"\begin{tabular}{l r r}"' _n
 file write `fh' `"\toprule"' _n
-file write `fh' `" & County- & Persons & Households & Total income & Migration \\"' _n
-file write `fh' `" & years & (millions, wt.) & (millions, wt.) & (USD billions, wt.) & rate (\%) \\"' _n
+file write `fh' `" & Multnomah & Non-Multnomah counties \\"' _n
 file write `fh' `"\midrule"' _n
 
-local row_labels `""Multnomah" "Non-Multnomah counties""'
-foreach panel in OUT IN {
-    if "`panel'" == "OUT" {
-        ** Note: $t$ / $t-1$ would be eaten by Stata's macro engine
-        ** (treated as global ${t}); rephrase to avoid math mode here.
-        file write `fh' `"\multicolumn{6}{l}{\textit{Panel A: Out-migration sample (origin = the county in the prior year)}} \\"' _n
-        local row_off 0
+** ---- PANEL A: Size ----
+file write `fh' `"\multicolumn{3}{l}{\textit{Panel A: Sample size}} \\"' _n
+file write `fh' `"\addlinespace"' _n
+
+** Row 1: Counties (integer)
+local v1 : di %12.0fc `M_ACS_SAMP'[1, 1]
+local v1 = strtrim("`v1'")
+local v2 : di %12.0fc `M_ACS_SAMP'[1, 2]
+local v2 = strtrim("`v2'")
+file write `fh' `"\quad Number of counties & `v1' & `v2' \\"' _n
+
+** Row 2: Persons (millions, weighted) — display as M with 1 decimal
+local v1 : di %12.1fc (`M_ACS_SAMP'[2, 1] / 1e6)
+local v1 = strtrim("`v1'")
+local v2 : di %12.1fc (`M_ACS_SAMP'[2, 2] / 1e6)
+local v2 = strtrim("`v2'")
+file write `fh' `"\quad Persons (millions, weighted) & `v1' & `v2' \\"' _n
+
+** Row 3: Households (millions, weighted)
+local v1 : di %12.1fc (`M_ACS_SAMP'[3, 1] / 1e6)
+local v1 = strtrim("`v1'")
+local v2 : di %12.1fc (`M_ACS_SAMP'[3, 2] / 1e6)
+local v2 = strtrim("`v2'")
+file write `fh' `"\quad Households (millions, weighted) & `v1' & `v2' \\"' _n
+
+** Row 4: Total income (USD billions, weighted)
+local v1 : di %12.1fc (`M_ACS_SAMP'[4, 1] / 1e9)
+local v1 = strtrim("`v1'")
+local v2 : di %12.1fc (`M_ACS_SAMP'[4, 2] / 1e9)
+local v2 = strtrim("`v2'")
+file write `fh' `"\quad Total income (USD billions, weighted) & `v1' & `v2' \\"' _n
+
+** ---- PANEL B: Means + Medians ----
+file write `fh' `"\midrule"' _n
+file write `fh' `"\addlinespace[0.4em]"' _n
+file write `fh' `"\multicolumn{3}{l}{\textit{Panel B: Means and medians}} \\"' _n
+file write `fh' `"\addlinespace"' _n
+
+local labs `""Mean age" "Median age" "Mean household income (USD)" "Median household income (USD)" "County migration rate (\%)" "State migration rate (\%)""'
+forvalues r = 5/10 {
+    local k = `r' - 4
+    local lab : word `k' of `labs'
+    if `r' == 5 | `r' == 6 {
+        local v1 : di %5.1f `M_ACS_SAMP'[`r', 1]
+        local v2 : di %5.1f `M_ACS_SAMP'[`r', 2]
+    }
+    else if `r' == 7 | `r' == 8 {
+        local v1 : di %12.0fc `M_ACS_SAMP'[`r', 1]
+        local v2 : di %12.0fc `M_ACS_SAMP'[`r', 2]
     }
     else {
-        file write `fh' `"\midrule"' _n
-        file write `fh' `"\addlinespace[0.4em]"' _n
-        file write `fh' `"\multicolumn{6}{l}{\textit{Panel B: In-migration sample (destination = the county in the current year)}} \\"' _n
-        local row_off 2
+        local v1 : di %5.2f `M_ACS_SAMP'[`r', 1]
+        local v2 : di %5.2f `M_ACS_SAMP'[`r', 2]
     }
-    file write `fh' `"\addlinespace"' _n
-    forvalues k = 1/2 {
-        local r = `k' + `row_off'
-        local lab : word `k' of `row_labels'
-        local ny : di %12.0fc `M_ACS_SAMP'[`r', 1]
-        local ny = strtrim("`ny'")
-        ** Persons / households reported in millions, dollars in billions.
-        local pp : di %12.1fc (`M_ACS_SAMP'[`r', 2] / 1e6)
-        local pp = strtrim("`pp'")
-        local hh : di %12.1fc (`M_ACS_SAMP'[`r', 3] / 1e6)
-        local hh = strtrim("`hh'")
-        local dd : di %12.1fc (`M_ACS_SAMP'[`r', 4] / 1e9)
-        local dd = strtrim("`dd'")
-        local rt : di %5.2f `M_ACS_SAMP'[`r', 5]
-        local rt = strtrim("`rt'")
-        file write `fh' `"`lab' & `ny' & `pp' & `hh' & `dd' & `rt' \\"' _n
-    }
+    local v1 = strtrim("`v1'")
+    local v2 = strtrim("`v2'")
+    file write `fh' `"\quad `lab' & `v1' & `v2' \\"' _n
+}
+
+** ---- PANEL C: Tabulations ----
+file write `fh' `"\midrule"' _n
+file write `fh' `"\addlinespace[0.4em]"' _n
+file write `fh' `"\multicolumn{3}{l}{\textit{Panel C: Distribution of individuals (\%, weighted)}} \\"' _n
+file write `fh' `"\addlinespace"' _n
+
+** Children (rows 11-14)
+file write `fh' `"\quad \textit{Number of children:} & & \\"' _n
+local kid_labs `""0" "1" "2" "3+""'
+forvalues k = 1/4 {
+    local lab : word `k' of `kid_labs'
+    local r = 10 + `k'
+    local v1 : di %5.1f `M_ACS_SAMP'[`r', 1]
+    local v2 : di %5.1f `M_ACS_SAMP'[`r', 2]
+    local v1 = strtrim("`v1'")
+    local v2 = strtrim("`v2'")
+    file write `fh' `"\quad\quad `lab' & `v1' & `v2' \\"' _n
+}
+
+** Education (rows 15-18)
+file write `fh' `"\addlinespace[0.3em]"' _n
+file write `fh' `"\quad \textit{Education:} & & \\"' _n
+local educ_labs `""HS or less" "Some college / Associate's" "Bachelor's" "Graduate""'
+forvalues k = 1/4 {
+    local lab : word `k' of `educ_labs'
+    local r = 14 + `k'
+    local v1 : di %5.1f `M_ACS_SAMP'[`r', 1]
+    local v2 : di %5.1f `M_ACS_SAMP'[`r', 2]
+    local v1 = strtrim("`v1'")
+    local v2 = strtrim("`v2'")
+    file write `fh' `"\quad\quad `lab' & `v1' & `v2' \\"' _n
+}
+
+** Age bins (rows 19-23)
+file write `fh' `"\addlinespace[0.3em]"' _n
+file write `fh' `"\quad \textit{Age bin:} & & \\"' _n
+local age_labs `""25--34" "35--44" "45--54" "55--64" "65+""'
+forvalues k = 1/5 {
+    local lab : word `k' of `age_labs'
+    local r = 18 + `k'
+    local v1 : di %5.1f `M_ACS_SAMP'[`r', 1]
+    local v2 : di %5.1f `M_ACS_SAMP'[`r', 2]
+    local v1 = strtrim("`v1'")
+    local v2 = strtrim("`v2'")
+    file write `fh' `"\quad\quad `lab' & `v1' & `v2' \\"' _n
 }
 
 file write `fh' `"\bottomrule"' _n
 file write `fh' `"\end{tabular}"' _n
 file write `fh' `"\begin{tablenotes}[flushleft]"' _n
 file write `fh' `"\small"' _n
-file write `fh' `"\item \textit{Notes:} ACS sample sizes from the all-25+ subsample (the all-counties ACS specification used in the paper); the college-educated subsample has the same structure but smaller weighted counts. Persons / households / dollars are weighted by person and household weights respectively, summed over all in-sample county-years (2016-2024). Migration rate is the share of persons in the base who moved across county lines (categories 3 and 5), computed within each (sample, group) cell."' _n
-file write `fh' `"\item Source: ACS microdata via IPUMS, aggregated to county-year by 02\_descriptives.do."' _n
+file write `fh' `"\item \textit{Notes:} Sample is ACS individuals aged 25+ in the analytical universe (2016-2024, dropping AK / HI and negative family income). The Multnomah column restricts to individuals whose prior-year county of residence was Multnomah; the Non-Multnomah column is everyone else in the sample. Person- and household-level weights (\texttt{perwt}, \texttt{hhwt}) are applied throughout. Total income sums household-level family income (\texttt{ftotinc}) over household-head records. Migration rates use IPUMS \texttt{migrate1}: a county move is any inter- or intra-state move; a state move is a different state of residence in the prior year. Panel C reports weighted percentages of individuals within each column."' _n
+file write `fh' `"\item Source: ACS microdata via IPUMS (2016-2024)."' _n
 file write `fh' `"\end{tablenotes}"' _n
 file write `fh' `"\end{threeparttable}"' _n
 file write `fh' `"\end{table}"' _n
