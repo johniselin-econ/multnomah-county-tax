@@ -321,6 +321,10 @@ program define elast_speccurve_plot
 	local pad = max((`y_max' - `y_min') * 0.05, 0.0001)
 	local y_min = `y_min' - `pad'
 	local y_max = `y_max' + `pad'
+	** Force y=0 inside the coefficient zone so the dashed zero reference
+	** line never lands among the indicator dots below.
+	local y_min = min(`y_min', 0)
+	local y_max = max(`y_max', 0)
 	local data_range = `y_max' - `y_min'
 
 	** Adaptive tick step for the coefficient zone — six bins cover the full
@@ -609,18 +613,30 @@ file write `fh' "Semi-elasticity $\beta$ follows Kleven et al.\ (2024, NBER WP 3
 file write `fh' "$\beta = (\hat{\tau}/100) / \Delta\ln(1-\tau_\text{total})$, where $\tau_\text{total}$ is the combined " _n
 file write `fh' "federal income + Oregon state income + FICA employee share + PFA rate on impacted filers. " _n
 file write `fh' "A negative $\beta$ for out-migration (or positive for in-migration) indicates more migration when the net-of-tax rate falls. " _n
-file write `fh' "Kleven's informal reading of $\beta$ as ``pp change in the migration rate per pp change in the tax rate'' holds only when $\tau$ is small: " _n
+** Use char() for literal LaTeX quote pairs — Stata's macro engine
+** reads `` (two backticks) as the start of a nested macro reference,
+** which silently eats the quoted phrase.
+local lq = char(96) + char(96)
+local rq = char(39) + char(39)
+file write `fh' "Kleven's informal reading of $\beta$ as `lq'pp change in the migration rate per pp change in the tax rate`rq' holds only when $\tau$ is small: " _n
 file write `fh' "formally $\beta \approx -(1 - \bar{\tau}_\text{total}) \cdot (\Delta\text{mig}_\text{pp}/\Delta\tau_\text{pp})$, so at the Multnomah total rate of `total_pct'\% the log-NTR $\beta$ is roughly $(1-\bar{\tau}_\text{total}) \approx 0.60\times$ the naive pp-per-pp reading " _n
 file write `fh' "(equivalently, the naive reading is $1/(1-\bar{\tau}_\text{total}) \approx 1.67\times$ $\beta$). " _n
 file write `fh' "Stock elasticity is reported with respect to the after-tax rate: $\varepsilon_{\text{stock},H} = \Delta\ln S_H / \Delta\ln(1-\tau_\text{total})$. " _n
-file write `fh' "For each post year $h$, we build the stock recursively from net migration effects using $\Delta\ln S_h = \ln(1 + \hat{\tau}_h s_\text{scale}/100)$ and sum those log changes through horizon $H$. " _n
-file write `fh' "The table reports the 2021--2022 stock elasticity on the total AGI base, where $s_\text{scale} = 1$ for IRS and ACS All and $s_\text{scale} = s_\text{college}$ for ACS College. " _n
+** Note on math escaping: Stata expands `$h`, `$H`, `$T`, `$s_\text{...}`
+** as global macro references (they happen to be valid macro names).
+** The `$\beta`, `$\Delta`, `$\tau`, `$\varepsilon` patterns survive because
+** the backslash immediately after `$` is not a valid macro-name char and
+** halts macro parsing. So we phrase math statements that need `$h`-style
+** symbols without the surrounding $...$ delimiters where possible, and
+** rely on the surrounding text to convey the variable.
+file write `fh' "For each post-treatment year, we build the stock recursively from net migration effects using $\Delta\ln S_h = \ln(1 + \hat{\tau}_h\, s_\text{scale}/100)$ and sum those log changes through the relevant horizon. " _n
+file write `fh' "The table reports the 2021--2022 stock elasticity on the total AGI base; the per-period scaling factor in the recursion is 1 for IRS and ACS All specifications, and equals the impacted-college share for ACS College. " _n
 file write `fh' "Impacted-base stock elasticities are exported to the Excel workbook for revenue calculations. " _n
-file write `fh' "This is a horizon-$H$ stock object, \emph{not} the Kleven steady-state stock elasticity $\beta \cdot (T+1)/2$, which would require a demographic lifespan $T$ that we do not estimate. " _n
+file write `fh' "This is a horizon-specific stock object, \emph{not} the Kleven steady-state stock elasticity (which would require a demographic lifespan parameter that we do not estimate). " _n
 file write `fh' "Positive values indicate that the AGI stock shrinks when the tax rate rises because the after-tax rate falls. " _n
 file write `fh' "Average effective PFA rate: `pfa_pct'\%; average total tax rate on impacted filers: `total_pct'\%. " _n
 file write `fh' "FICA reflects the employee share only. " _n
-file write `fh' "Flow elasticities for gross migration are in Appendix Table~\ref{tab:elasticities_inout}. " _n
+file write `fh' "Gross out- and in-migration semi- and stock elasticities are reported in Appendix Table~\ref{tab:elasticities_inout}. " _n
 elast_tex_notes_inference, handle(`fh') stock
 elast_tex_close, handle(`fh')
 
@@ -719,8 +735,14 @@ gen str20 tau_str = string(tau, "%9.3f")
 gen str20 se_str = "(" + string(se, "%9.3f") + ")"
 gen str20 beta_str = string(beta_kleven, "%9.3f")
 gen str20 beta_se_str = "(" + string(beta_se_kleven, "%9.3f") + ")"
-gen str20 fe_str = string(flow_e, "%9.3f") if !missing(flow_e)
-gen str20 fe_se_str = "(" + string(flow_se, "%9.3f") + ")" if !missing(flow_se)
+** Stock-elasticity column for the gross in/out table (item 15: replaces
+** the prior flow-elasticity column). The fe_* variables remain available
+** for spec_engine internals; we override fe_str/fe_se_str here so that
+** elast_inout_panel writes the stock-elasticity numbers without a
+** signature change.
+gen str20 fe_str = string(stock_elast_total_common, "%9.3f") ///
+	if !missing(stock_elast_total_common)
+gen str20 fe_se_str = "" // analytic SE not exported for stock elasticity
 
 gen str20 migr_label = ""
 replace migr_label = "In" if migration == "in"
@@ -733,7 +755,7 @@ elast_tex_open, handle(`fh') ///
 	cap("Highlighted Gross AGI Migration Elasticities (Kleven 2024 Framework)") ///
 	lbl("tab:elasticities_inout") cols("lll ccc") ///
 	fontsize("footnotesize")
-file write `fh' "Data & Sample & Dir.\ & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ $\beta$ & Flow $\varepsilon$ \\" _n
+file write `fh' "Data & Sample & Dir.\ & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ $\beta$ & Stock $\varepsilon$ \\" _n
 file write `fh' "\midrule" _n
 
 sort data_type sample migration
@@ -754,12 +776,12 @@ elast_tex_notes_open, handle(`fh')
 file write `fh' "Semi-elasticity $\beta$ follows Kleven et al.\ (2024, NBER WP 32153): " _n
 file write `fh' "$\beta = (\hat{\tau}/100) / \Delta\ln(1-\tau_\text{total})$, where $\tau_\text{total}$ is the combined " _n
 file write `fh' "federal income + Oregon state income + FICA employee share + PFA rate on impacted filers. " _n
-file write `fh' "Flow elasticity: $\varepsilon_\text{flow} = -(\hat{\tau}/\bar{r}_\text{pre}) / \Delta\ln(1-\tau_\text{total})$ " _n
-file write `fh' "where $\bar{r}_\text{pre}$ is the pre-treatment migration rate; undefined for net migration (rate $\approx 0$). " _n
+file write `fh' "Stock elasticity: $\varepsilon_{\text{stock},H} = \Delta\ln S_H / \Delta\ln(1-\tau_\text{total})$, where the cumulative AGI stock is built recursively from the SDID event-study coefficients over the post-treatment horizon. " _n
 file write `fh' "FICA reflects the employee share only. " _n
 file write `fh' "Sign convention: $\beta = (\hat{\tau}/100) / \Delta\ln(1-\tau_\text{total})$ with $\Delta\ln(1-\tau_\text{total}) < 0$ under a tax hike. " _n
 file write `fh' "For out-migration, \emph{negative} $\beta$ indicates a larger outflow when the tax rate rises; " _n
 file write `fh' "for in-migration, \emph{positive} $\beta$ indicates a smaller inflow. " _n
+file write `fh' "Stock elasticity is reported on the total AGI base for the 2021--2022 horizon. " _n
 file write `fh' "Average effective PFA rate: `pfa_pct'\%; total rate on impacted filers: `total_pct'\%. " _n
 elast_tex_notes_inference, handle(`fh')
 elast_tex_close, handle(`fh')
@@ -935,8 +957,13 @@ gen str20 tau_str = string(tau, "%9.3f")
 gen str20 se_str = "(" + string(se, "%9.3f") + ")"
 gen str20 beta_str = string(beta_kleven_shs, "%9.3f")
 gen str20 beta_se_str = "(" + string(beta_se_kleven_shs, "%9.3f") + ")"
-gen str20 fe_str = string(flow_e_shs, "%9.3f") if !missing(flow_e_shs)
-gen str20 fe_se_str = "(" + string(flow_se_shs, "%9.3f") + ")" if !missing(flow_se_shs)
+** Stock-elasticity column (item 15: replaces flow elasticity in the
+** SHS variant of the gross in/out table). Use the SHS-tax-rate version
+** of the stock elasticity for consistency with the Metro-inclusive
+** denominator used elsewhere in this table.
+gen str20 fe_str = string(stock_elast_total_common_shs, "%9.3f") ///
+	if !missing(stock_elast_total_common_shs)
+gen str20 fe_se_str = ""
 
 gen str20 migr_label = ""
 replace migr_label = "In" if migration == "in"
@@ -950,7 +977,7 @@ elast_tex_open, handle(`fh_shs_io') ///
 	cap("Highlighted Gross AGI Migration Elasticities Including Metro SHS 1\% (Kleven 2024 Framework)") ///
 	lbl("tab:elasticities_inout_shs") cols("lll ccc") ///
 	fontsize("footnotesize")
-file write `fh_shs_io' "Data & Sample & Dir.\ & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ $\beta$ & Flow $\varepsilon$ \\" _n
+file write `fh_shs_io' "Data & Sample & Dir.\ & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ $\beta$ & Stock $\varepsilon$ \\" _n
 file write `fh_shs_io' "\midrule" _n
 
 sort data_type sample migration
@@ -980,12 +1007,117 @@ elast_tex_close, handle(`fh_shs_io')
 file close `fh_shs_io'
 restore
 
+** =========================================================================
+** (e) SDID coefficients table for the four highlighted specifications
+**     (item 16 of the May 2026 revision TODO). Produces an appendix-style
+**     table with point estimate, placebo-inference SE, and N counties for
+**     each (data × sample × direction) cell.
+** =========================================================================
+preserve
+use "${results}sdid/sdid_results.dta", clear
+
+** Restrict to highlighted: agi outcomes, controls=1, exclusion=1, county-level
+keep if controls == 1 & exclusion == 1
+keep if inlist(sample_data, "irs_full_16_22", "acs_16_24_col")
+keep if inlist(sample, "sample_all", "sample_stringency")
+keep if regexm(outcome, "^agi_(net|in|out)_rate_(irs|acs2)$")
+
+** Tag direction
+gen str10 direction = "net" if regexm(outcome, "_net_")
+replace direction = "in"     if regexm(outcome, "_in_")
+replace direction = "out"    if regexm(outcome, "_out_")
+
+** Tag data label and sample label
+gen str20 data_label = "IRS"          if sample_data == "irs_full_16_22"
+replace data_label   = "ACS College"  if sample_data == "acs_16_24_col"
+gen str20 sample_label = "All counties"  if sample == "sample_all"
+replace sample_label   = "Stringency"    if sample == "sample_stringency"
+
+** Sort and pre-format
+sort data_label sample_label direction
+gen str20 tau_str = string(tau, "%9.3f")
+gen str20 se_str  = "(" + string(se, "%9.3f") + ")"
+gen str20 n_str   = string(n_counties, "%9.0fc")
+
+tempname fh_sdid
+file open `fh_sdid' using "${results}sdid/tab_sdid_preferred.tex", write replace
+
+file write `fh_sdid' "\begin{table}[htbp]" _n
+file write `fh_sdid' "\centering" _n
+file write `fh_sdid' "\begin{threeparttable}" _n
+file write `fh_sdid' "\footnotesize" _n
+file write `fh_sdid' `"\caption{SDID Treatment-Effect Estimates: Highlighted Specifications}"' _n
+file write `fh_sdid' "\label{tab:sdid_preferred}" _n
+file write `fh_sdid' `"\begin{tabular}{l l c c c c}"' _n
+file write `fh_sdid' "\toprule" _n
+file write `fh_sdid' " & & Out-migration & In-migration & Net in-migration & N \\" _n
+file write `fh_sdid' " Data & Sample & $\hat{\tau}$ (pp) & $\hat{\tau}$ (pp) & $\hat{\tau}$ (pp) & counties \\" _n
+file write `fh_sdid' "\midrule" _n
+
+** Iterate over the 4 (data, sample) cells and write 2 rows each:
+** row 1: τ̂ for out / in / net + N
+** row 2: (SE) for out / in / net (blank N cell)
+foreach dt in "IRS" "ACS College" {
+	foreach smp in "All counties" "Stringency" {
+		** Find the three direction values for this cell
+		local tau_out = ""
+		local se_out  = ""
+		local tau_in  = ""
+		local se_in   = ""
+		local tau_net = ""
+		local se_net  = ""
+		local n_val   = ""
+		count if data_label == "`dt'" & sample_label == "`smp'"
+		if r(N) > 0 {
+			qui sum tau if data_label == "`dt'" & sample_label == "`smp'" & direction == "out", meanonly
+			if r(N) > 0 {
+				local i = 0
+				forvalues k = 1/`=_N' {
+					if data_label[`k'] == "`dt'" & sample_label[`k'] == "`smp'" & direction[`k'] == "out" {
+						local tau_out = tau_str[`k']
+						local se_out  = se_str[`k']
+						local n_val   = n_str[`k']
+					}
+					if data_label[`k'] == "`dt'" & sample_label[`k'] == "`smp'" & direction[`k'] == "in" {
+						local tau_in  = tau_str[`k']
+						local se_in   = se_str[`k']
+					}
+					if data_label[`k'] == "`dt'" & sample_label[`k'] == "`smp'" & direction[`k'] == "net" {
+						local tau_net = tau_str[`k']
+						local se_net  = se_str[`k']
+					}
+				}
+			}
+		}
+		file write `fh_sdid' "`dt' & `smp' & `tau_out' & `tau_in' & `tau_net' & `n_val' \\" _n
+		file write `fh_sdid' " & & `se_out' & `se_in' & `se_net' & \\" _n
+	}
+	file write `fh_sdid' "\addlinespace" _n
+}
+
+file write `fh_sdid' "\bottomrule" _n
+file write `fh_sdid' "\end{tabular}" _n
+file write `fh_sdid' "\begin{tablenotes}" _n
+file write `fh_sdid' "\small" _n
+file write `fh_sdid' "\item \textit{Notes:} SDID treatment-effect estimates ($\hat{\tau}$, in percentage points) for the four highlighted specifications: IRS full sample (2016--2022) and ACS college sample (2016--2024), each with the all-counties donor pool and the stringency-matched donor pool. All specifications include time-varying covariates and exclude 2020. Standard errors in parentheses are from SDID placebo inference. \textit{N counties} is the number of donor counties in the synthetic-control pool plus Multnomah." _n
+file write `fh_sdid' "\end{tablenotes}" _n
+file write `fh_sdid' "\end{threeparttable}" _n
+file write `fh_sdid' "\end{table}" _n
+
+file close `fh_sdid'
+restore
+dis "Wrote: ${results}sdid/tab_sdid_preferred.tex"
+
 ** ---- Copy LaTeX tables to Overleaf ----
 if "${overleaf}" == "1" {
 	foreach f in tbl_elasticities tbl_elasticities_stock_compare ///
 		tbl_elasticities_inout tbl_elasticities_shs ///
 		tbl_elasticities_stock_compare_shs tbl_elasticities_inout_shs {
 		copy "${results}elasticities/`f'.tex" "${ol_tab}`f'.tex", replace
+	}
+	capture confirm file "${results}sdid/tab_sdid_preferred.tex"
+	if _rc == 0 {
+		copy "${results}sdid/tab_sdid_preferred.tex" "${ol_tab}tab_sdid_preferred.tex", replace
 	}
 }
 
@@ -1431,7 +1563,7 @@ foreach migr in "net" "in" "out" {
 	summ beta_kleven, detail
 
 	elast_speccurve_plot, var(beta_kleven) ///
-		ytitle(`"{&beta} = ({&tau}/100) / {&Delta}ln(1{&minus}{&tau}{subscript:total})"') ///
+		ytitle(`"Migration Semi-Elasticity ({&beta})"') ///
 		file("${results}elasticities/fig_speccurve_elast_beta_`migr'") ///
 		indicators("`indic_universal'") ///
 		lovar(flow_semi_lo) hivar(flow_semi_hi)
@@ -1439,15 +1571,42 @@ foreach migr in "net" "in" "out" {
 	dis as text "Kleven semi-elasticity beta distribution (`migr'), +SHS:"
 	summ beta_kleven_shs, detail
 	elast_speccurve_plot, var(beta_kleven_shs) ///
-		ytitle(`"{&beta} (PFA+SHS) = ({&tau}/100) / {&Delta}ln(1{&minus}{&tau}{subscript:total+SHS})"') ///
+		ytitle(`"Migration Semi-Elasticity ({&beta}, PFA+SHS)"') ///
 		file("${results}elasticities/fig_speccurve_elast_beta_`migr'_shs") ///
 		indicators("`indic_universal'") ///
 		lovar(flow_semi_shs_lo) hivar(flow_semi_shs_hi)
 
+	** ---- Flow elasticity spec curve (item 10) ----
+	** flow_e is undefined for net migration (rate ~ 0 in pre period); skip
+	** that direction. For in/out, produce a flow-elasticity distribution
+	** figure parallel to the semi-elasticity / stock-elasticity ones.
+	if "`migr'" != "net" {
+		qui count if !missing(flow_e)
+		if r(N) > 0 {
+			dis as text "Flow elasticity distribution (`migr'):"
+			summ flow_e if !missing(flow_e), detail
+			elast_speccurve_plot, var(flow_e) ///
+				ytitle(`"Migration Flow Elasticity"') ///
+				file("${results}elasticities/fig_speccurve_elast_flow_`migr'") ///
+				indicators("`indic_universal'") ///
+				lovar(flow_e_lo) hivar(flow_e_hi)
+		}
+		qui count if !missing(flow_e_shs)
+		if r(N) > 0 {
+			dis as text "Flow elasticity distribution (`migr'), +SHS:"
+			summ flow_e_shs if !missing(flow_e_shs), detail
+			elast_speccurve_plot, var(flow_e_shs) ///
+				ytitle(`"Migration Flow Elasticity (PFA+SHS)"') ///
+				file("${results}elasticities/fig_speccurve_elast_flow_`migr'_shs") ///
+				indicators("`indic_universal'") ///
+				lovar(flow_e_shs_lo) hivar(flow_e_shs_hi)
+		}
+	}
+
 	restore
 }
 
-** ---- Stock-ε spec curves (net migration only; PFA + SHS) ----
+** ---- Stock-ε spec curves: net migration (PFA + SHS) ----
 preserve
 keep if migration == "net"
 
@@ -1458,7 +1617,7 @@ if r(N) > 0 {
 	summ stock_elast_total_common if !missing(stock_elast_total_common), detail
 
 	elast_speccurve_plot, var(stock_elast_total_common) ///
-		ytitle(`"{&epsilon}{subscript:stock,H} = {&Delta}ln S{subscript:H} / {&Delta}ln(1{&minus}{&tau}{subscript:total})"') ///
+		ytitle(`"Migration Stock Elasticity"') ///
 		file("${results}elasticities/fig_speccurve_elast_stock") ///
 		indicators("`indic_universal'") ///
 		lovar(stock_total_common_lo) hivar(stock_total_common_hi)
@@ -1470,12 +1629,39 @@ if r(N) > 0 {
 	summ stock_elast_total_common_shs if !missing(stock_elast_total_common_shs), detail
 
 	elast_speccurve_plot, var(stock_elast_total_common_shs) ///
-		ytitle(`"{&epsilon}{subscript:stock,H} (PFA+SHS) = {&Delta}ln S{subscript:H} / {&Delta}ln(1{&minus}{&tau}{subscript:total+SHS})"') ///
+		ytitle(`"Migration Stock Elasticity (PFA+SHS)"') ///
 		file("${results}elasticities/fig_speccurve_elast_stock_shs") ///
 		indicators("`indic_universal'") ///
 		lovar(stock_total_common_shs_lo) hivar(stock_total_common_shs_hi)
 }
 restore
+
+** ---- Stock-ε spec curves: in / out migration (item 10) ----
+foreach migr in in out {
+	preserve
+	keep if migration == "`migr'"
+	qui count if !missing(stock_elast_total_common)
+	if r(N) > 0 {
+		dis as text "Stock elasticity distribution (`migr'):"
+		summ stock_elast_total_common if !missing(stock_elast_total_common), detail
+		elast_speccurve_plot, var(stock_elast_total_common) ///
+			ytitle(`"Migration Stock Elasticity"') ///
+			file("${results}elasticities/fig_speccurve_elast_stock_`migr'") ///
+			indicators("`indic_universal'") ///
+			lovar(stock_total_common_lo) hivar(stock_total_common_hi)
+	}
+	qui count if !missing(stock_elast_total_common_shs)
+	if r(N) > 0 {
+		dis as text "Stock elasticity distribution (`migr', +SHS):"
+		summ stock_elast_total_common_shs if !missing(stock_elast_total_common_shs), detail
+		elast_speccurve_plot, var(stock_elast_total_common_shs) ///
+			ytitle(`"Migration Stock Elasticity (PFA+SHS)"') ///
+			file("${results}elasticities/fig_speccurve_elast_stock_`migr'_shs") ///
+			indicators("`indic_universal'") ///
+			lovar(stock_total_common_shs_lo) hivar(stock_total_common_shs_hi)
+	}
+	restore
+}
 
 ** Overleaf copy for elasticity spec-curve figures. Preserve the legacy
 ** fig_elasticity_dist_net.pdf alias (now sourced from the new spec-curve
@@ -1485,7 +1671,11 @@ if "${overleaf}" == "1" {
 	foreach base in ///
 		fig_speccurve_elast_beta_net fig_speccurve_elast_beta_in fig_speccurve_elast_beta_out ///
 		fig_speccurve_elast_beta_net_shs fig_speccurve_elast_beta_in_shs fig_speccurve_elast_beta_out_shs ///
-		fig_speccurve_elast_stock fig_speccurve_elast_stock_shs {
+		fig_speccurve_elast_flow_in fig_speccurve_elast_flow_out ///
+		fig_speccurve_elast_flow_in_shs fig_speccurve_elast_flow_out_shs ///
+		fig_speccurve_elast_stock fig_speccurve_elast_stock_shs ///
+		fig_speccurve_elast_stock_in fig_speccurve_elast_stock_out ///
+		fig_speccurve_elast_stock_in_shs fig_speccurve_elast_stock_out_shs {
 		capture confirm file "${results}elasticities/`base'.pdf"
 		if _rc == 0 {
 			copy "${results}elasticities/`base'.pdf" ///
@@ -1588,6 +1778,11 @@ dis "=============================================="
 dis "Section 5: Preferred-spec event-study overlays"
 dis "=============================================="
 
+** ${clean_figs} toggle (item 4 of May 2026 paper revision TODO).
+** When 1, in-figure titles are suppressed so that the LaTeX \caption{}
+** alone provides the title. Default 0 keeps the existing titled output.
+if "${clean_figs}" == "" global clean_figs = 0
+
 capture mkdir "${results}sdid/preferred_overlays"
 
 capture confirm file "${results}sdid/sdid_event_results.dta"
@@ -1613,7 +1808,10 @@ local lbl_sd_acs_outstate_16_24_col  `"ACS College (Out-of-State)"'
 ** sample_all = vermillion (col_sig_pref); sample_stringency = sea
 ** (col_sig_notpref). x-offset ±0.10 to disambiguate same-year rcaps.
 
-preserve
+** Save current data to a tempfile (avoids nested-preserve r(621) inside loops).
+tempfile orig_data
+save `"`orig_data'"', replace
+
 use "${results}sdid/sdid_event_results.dta", clear
 keep if preferred == 1
 keep if regexm(outcome, "^agi_")    // restrict to AGI outcomes; n1/n2 share preferred flag
@@ -1657,6 +1855,10 @@ foreach sd in irs_full_16_22 acs_16_24_col irs_outstate_full_16_22 acs_outstate_
 		gen double lo_g2   = event_ci_lo if sample == "sample_stringency"
 		gen double hi_g2   = event_ci_hi if sample == "sample_stringency"
 
+		** Title suppressed when ${clean_figs} == 1 (paper version).
+		local _title_opt `"title(`"`sd_label', `migr_label': Donor Pool Comparison"', size(medsmall))"'
+		if ${clean_figs} == 1 local _title_opt ""
+
 		twoway (rcap lo_g1 hi_g1 event_year_off, lc("${col_sig_pref}")    lw(medthin)) ///
 		       (scatter tau_g1 event_year_off,   mc("${col_sig_pref}")    ms(O) msize(small)) ///
 		       (rcap lo_g2 hi_g2 event_year_off, lc("${col_sig_notpref}") lw(medthin)) ///
@@ -1667,8 +1869,7 @@ foreach sd in irs_full_16_22 acs_16_24_col irs_outstate_full_16_22 acs_outstate_
 		    ylabel(, format(%9.1f) labsize(small))                        ///
 		    legend(order(2 "All Counties" 4 "Stringency Match")           ///
 		           rows(1) pos(6) size(small) region(lcolor(white)))      ///
-		    title(`"`sd_label', `migr_label': Donor Pool Comparison"',    ///
-		          size(medsmall))                                          ///
+		    `_title_opt'                                                  ///
 		    ytitle(`"Event-study coefficient {&tau}{subscript:t} (pp)"', size(small)) ///
 		    xtitle("Year", size(small))                                   ///
 		    graphregion(color(white)) ysize(4) xsize(7)
@@ -1681,7 +1882,6 @@ foreach sd in irs_full_16_22 acs_16_24_col irs_outstate_full_16_22 acs_outstate_
 		restore
 	} // END migr
 } // END sd
-restore
 
 ** ----------------------------------------------------------------
 ** Set 2 — donor-pool × dataset overlay (4 lines per figure; 6 figures)
@@ -1689,7 +1889,6 @@ restore
 ** Color mnemonic: warm = IRS, cool = ACS College, saturated = all,
 ** lighter = stringency. x-offsets -0.15 / -0.05 / +0.05 / +0.15.
 
-preserve
 use "${results}sdid/sdid_event_results.dta", clear
 keep if preferred == 1
 keep if regexm(outcome, "^agi_")
@@ -1743,6 +1942,10 @@ foreach scope in instate outstate {
 		gen double lo_g4  = event_ci_lo if sample_data == "`sd_acs'" & sample == "sample_stringency"
 		gen double hi_g4  = event_ci_hi if sample_data == "`sd_acs'" & sample == "sample_stringency"
 
+		** Title suppressed when ${clean_figs} == 1 (paper version).
+		local _title_opt `"title(`"`scope_label', `migr_label': Dataset and Donor Pool Comparison"', size(medsmall))"'
+		if ${clean_figs} == 1 local _title_opt ""
+
 		twoway (rcap lo_g1 hi_g1 event_year_off, lc("${col_sig_pref}")      lw(medthin)) ///
 		       (scatter tau_g1 event_year_off,   mc("${col_sig_pref}")      ms(O) msize(small)) ///
 		       (rcap lo_g2 hi_g2 event_year_off, lc("${col_insig_pref}")    lw(medthin)) ///
@@ -1758,8 +1961,7 @@ foreach scope in instate outstate {
 		    legend(order(2 "IRS, All"           4 "IRS, Stringency"         ///
 		                 6 "ACS College, All"   8 "ACS College, Stringency") ///
 		           rows(2) pos(6) size(small) region(lcolor(white)))        ///
-		    title(`"`scope_label', `migr_label': Dataset and Donor Pool Comparison"', ///
-		          size(medsmall))                                            ///
+		    `_title_opt'                                                    ///
 		    ytitle(`"Event-study coefficient {&tau}{subscript:t} (pp)"', size(small)) ///
 		    xtitle("Year", size(small))                                     ///
 		    graphregion(color(white)) ysize(4) xsize(7)
@@ -1772,7 +1974,9 @@ foreach scope in instate outstate {
 		restore
 	} // END migr
 } // END scope
-restore
+
+** Restore the data state from before Section 5.
+use `"`orig_data'"', clear
 
 } // END else (sdid_event_results.dta exists)
 

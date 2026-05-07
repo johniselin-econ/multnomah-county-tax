@@ -1,353 +1,431 @@
-# TODO — Multnomah County Tax
+# TODO - Multnomah County Tax
 
-Consolidated tracking doc. Combines deferred items from the 2026-04-18 Stata
-review with the detailed `02_elasticities.do` TODO list (reviewed against the
-`dylantmoore/stata-skill` reference files, April 2026).
+Current working list. This file now reflects the post-refactor Stata pipeline
+that is currently in the repo:
 
----
+- `02_revenue_microsim.do`
+- `02_spec_engine.do`
+- `02_post_spec.do`
+- `02_tables_figures.do`
 
-## Section A — Pipeline-wide (from 2026-04-18 Stata review)
-
-### Deferred refactors
-
-- [ ] **Split `02_revenue.do` into inputs + analysis (C1)** — 1,200+ lines,
-  scored 79/100. Candidate split: `02_revenue_inputs.do` (Section 0B SDID
-  lookup, ACS load, tax-unit construction, TAXSIM) and
-  `02_revenue_analysis.do` (PFA/Oregon revenue baseline, simulation, output).
-  2-4 hour refactor; do when you're already touching revenue math.
-
-- [ ] **Path-bootstrap deduplication (C2)** — 14 analysis .do files carry a
-  ~10-line path-detection preamble that's now also in `00_stata_config.do`.
-  Would need a thin `_find_config.do` sourced by each file to resolve the
-  chicken-and-egg (need `${code}` to source config; config sets `${code}`).
-  Medium cost, modest reward. Skip unless platform portability becomes a pain.
-
-### Completed code-quality items
-
-- [x] **`02_revenue.do` section numbering** — added a note at Section 2 header
-  explaining Section 2B was merged in. (Commit `d6fab90`.)
-
-- [x] **`01e_acs.do` exploratory diagnostics** — deleted `tab year`,
-  `fre migrate1`, `tab migplac1`, `tab migcounty1`. (Commit `d6fab90`.)
-
-- [x] **`01h_auxiliary.do:49-54`** — renamed `mf_*_med` to `mfcc_*_med` so
-  output prefix matches input prefix in both mc/mfcc groups; updated the
-  downstream `foreach varlist mc_* mfcc_*` loop. (Commit `d6fab90`.)
-
-- [x] **`02_indiv_analysis.do`** — added `Requires: Stata 14+` to the header
-  and a `version 14` directive for the `direxists()` dependency.
-  (Commit `d6fab90`.)
-
-- [x] **`02_indiv_analysis.do:263`** — already had
-  `capture confirm variable _at1/_at2/_margin` guards with explicit error
-  messages (lines 272-290). No change needed — done in an earlier pass.
-
-- [x] **Resume-mode Mata cleanup** — actual location was
-  `02_sdid_analysis.do:1140` and `02_otherout_sdid.do:799`, not
-  `02_flow_analysis.do`. Added `capture mata: mata drop _done_set` before
-  (re-)creation to clear stale state, and unconditionalized the scope-exit
-  cleanup with `capture`. (Commit `d6fab90`.)
-
-- [x] **`01d_covid.do:126`** — added `fileexists()` guard before
-  `use "${data}JII Covid data.dta"`, matching the pattern in
-  `01b_download.do`. (Commit `d6fab90`.)
-
-### Deliberately not doing
-
-- **C3 — Extract `build_sdid_sample` program.** Audited 2026-04-18. The three
-  SDID files share only ~26% of their sample-construction code; a shared
-  program would need ~12 parameters and would be longer than the current
-  three copies. Revisit if a 4th SDID variant is added.
+The old `02_elasticities.do` review notes were useful during the refactor, but
+they are no longer a reliable implementation guide and have been superseded by
+the items below.
 
 ---
 
-## Section B — `02_elasticities.do` (from Claude Opus 4.7 review, April 2026)
-
-**Source file:** `code/stata/02_elasticities.do`
-**Reviewed against:** `dylantmoore/stata-skill` reference files
-(workflow-best-practices, programming, tables-reporting, graphics,
-linear-regression).
-
-The file is well above median craft for empirical economics: defensive
-coding, working assertions, reusable LaTeX scaffolding, and a header that
-ties formulas to code. The TODOs below are scoped accordingly — most are
-quality-of-life and robustness; one is methodological and should block
-release.
-
-### Priority 1 — Methodological (blocks public release)
-
-#### TODO-1.1: Fix the standard errors on derived elasticities
-
-**Problem.** Lines 289–337 propagate SEs by simple division:
-
-```stata
-gen double flow_semi_se      = se / (delta_t * 100)
-gen double flow_se_total     = (se / abs(pre_mean)) / abs(delta_ln_ntr_total)
-gen double stock_se_att_taxbase_kleven = (se / 100) * scale_taxbase / abs(delta_ln_ntr_total)
-```
-
-This treats `delta_t`, `delta_ln_ntr_total`, `pre_mean`, `scale_taxbase`, and
-`impacted_agi_share` as known constants. None is. They are estimates from
-`02_revenue.do` carrying their own sampling variation, and `pre_mean` is
-from the same panel that produced `tau` (so numerator and denominator are
-correlated). The reported CIs (`±1.96 × se` at lines 339–355) are therefore
-biased downward.
-
-**Compounding gap.** The cumulative stock elasticities
-(`stock_e_cum_*_kleven`, the *primary* numbers in Table 1) have **no SE at
-all** because the pipeline does not export the joint event-study covariance
-matrix. The current footnote (lines 574–575) discloses this for the
-cumulative version but obscures that the SEs we *do* report are also
-conservative-only-by-luck.
-
-**Two paths.**
-1. **Cheap:** After each SDID model in `02_sdid_analysis.do`, compute the
-   elasticity transform via `nlcom` so the delta-method SE accounts for the
-   joint variance of the SDID estimate and any same-sample quantities
-   (notably `pre_mean`). Will not address revenue-parameter uncertainty but
-   fixes the within-sample correlation, which is the bigger contributor.
-2. **Right:** Bootstrap the whole pipeline. Resample counties, re-run
-   `02_revenue.do` and `02_sdid_analysis.do` inside the bootstrap, recompute
-   `flow_e_total` and `stock_e_cum_*_kleven` per replication, percentile-CI
-   those. Gives correct CIs for cumulative stock elasticities — the main
-   published numbers.
-
-**Action.** Implement option 1 first as a defensible interim. Output a new
-column in Table 1 with delta-method 95% CIs alongside the point estimate.
-Update the table footnote to be accurate. Open a separate branch for the
-bootstrap pipeline (option 2).
-
-**Acceptance criteria.**
-- New `*_ci_lo_dm`/`*_ci_hi_dm` variables generated via `nlcom` for at least
-  `flow_semi_e`, `flow_e_total`, `stock_e_att_taxbase_kleven`.
-- Table 1 (`tbl_elasticities.tex`) shows CIs on the cumulative stock
-  elasticity column or has a footnote explicitly stating "no uncertainty
-  quantification available; see Appendix X for bootstrap CIs."
-- The current note at lines 574–575 is rewritten so it does not imply the
-  in-table SEs are unbiased.
-
-### Priority 2 — Robustness (within next sprint)
-
-#### TODO-2.1: Defensive checks on `${overleaf}` and companions
-
-**Problem.** Lines 715, 904, 919 read `${overleaf}` directly:
-
-```stata
-if ${overleaf} == 1 { ... }
-```
-
-If `${overleaf}` is empty, this expands to `if  == 1`, which is a syntax
-error that halts execution *after* the figures and tables are written. Same
-risk for `${ol_fig}` and `${ol_tab}` — if either is empty the `copy` command
-writes to a nonsense path.
-
-**Action.** Replace bare `if ${overleaf} == 1` with
-`if "${overleaf}" == "1"` (string comparison is empty-safe). Add a startup
-check near line 53 that verifies `${overleaf}`, `${ol_fig}`, `${ol_tab}` are
-all set when `${overleaf} == "1"`:
-
-```stata
-if "${overleaf}" == "1" {
-    foreach g in ol_fig ol_tab {
-        if "${`g'}" == "" {
-            dis as error "ERROR: \${overleaf}=1 but \${`g'} is unset."
-            exit 198
-        }
-    }
-}
-```
-
-**Acceptance criteria.** Setting `global overleaf ""` at the top of the file
-produces a clean exit with a helpful error rather than a syntax fault deep
-in Section 3.
-
-#### TODO-2.2: Named locals for magic year boundaries
-
-**Problem.** Line 364 hard-codes the common-support window:
-
-```stata
-gen byte post_common = inrange(event_year, 2021, 2022) & !missing(event_tau)
-```
-
-The variable name `_common` plus the magic numbers `2021` and `2022` will
-silently drift when 2023 IRS data lands.
-
-**Action.** Define near the top of Section 0 (around line 144):
-
-```stata
-local pfa_start_year   = 2021    // PFA tax took effect
-local common_end_year  = 2022    // last year of IRS+ACS overlap
-```
-
-Replace the magic numbers at line 364 with
-`inrange(event_year, `pfa_start_year', `common_end_year')`. Add a comment
-in the header noting that "common-support" is defined relative to IRS-ACS
-overlap.
-
-#### TODO-2.3: Assert `scale_total` correctness
-
-**Problem.** Lines 319–321 default `scale_total = 1` and only adjust for
-`data_type == "ACS College"` or `"ACS College (Out-of-State)"`. A new data
-slice would silently get `scale_total = 1` and produce wrong elasticities.
-
-**Action.** Add immediately after the `replace` block at line 321:
-
-```stata
-assert scale_total == 1 ///
-    if !inlist(data_type, "ACS College", "ACS College (Out-of-State)")
-assert scale_total == college_agi_share ///
-    if  inlist(data_type, "ACS College", "ACS College (Out-of-State)")
-```
-
-#### TODO-2.4: Cache `sdid_event_results.dta` in a tempfile **[urgent — introduced by commit `a4bc53d`]**
-
-**Problem.** `sdid_event_results.dta` is now loaded twice — once at lines
-257–263 (to extract `outstate` per spec) and again at lines 359–377 (to
-build cumulative-tau aggregates). The second load was introduced by the
-"read outstate from source" fix in commit `a4bc53d`; the pre-fix file only
-loaded it once.
-
-**Action.** Load it once into a tempfile near line 255, and `use` from the
-tempfile in both subsequent `preserve` blocks. Keep the existing
-`bysort … keep if _n == 1` and `collapse` operations unchanged.
-
-**Acceptance criteria.** Profiling with `set rmsg on` shows no second `use
-"${results}sdid/sdid_event_results.dta"` call.
-
-#### TODO-2.5: Explicit row-ordering for tables
-
-**Problem.** Line 536's `sort data_type sample` orders Table 1 rows
-alphabetically. Renaming a `data_type` label would silently re-shuffle the
-published table.
-
-**Action.** After computing `data_type` (around line 247), add:
-
-```stata
-gen byte row_order = .
-replace row_order = 1 if data_type == "IRS"
-replace row_order = 2 if data_type == "IRS (Out-of-State)"
-replace row_order = 3 if data_type == "ACS All"
-replace row_order = 4 if data_type == "ACS All (Out-of-State)"
-replace row_order = 5 if data_type == "ACS College"
-replace row_order = 6 if data_type == "ACS College (Out-of-State)"
-assert !missing(row_order)
-```
-
-Replace `sort data_type sample` with `sort row_order sample` at lines 536
-and 621.
-
-#### TODO-2.6: Promote `delta_t` range warning to a hard error
-
-**Problem.** Line 178: `delta_t` outside `[0.001, 0.05]` only emits a
-warning. A `delta_t` of 0.5 (50%) would print one line and proceed,
-producing absurd elasticities.
-
-**Action.** Convert to `error 459` with a specific message:
-
-```stata
-if delta_t < 0.001 | delta_t > 0.05 {
-    dis as error "ERROR: avg_mt_rate = " %8.6f delta_t " — outside [0.001, 0.05]"
-    dis as error "       Inspect TAXSIM v25 inputs in 02_revenue.do and verify"
-    dis as error "       avg_mt_rate is on the [0,1] scale (not [0,100])."
-    log close log_02elast
-    error 459
-}
-```
-
-Same treatment for the `avg_total_rate` check at line 182.
-
-### Priority 3 — Style and idiom
-
-#### TODO-3.1: Refactor Section 3 into a reusable program
-
-**Problem.** Lines 779–838 build vertical-line overlays by string-concatenating
-`twoway` syntax inside a `forvalues` loop, then duplicate that pattern three
-times for panels (a)/(b)/(c) of the histogram. ~60% of Section 3 is
-copy-paste.
-
-**Action.** Lift the logic into a program modeled on the existing
-`elast_tex_open` / `elast_tex_notes_open` helpers:
-
-```stata
-capture program drop elast_hist_panel
-program define elast_hist_panel
-    syntax, VAR(varname) NAME(string) XTITLE(string) ///
-        [BINS(integer 20) FILLCOLOR(string) IRSCOLOR(string) ACSCOLOR(string)]
-
-    /* ... build overlay locals from preferred==1 obs ... */
-    /* ... emit twoway call with name(`name', replace) nodraw ... */
-end
-```
-
-Then Section 3 collapses to three `elast_hist_panel` calls per migration
-direction, plus a `graph combine`.
-
-#### TODO-3.2: `str20` for formatted-string columns
-
-**Problem.** Lines 518–523 and 589–598 use `gen str12` for formatted strings.
-With values like `"(-1234.567)"` (11 chars) this is close to truncation;
-adding one decimal place silently truncates.
-
-**Action.** Bulk-replace `str12` → `str20` in those generations.
-
-#### TODO-3.3: Drop stale scalars at the top of Section 0
-
-**Problem.** Lines 128–143 pull every revenue parameter into Stata
-`scalar`s. Scalars persist across `clear`, so a stale scalar from a prior
-run could silently shadow what you intended to load.
-
-**Action.** Add after `project_set_seed` (line 105):
-
-```stata
-foreach s in avg_mt_rate avg_state_rate baseline_pfa_revenue total_agi_2022 ///
-    agi_total agi_impacted impacted_agi_share agi_college college_agi_share ///
-    agi_college_impacted college_impacted_agi_share avg_mt_rate_college_impacted ///
-    avg_total_rate avg_total_rate_pre avg_total_rate_college avg_total_rate_pre_college ///
-    delta_t delta_ln_ntr delta_ln_ntr_total delta_ln_ntr_total_college ///
-    ntr_post ntr_pre ntr_mid delta_ntr_arc {
-    capture scalar drop `s'
-}
-```
-
-#### TODO-3.4: Replace `subinstr`/`proper` sample labeling with a map
-
-**Problem.** Line 542's `subinstr(sample[`i'], "sample_", "", .)` followed by
-`proper("`smp'")` will mangle multi-word sample names. A sample named
-`sample_pre_post` becomes `Pre_Post`, not `Pre-Post`.
-
-**Action.** Define a label map near the top of Section 2, or encode `sample`
-to a labeled numeric and use `decode` for display.
-
-### Priority 4 — Practices to preserve
-
-Not TODOs. Flagged so future refactors don't accidentally remove:
-
-- Header docstring (lines 1–38) with formulas, primary vs diagnostic flags,
-  FICA scope, `Called by` / `Requires` block.
-- `project_assert_manifest` on every input (lines 123, 204, 214).
-- `assert inlist(outcome_type, ...)` and `assert inlist(migration, ...)`
-  after regex parse (lines 235–236).
-- `isid` on both sides of the 1:1 merge before merging (line 380 and the
-  `preserve` block at 381–384).
-- `scale_total` / `scale_taxbase` separation (lines 319–323).
-- The CI loop with `capture confirm variable` (lines 340–355).
-- Three NTR denominators computed in parallel, clearly labeled.
-- `compress` before `save` (line 464).
-
-### Suggested commit ordering
-
-Each commit should leave the file in a working, releasable state.
-
-1. **Commit A:** TODO-2.4 first (it's a regression from recent work).
-2. **Commit B:** TODO-2.1, 2.2, 2.3, 2.6 — defensive checks and named
-   constants. No behavior change on the happy path; hardens failure paths.
-3. **Commit C:** TODO-3.3, 3.2 — scalar hygiene and string-width fix. Pure
-   cleanup.
-4. **Commit D:** TODO-3.1 — Section 3 refactor. Larger diff; verify figures
-   are byte-identical to pre-refactor PDFs as a regression test.
-5. **Commit E:** TODO-2.5 — explicit row ordering. Confirms LaTeX output is
-   unchanged for current data_type set.
-6. **Commit F (separate branch, ideally with statistical reviewer):**
-   TODO-1.1 option 1 — `nlcom` delta-method SEs and updated table footnote.
-7. **Commit G (separate branch, longer-horizon):** TODO-1.1 option 2 — full
-   bootstrap pipeline.
+## Section A - Active pipeline items
+
+- [x] **Phase A spec-engine refactor landed in the repo** - the arithmetic that
+  used to live in `02_elasticities.do` is now split across
+  `02_spec_engine.do`, `02_post_spec.do`, and `02_tables_figures.do`, and the
+  orchestrator calls the new files.
+
+- [ ] **TODO-1.1: Bootstrap CIs for derived elasticities and revenue loss**
+  - This is the main remaining methodological blocker for public release.
+  - Target outputs:
+    - percentile CIs for highlighted elasticity tables
+    - percentile CIs for stock elasticities
+    - percentile CIs for revenue-loss tables
+  - Working assumption:
+    - bootstrap is now the active path
+    - delta-method `nlcom` is a fallback only if the bootstrap path stalls
+
+- [ ] **Path-bootstrap deduplication (C2)**
+  - Several analysis files still carry a path-detection preamble that overlaps
+    with `00_stata_config.do`.
+  - Medium cost, modest reward. Do after the methodological work, not before.
+
+- [ ] **Optional Phase C renumbering**
+  - Still worth considering after the bootstrap work is stable.
+  - Not a blocker for correctness or release.
+
+---
+
+## Section B - Bootstrap implementation checklist
+
+### B1. Extend `02_spec_engine.do`
+
+- [x] Add `load_spec_panel`
+  - Loads the correct panel for a given `sample_data`.
+  - Returns the pre-SDID state currently assembled inside
+    `02_sdid_analysis.do`.
+
+- [x] Add `fit_spec_sdid, rclass`
+  - Inputs:
+    - `sample_data`
+    - `sample`
+    - `outcome`
+    - `controls`
+    - `exclusion`
+    - `event_study`
+    - `vce()`
+  - Returns:
+    - `r(tau)`
+    - `r(se)`
+    - `r(pre_mean)`
+    - `r(event_taus)`
+
+- [x] Add `donor_resample`
+  - Resample donor counties with replacement.
+  - Keep Multnomah fixed.
+  - Rename duplicate donor draws to unique unit IDs.
+
+### B2. Rewire `02_sdid_analysis.do`
+
+- [x] Replace the inline SDID estimation block with `fit_spec_sdid`.
+- [x] Preserve the current external contract:
+  - `sdid_results.dta`
+  - `sdid_event_results.dta`
+  - parallel behavior
+  - resume behavior
+- [x] Verify point estimates are unchanged after the rewire.
+  - V1 partial cf (594 specs from a partial pre-rewire baseline against the
+    same-key subset of post-rewire results) shows zero mismatches in `tau`,
+    `pre_mean`, `n_counties`, and all identifiers. SE/pval/CI columns differ
+    on 100% of rows because `vce(placebo)` runs random donor relabelings
+    without per-spec seed reset — that divergence is RNG noise inherent to
+    the existing code path, not a rewire bug. See
+    `quality_reports/plans/2026-04-26_sdid-rewire-v1-verification.md`.
+
+### B3. Create `02_bootstrap.do`
+
+- [x] Add a bootstrap driver that:
+  - loads highlighted specs from the current spec grid
+  - resamples donor counties
+  - re-fits SDID
+  - calls `compute_spec_elasticities`
+  - calls `compute_spec_revenue`
+  - streams draws to `bootstrap_draws.dta`
+
+- [x] Add a manifest alongside bootstrap outputs capturing:
+  - bootstrap reps
+  - bootstrap seed
+  - worker count / parallel mode
+  - spec subset used
+  - script name and date
+
+- [x] Make bootstrap seeds deterministic across workers
+  - per-rep seed = master_seed + bootstrap_seed_offset + 997 * rep
+  - independent of worker_id or rep-block partition
+
+- [x] Define a restart strategy before implementation
+  - driver writes `bootstrap_draws_worker_<k>.dta` under `results/bootstrap/shards/`
+  - worker 0 (default) also publishes `bootstrap_draws.dta`
+  - multi-worker merge script is a separate follow-up
+
+- [x] Live smoke test (`bootstrap_reps=20`) — passed 2026-04-27.
+  - 480 draw rows completed, 0 fit failures, 0 `vce` syntax errors.
+  - 160/160 net rows populated for every stock column (`stock_total_*`,
+    `stock_imp_*`). Sanity-check warning at `02_bootstrap.do:413` did
+    not fire.
+  - Required two engine fixes along the way:
+    `02_spec_engine.do:476-485` translates `noinference` -> `vce(off)`
+    for `sdid_event` (its allowlist is `{off, placebo, bootstrap}`),
+    and `02_spec_engine.do:507-525` reads `e(H)` shape dynamically
+    instead of assuming the 5-column / `r(N)+1`-row layout that
+    `vce(placebo)` produces (under `vce(off)`, `e(H)` is 3-col, 1+N_post
+    rows).
+- [x] Confirm `sdid_event` accepts `vce(noinference)` on installed version.
+  - **No** — `sdid_event`'s `vce()` allowlist is `{off, placebo, bootstrap}`
+    on the installed version (error: `Only off, placebo and bootstrap
+    (dafalt) allowed`). Fixed 2026-04-27 in `02_spec_engine.do:476-485`
+    by translating the bootstrap's `noinference` signal to `vce(off)`
+    when calling `sdid_event`. Same intent (skip inner inference loop;
+    uncertainty comes from the outer rep loop) but uses the option name
+    `sdid_event` actually accepts.
+  - driver now emits a WARNING if no net-spec produces `stock_total_common`.
+
+### B3.5. Parallel launcher and shard combiner
+
+The B3 driver supports multi-worker execution out of the box (disjoint
+`bootstrap_rep_start`/`bootstrap_rep_end` ranges, per-worker shards,
+worker-order-independent per-rep seeds). Two follow-up scripts complete
+the multi-worker path. See plan §B3.5 for design details.
+
+- [x] Create `02_bootstrap_combine.do` (2026-04-27)
+  - iterates `results/bootstrap/shards/bootstrap_draws_worker_*.dta`
+  - appends and `duplicates drop rep spec_id, force` (safety net)
+  - writes canonical `${bootstrap_output}` (= `bootstrap_draws.dta`)
+  - rewrites manifest with `K` and completed rep ranges
+  - fails loudly on shard gap or rep-range overlap
+  - idempotent — safe to rerun without re-firing workers
+  - Self-test passed on K=1 single-shard smoke output: 480 rows in,
+    480 rows out, validation messages clean, no dedup drops.
+  - Implementation note: validation logic uses local-array variables
+    (`ms_1, ms_2, ...; rs_1, rs_2, ...; order_1, ...`) rather than a
+    metadata dataset, because a top-level `do` only allows one active
+    `preserve` and we need to swap `use` between shards to read first-row
+    metadata.
+
+- [x] Add parallel launcher (2026-04-27, bash wrapper variant)
+  - `code/stata/run_bootstrap_parallel.sh` — fires K independent
+    `StataMP-64 /e` processes with worker-specific globals via the
+    `_bootstrap_worker.do` shim, `wait`s on each PID individually
+    (so any non-zero exit is detected), then invokes the combine
+    script. Skips combine and exits rc=1 if any worker failed —
+    shards stay on disk for inspection.
+  - `code/stata/_bootstrap_worker.do` — six-line shim that reads
+    three positional args (`worker_id rep_start rep_end`), promotes
+    them to globals, sources `02_bootstrap.do`. Closes the auto-batch
+    log immediately so K concurrent workers don't race on the
+    `_bootstrap_worker.log` write target.
+  - Rep partitioning: `floor(N/K)` per worker; first `(N mod K)`
+    workers get one extra. Yields contiguous `[1..N]` cover with no
+    gaps, which `02_bootstrap_combine.do`'s validation enforces.
+  - Usage: `bash code/stata/run_bootstrap_parallel.sh K N` from repo
+    root. `STATA_EXE` env var overrides the default Stata path.
+  - Single-worker dev loop unchanged — keep using
+    `do "code/stata/02_bootstrap.do"` directly.
+
+- [x] Fix B3's worker-0-publishes-canonical hardcoding (2026-04-27,
+  resolved by design rather than code change)
+  - Concern was that `02_bootstrap.do:434-436` writes
+    `bootstrap_draws.dta` when `bootstrap_worker_id == 0`, which would
+    publish only worker 0's reps as canonical in multi-worker mode.
+  - Resolution: the launcher always invokes `02_bootstrap_combine.do`
+    after all workers exit, and combine overwrites the canonical with
+    the K-way union. Worker 0's intermediate publish is briefly wrong
+    in multi-worker mode but is corrected before the launcher returns.
+    For K=1, worker 0's publish is the canonical — convenience preserved
+    for the single-worker dev loop. No code change needed.
+  - Failure mode to watch: if combine errors after worker 0 publishes
+    but before union completes, canonical contains only worker 0's
+    reps and looks valid. Mitigated by combine's contiguity validation
+    (would fail loudly if shard coverage doesn't span [1..N]) and by
+    the launcher's exit code 1 on combine failure.
+
+- [x] V2.5 parallel parity test (passed 2026-04-28)
+  - K=1 × 20 reps vs K=4 × 5 reps on `master_seed=56403`,
+    `bootstrap_seed_offset=60000`. Sorted by `(rep, spec_id)`, `cf` on
+    all 33 bootstrap-content columns (the 36-col schema minus the
+    three metadata cols `worker_id`, `rep_start`, `rep_end` that
+    legitimately differ across shards) returned **zero mismatches**.
+  - 480 rows in both (24 specs × 20 reps); rep ranges [1..5] [6..10]
+    [11..15] [16..20] in K=4 reconstruct K=1's [1..20] cleanly — no
+    worker-order seed leak, no partition gap/overlap, no silent
+    combine-dedup drops.
+  - V2.5 cleared. Proceed to V3 (100 reps) and V4 (500 reps).
+  - Test driver: `sandbox/_v25_parity_test.do`. Captured log:
+    `quality_reports/parity_logs/2026-04-28_v25_parity_test.log`.
+  - Original recipe (run from repo root):
+
+    **Bash terminal (Git Bash, etc.):**
+    ```
+    cp results/bootstrap/bootstrap_draws.dta results/bootstrap/bootstrap_draws_K1.dta
+    rm -rf results/bootstrap/shards/*.dta
+    bash code/stata/run_bootstrap_parallel.sh 4 20
+    ```
+
+    **PowerShell equivalent:**
+    ```
+    Copy-Item results/bootstrap/bootstrap_draws.dta results/bootstrap/bootstrap_draws_K1.dta
+    Remove-Item results/bootstrap/shards/*.dta -Force
+    bash code/stata/run_bootstrap_parallel.sh 4 20
+    ```
+    (the launcher itself must be invoked through `bash` in either
+    shell — its body is bash, not PowerShell.)
+
+    Then in Stata:
+    ```
+    use "results/bootstrap/bootstrap_draws.dta", clear
+    sort rep spec_id
+    cf _all using "results/bootstrap/bootstrap_draws_K1.dta", verbose
+    ```
+    Acceptance: zero mismatches across all numeric columns.
+
+### B4. Create `02_bootstrap_tables.do`
+
+- [ ] Collapse bootstrap draws to percentile intervals by spec.
+- [ ] Write `bootstrap_cis.dta`.
+- [ ] Merge bootstrap CIs into the current table-rendering workflow.
+
+### B5. Update `02_tables_figures.do`
+
+- [ ] Add a `${show_bootstrap_cis}` flag.
+- [ ] Keep CI-off behavior bit-for-bit compatible with current point-estimate
+  outputs.
+- [ ] When CI-on, render `[lo, hi]` rows or equivalent CI strings in the
+  highlighted tables.
+
+- [ ] Keep the current Excel workbook contract stable:
+  - `recalc_components` remains point-estimate inputs and outputs
+  - `run_parameters` remains the shared denominator/scalar sheet
+  - `preferred_net_stock` and `preferred_net_stock_shs` remain simple
+    presentation sheets
+  - `variable_guide` remains the workbook dictionary
+
+- [ ] Add bootstrap results in a new sheet instead of mutating the existing
+  point-estimate sheets
+  - recommended name: `bootstrap_cis`
+
+### B6. Documentation and paper caveat
+
+- [x] Update table notes to say bootstrap CIs come from donor-cluster
+  resampling. (2026-04-28)
+  - Added `elast_tex_notes_inference` helper to `02_spec_engine.do`
+    that emits inference-language tablenotes for the 6 elasticity
+    tables. Branches on `${show_bootstrap_cis}`:
+    - CIs off: explicit attribution of parenthetical SEs to SDID
+      placebo inference for $\hat{\tau}$ and the implied $\beta$,
+      with a stock-elasticity caveat (where present) noting that
+      analytic SEs require joint event-study covariances we don't
+      export.
+    - CIs on: bracketed values described as `${ci_level}\%`
+      percentile CIs from a donor-cluster bootstrap, with revenue
+      and tax parameters held fixed.
+  - All 6 elasticity tables (`tbl_elasticities`, `_stock_compare`,
+    `_inout`, `_shs`, `_stock_compare_shs`, `_inout_shs`) wired in.
+  - Verified end-to-end via 02_tables_figures.do at both
+    `${show_bootstrap_cis}=0` and `=1`.
+
+- [x] Add the paper caveat that microsimulation denominators are treated
+  as fixed inside the current bootstrap. (2026-04-28)
+  - The CI-on tablenote explicitly enumerates: federal, Oregon,
+    FICA, PFA rates, AGI base, and microsimulation denominators are
+    treated as fixed throughout the bootstrap. This text is the
+    canonical caveat; lift verbatim into paper prose where needed.
+  - `variable_guide` Excel sheet descriptions for `_se` columns
+    updated to: "Propagated from the SDID treatment-effect placebo
+    SE; treats revenue and tax parameters as fixed."
+
+- [x] Update `quality_reports` docs and `todo.md` once the bootstrap path
+  is live. (2026-04-28)
+  - Session log: `quality_reports/session_logs/2026-04-28_b7-parallel-migration.md`
+  - todo.md Section B7 entry tracks migration status and lessons.
+  - Cross-project Stata lessons saved to memory `stata-tips.md`.
+
+### B7. Migrate bash launcher to Stata `parallel` (cross-platform)
+
+  Motivation: bash launcher (`run_bootstrap_parallel.sh` +
+  `_bootstrap_worker.do`) only works under Git Bash on Windows. The
+  project is targeting a fully reproducible public release, so the
+  parallel path needs to run on macOS and Linux without modification.
+  Vega's `parallel` package is already used in the repo
+  (`02_sdid_analysis.do`, `02_otherout_sdid.do`, `02_flow_analysis.do`).
+
+  Plan: `quality_reports/plans/` has the design (or
+  `~/.claude/plans/purrfect-dazzling-bee.md`).
+
+  **Run procedure for the remaining V2.5 / V3 / V4 steps:
+  `quality_reports/B7_RUN_PROCEDURE.md`** — pre-flight, command
+  sequences, acceptance criteria, failure modes, and resume mechanism.
+
+- [x] Rewrite `02_bootstrap.do` (2026-04-28)
+  - Add `run_bootstrap_rep` program: takes one rep number, computes
+    seed, caches panels, fits 24 specs, writes per-rep .dta to
+    `${results}bootstrap/temp_draws/draws_rep_<rep>.dta`.
+  - Add `parallel_bootstrap_wrapper` program: re-sources
+    `02_spec_engine.do` (avoids version-drift trap), loops worker's
+    rep slice.
+  - Top-level driver branches on `${use_parallel}`. Parallel path
+    invokes `parallel, prog(...) processors(c(processors_max)):
+    parallel_bootstrap_wrapper` — `processors()` is critical, default
+    is `set processors 1` which makes SDID single-threaded.
+  - Aggregate logic (append per-rep files, validate rep coverage,
+    write canonical) inlined at end of script — replaces
+    `02_bootstrap_combine.do`.
+
+- [x] Extend `setup_parallel` in `01a_programs.do` with core-aware
+  cap (2026-04-28). Auto-caps `${n_clusters}` to
+  `floor(physical_cores / per_mp_cores)`. Reads physical cores from
+  `NUMBER_OF_PROCESSORS` env var on Windows, `sysctl -n hw.ncpu` on
+  macOS, `nproc` on Linux. Skips cap with warning if detection fails.
+  Derives `per_mp_cores` from `c(processors_max)` (license cap, not
+  hardcoded 4).
+
+- [x] Update `00_multnomah.do` (2026-04-28). Bootstrap block trimmed
+  from 3 stages to 2 (driver → tables); `${skip_bootstrap_driver}`
+  removed.
+
+- [x] Rename obsolete files to `.legacy` (2026-04-28):
+  `run_bootstrap_parallel.sh.legacy`, `_bootstrap_worker.do.legacy`,
+  `02_bootstrap_combine.do.legacy`. Final delete after V2.5 re-passes.
+
+- [x] N=2 K=2 minimal smoke (2026-04-28, 11:54). 48 rows, 2 reps,
+  parallel scratch artifacts cleaned, temp_draws/ removed. Wall-clock
+  ~15 min (1 rep per worker at K=2, with 4-core MP license shared
+  between 2 workers ≈ 2 effective cores per worker).
+
+- [x] Profile diagnostic (2026-04-28). Per-rep cost breakdown:
+  grid-load 0s, panel-cache 1.2s, spec-loop 533s (22s/spec),
+  metadata-save 0s. Spec loop dominates — bound by SDID solver and
+  the 4-core MP license. Confirms parallel migration does not add
+  meaningful overhead vs the bash launcher's per-rep cost.
+
+- [ ] V2.5 parity re-run (in progress — launched 2026-04-28 ~11:55).
+  N=20 K=2 parallel vs `bootstrap_draws_n20.dta` (bash K=4 N=20
+  baseline archived this morning). Acceptance: zero mismatches on
+  the 33 content columns. ETA ~2-2.5 hr.
+
+- [ ] Delete `.legacy` files once V2.5 confirms parity.
+
+- [ ] V3 (N=100 K=2 parallel) — overnight job, ETA ~12-13 hr.
+
+- [ ] V4 (N=500 K=2 parallel) — publication run.
+
+### Lessons learned (B7 incident notes)
+
+- **Stata 19 doesn't have `c(processors_machine)`.** Use OS-side
+  detection (env var or shell-out) for physical core count. License
+  cap (`c(processors_max)`) is the per-instance demand, not the
+  machine total.
+- **Vega's `parallel` defaults each worker to `set processors 1`.**
+  Required `processors(N)` option to give workers full multi-core
+  speed. Default behavior was 10× slower per spec without the option.
+- **The Stata MP license is GLOBALLY capped** at the licensed core
+  count across all instances. K=2 instances each requesting 4 cores
+  share 4 cores → 2 effective cores each. Throughput is bounded at
+  `min(K, license_cap)` cores total.
+- **Earlier "1.2 min/rep" baseline was wrong.** Actual K=1 N=20 took
+  2 hr 44 min = 20.5 sec/spec. K=4 N=20 took ~2 hr. Both bound by
+  the 4-core license — bash K=4 didn't run faster than K=1 on this
+  machine because workers shared cores. The parallel migration
+  doesn't hurt throughput meaningfully.
+
+---
+
+## Section C - Acceptance criteria for TODO-1.1
+
+- [x] `02_spec_engine.do` contains `load_spec_panel`, `fit_spec_sdid`, and
+  `donor_resample`.
+- [x] `02_sdid_analysis.do` calls `fit_spec_sdid` and reproduces current
+  `sdid_results.dta` and `sdid_event_results.dta` point estimates.
+  Verified via partial cf 2026-04-27 — see B2 note above.
+- [ ] `02_bootstrap.do` runs successfully at:
+  - [x] 20 reps for development (passed 2026-04-27 via bash launcher;
+    V2.5 re-running 2026-04-28 via parallel migration — see B7)
+  - [ ] 100 reps for stress testing (V3 — ETA ~12-13 hr at K=2 parallel
+    on 8-core box with 4-core MP license)
+  - [ ] 500 reps for publication tables (V4)
+- [x] `02_bootstrap_tables.do` produces `bootstrap_cis.dta` (2026-04-28).
+- [x] `02_tables_figures.do` renders both: (B5, 2026-04-28)
+  - current point-estimate outputs with CIs off (5/5 valid baselines
+    byte-identical; 6th had stale before-snapshot but new OFF output
+    has zero `[lo, hi]` content)
+  - bootstrap-CI outputs with CIs on (all six tables exhibit the
+    expected `[lo, hi]` substitution / addition; SHS variants use
+    `_shs` CI columns correctly)
+- [x] The Excel workbook includes a bootstrap CI sheet without breaking
+  the current point-estimate sheets (2026-04-28). Sheet name
+  `bootstrap_cis`; placeholder row when flag is off, 24 spec rows when
+  on. `recalc_components`, `run_parameters`, `preferred_net_stock`,
+  `preferred_net_stock_shs`, `variable_guide` all unchanged.
+- [x] Table footnotes no longer imply that the current analytic SEs are
+  fully correct for cumulative stock elasticities. (B6 — closed
+  2026-04-28; see Section B6 above for the helper architecture.)
+
+---
+
+## Section D - Deferred / not doing for now
+
+- **Shared `build_sdid_sample` extractor**
+  - Still not worth doing unless another SDID variant is added.
+
+- **Microsimulation bootstrap**
+  - Out of scope for the current release cycle.
+  - Can be added later if a full uncertainty envelope becomes necessary.
+
+- **Delta-method interim CIs**
+  - Not the active plan.
+  - Can be revived if bootstrap timing becomes a problem.

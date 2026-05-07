@@ -69,11 +69,72 @@ end
 
 ** Safe default for parallel processing
 ** Avoids crash when running analysis do-files standalone (not via 00_multnomah.do)
+**
+** The auto-cap below is what would have averted the 2026-04-28 V3 incident:
+** Stata MP licensed for N-cores consumes that many cores per instance, so K
+** concurrent workers demand N*K cores. K=4 with a 4-core MP license on an
+** 8-core machine oversubscribes 2:1 and degrades each rep ~15-20x.
+**
+** c(processors_max) reports the license's per-instance core cap. The machine's
+** core count is read from the OS:
+**   Windows: NUMBER_OF_PROCESSORS env var (always set; reports LOGICAL cores
+**            on machines with hyperthreading, so on a 4-physical/8-logical box
+**            this is 8 — the cap will then permit K=2 workers requesting 4
+**            cores each = 8 logical demanded, mild oversubscription of physical
+**            cores. K=4 still gets capped to K=2 even in that case, which is
+**            the load-bearing protection.)
+**   Linux:   `nproc` command (also logical cores by default)
+**   macOS:   `sysctl -n hw.ncpu` (logical cores)
+** If detection fails the cap is skipped with a warning.
+**
+** floor(machine / per_mp) is the number of MP workers that can run concurrently
+** without (logical-core) oversubscription.
 capture program drop setup_parallel
 program define setup_parallel
     if "${use_parallel}" == "" global use_parallel 0
     if "${n_clusters}" == ""   global n_clusters 1
     if ${use_parallel} == 1 {
+        local _per_mp_cores = c(processors_max)
+        local _physical ""
+
+        ** Windows: env var always present
+        if "`c(os)'" == "Windows" {
+            local _physical : env NUMBER_OF_PROCESSORS
+        }
+        else {
+            ** Linux / macOS: shell out
+            tempfile _ncpu_out
+            if "`c(os)'" == "MacOSX" {
+                capture qui shell sysctl -n hw.ncpu > "`_ncpu_out'"
+            }
+            else {
+                capture qui shell nproc > "`_ncpu_out'"
+            }
+            if _rc == 0 {
+                tempname _fh
+                capture file open `_fh' using "`_ncpu_out'", read text
+                if _rc == 0 {
+                    file read `_fh' _line
+                    local _physical = trim("`_line'")
+                    file close `_fh'
+                }
+            }
+        }
+
+        if "`_physical'" == "" {
+            dis as text "setup_parallel: unable to detect physical cores on " ///
+                "this OS (`c(os)'); using n_clusters=${n_clusters} without cap"
+        }
+        else {
+            local _max_safe = max(1, floor(`_physical' / `_per_mp_cores'))
+            if ${n_clusters} > `_max_safe' {
+                dis as text "setup_parallel: capping n_clusters from ${n_clusters} to " ///
+                    "`_max_safe' (machine has `_physical' physical cores; Stata MP " ///
+                    "license uses `_per_mp_cores' per instance — running more would " ///
+                    "oversubscribe CPU and slow each worker)"
+                global n_clusters = `_max_safe'
+            }
+        }
         parallel initialize ${n_clusters}, force
     }
 end
@@ -436,7 +497,14 @@ program define sdid_log_failure
 
     capture mkdir "${logs}sdid_failures"
 
-    local pid = c(pid)
+    local pid ""
+    capture local pid = c(processid)
+    if _rc != 0 | "`pid'" == "" {
+        capture local pid = c(pid)
+    }
+    if _rc != 0 | "`pid'" == "" {
+        local pid = subinstr("`c(current_time)'", ":", "", .)
+    }
     local fpath "${logs}sdid_failures/failures_pid`pid'.csv"
 
     local rc_text ""

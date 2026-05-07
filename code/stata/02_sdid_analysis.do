@@ -38,6 +38,7 @@ if "${dir}" == "" {
 }
 if "${code}" == "" global code "${dir}/code/stata/"
 do "${code}00_stata_config.do"
+do "${code}02_spec_engine.do"
 
 ** Start log file
 capture log close log_02
@@ -47,13 +48,14 @@ log using "${logs}02_log_sdid_${date}", replace text name(log_02)
 ** CONFIGURATION
 ********************************************************************************
 
-** plotplainblind palette (RGB) — consistent across all figures
-local col_sig_notpref  "0 114 178"    // sea (p7) — sig, not preferred
-local col_insig_notpref "86 180 233"  // sky (p3) — insig, not preferred
-local col_sig_pref     "213 94 0"     // vermillion (p6) — sig, preferred
-local col_insig_pref   "230 159 0"    // orangebrown (p8) — insig, preferred
-local col_zero         "204 121 167"  // reddish (p5) — zero line
-local col_ref          "153 153 153"  // gs10 (p2) — reference lines
+** plotplainblind palette (RGB) — pulled from globals set in 00_stata_config.do
+** so both SDID spec curves and elasticity spec curves share one palette.
+local col_sig_notpref   "${col_sig_notpref}"
+local col_insig_notpref "${col_insig_notpref}"
+local col_sig_pref      "${col_sig_pref}"
+local col_insig_pref    "${col_insig_pref}"
+local col_zero          "${col_zero}"
+local col_ref           "${col_ref}"
 
 ** Number of bootstrap replications for SDID
 local reps = 100
@@ -562,26 +564,8 @@ if ${use_parallel} == 1 {
 
 		restore
 
-		** Load main analysis data
-		use "`data_path'working/sdid_analysis_data.dta", clear
-
-		** Define sample
-		gen sample = `samp_var' == 1 & `data_var' == 1
-		if `exl' == 1 replace sample = 0 if year == 2020
-
-		** Skip if no treated unit in sample
-		qui count if multnomah == 1 & sample == 1
-		if r(N) == 0 {
-			dis "Skipping table `table_id': no treated unit in sample"
-			exit
-		}
-
 		** Create output directory
 		capture mkdir "`results_path'sdid/`out_txt'"
-
-		** Define covariates
-		if "`data_var'" == "irs_sample_1" local covariates "population per_capita_income"
-		else local covariates "population per_capita_income prop_tax_rate"
 
 		** Clear stored estimates
 		eststo clear
@@ -592,19 +576,8 @@ if ${use_parallel} == 1 {
 			** Full outcome variable name
 			local outcome "`outvar'_`migr'_rate_`out_type'"
 
-			** Store label
-			local label : variable label `outcome'
-
 			** Loop over covariate settings
 			forvalues c = 0/1 {
-
-				** Covariates for sdid (supports 'projected' option)
-				if `c' == 0 local covars ""
-				else if `c' == 1 local covars "covariates(`covariates')"
-
-				** Covariates for sdid_event (doesn't support 'projected' option)
-				if `c' == 0 local covars_event ""
-				else if `c' == 1 local covars_event "covariates(`covariates')"
 
 				** File paths for figures
 				if `exl' == 0 local path "`results_path'sdid/`out_txt'/fig_`out_txt'_`outcome'_`c'_`samp_var'_"
@@ -619,14 +592,25 @@ if ${use_parallel} == 1 {
 					}
 				}
 
-				** Run SDID
+				** Check if this spec qualifies for event study
+				local run_event = 1
+				if "${event_study_mode}" == "preferred" {
+					local run_event = 0
+					if inlist("`samp_var'", "sample_all", "sample_stringency") & `c' == 1 & `exl' == 1 {
+						if "`out_txt'" == "irs_full_16_22" | "`out_txt'" == "acs_16_24_col" {
+							local run_event = 1
+						}
+					}
+				}
+
+				** Run SDID through shared engine. fit_spec_sdid declares
+				** GRAPHBASE(string asis); pass via compound quotes so the
+				** quote chars don't survive into the macro and end up doubled
+				** when the engine re-wraps the path in graph_export("...").
 				capture noisily {
-					eststo sdid_`outvar'_`c': sdid `outcome' fips year Treated	///
-						if sample == 1,			 	///
-						vce(placebo) 				///
-						`covars'					///
-						reps(`reps')				///
-						graph graph_export("`path'", .pdf)
+					fit_spec_sdid, sampledata("`out_txt'") sample(`samp_var') ///
+						outcome(`outcome') controls(`c') exclusion(`exl') ///
+						eventstudy(`run_event') reps(`reps') graphbase(`"`path'"')
 				}
 
 				if _rc != 0 {
@@ -638,18 +622,21 @@ if ${use_parallel} == 1 {
 					continue
 				}
 
-				** Store results
-				local tmp_tau = e(ATT)
-				local tmp_se = e(se)
+				local tmp_tau = r(tau)
+				local tmp_se = r(se)
+				local tmp_premean = r(pre_mean)
+				local tmp_ncounties = r(n_counties)
+				local label : variable label `outcome'
+				local event_ok = r(event_ok)
+				if `event_ok' == 1 {
+					tempname event_res
+					matrix `event_res' = r(event_res)
+					matrix colnames `event_res' = id res1 res3 res4
+				}
 
-				** Pre-treatment mean and county count
-				qui summ `outcome' if multnomah == 1 & Treated == 0 & sample == 1
-				local tmp_premean = r(mean)
-				estadd scalar mean = r(mean)
-
-				qui summ `outcome' if year == 2021 & sample == 1
-				local tmp_ncounties = r(N)
-				estadd scalar count = r(N)
+				estadd scalar mean = `tmp_premean'
+				estadd scalar count = `tmp_ncounties'
+				eststo sdid_`outvar'_`c'
 
 				** Save treatment effect results
 				preserve
@@ -672,60 +659,13 @@ if ${use_parallel} == 1 {
 				save "`results_path'sdid/temp_results/results_`table_id'_`outvar'_`c'.dta", replace
 				restore
 
-				** Check if this spec qualifies for event study
-				local run_event = 1
-				if "${event_study_mode}" == "preferred" {
-					local run_event = 0
-					if inlist("`samp_var'", "sample_all", "sample_stringency") & `c' == 1 & `exl' == 1 {
-						if "`out_txt'" == "irs_full_16_22" | "`out_txt'" == "acs_16_24_col" {
-							local run_event = 1
-						}
-					}
-				}
+				if `run_event' == 1 & `event_ok' == 1 {
 
-				if `run_event' == 1 {
-
-				** Run event study
-				capture noisily {
-					sdid_event `outcome' fips year Treated	///
-						if sample == 1,			 			///
-						`covars_event'						///
-						vce(placebo) 						///
-						brep(`reps') 						///
-						placebo(all)
-				}
-
-				local event_rc = _rc
-
-				if `event_rc' == 0 {
-
-					** Store max year
-					qui summ year if multnomah == 1 & sample == 1
-					local max_yr = r(max)
-
-					** Move results from matrix to data
-					qui count if multnomah == 1 & sample == 1
-					local ct = r(N)
-					local ct = `ct' + 1
-
-					** Extract matrix
-					capture mat res = e(H)[2..`ct',1..5]
-					if _rc != 0 {
-						continue
-					}
-
-					** Preserve data before plotting
 					preserve
+					clear
+					svmat double `event_res', names(col)
 
-					** Move to data
-					svmat res
-
-					** Generate ID variable
-					gen id = `max_yr' - _n + 1 if !missing(res1)
-
-					** Handle exclusion year labeling
 					if `exl' == 1 {
-						replace id = id - 1 if id <= 2020
 						expand 2 if id == 2019, gen(tag)
 						replace id = 2020 if tag == 1
 						replace res1 = . if tag == 1
@@ -733,11 +673,8 @@ if ${use_parallel} == 1 {
 						replace res4 = . if tag == 1
 					}
 					label var id "Year (destination)"
-
-					** Sort
 					sort id
 
-					** Plot
 					twoway 	(rcap res3 res4 id, lc(gs10) fc(gs11%50))	///
 							(scatter res1 id, mc(black)),				///
 						legend(off) ytitle("`label'") 					///
@@ -750,8 +687,6 @@ if ${use_parallel} == 1 {
 
 					graph export "`evpath'", as(jpg) name("Graph") quality(100) replace
 
-					** Save machine-readable event-study results
-					capture drop sample
 					gen str40 sample_data = "`out_txt'"
 					gen str40 sample = "`samp_var'"
 					gen str60 outcome = "`outcome'"
@@ -773,14 +708,7 @@ if ${use_parallel} == 1 {
 						outstate preferred
 					drop if missing(event_tau)
 					save "`results_path'sdid/temp_event_results/event_`table_id'_`outvar'_`c'.dta", replace
-
-					** Restore data
 					restore
-
-				}
-
-				** Clean up sdid_event internal variables
-				capture drop ever_treated*
 
 				} // END event study conditional
 
@@ -846,9 +774,30 @@ if ${use_parallel} == 1 {
 
 	end
 
-	** Define wrapper program for parallel execution
+	** Define wrapper program for parallel execution.
+	**
+	** Each worker re-sources 02_spec_engine.do so that fit_spec_sdid /
+	** load_spec_panel are pinned to the current on-disk version rather
+	** than to whatever copy the parent serialized via `program list` at
+	** dispatch time. That export path is fragile: a stale in-memory copy
+	** in the parent (e.g. with `string asis` option types from an earlier
+	** iteration) propagates as-is to every worker and produces opaque
+	** rc=198 syntax errors on every spec. Re-sourcing the engine file
+	** here keeps the workers synchronized with disk.
+	**
+	** 00_stata_config.do and 01a_programs.do are NOT re-sourced: their
+	** programs are stable, their globals are forwarded by parallel, and
+	** sourcing 00_stata_config.do under concurrent worker load triggers
+	** sporadic rc=199 from the SSC `which` checks racing on the ado-path
+	** cache. Those programs come in via parallel's prog() list instead.
 	capture program drop parallel_sdid_wrapper
 	program define parallel_sdid_wrapper
+		capture noisily do "${code}02_spec_engine.do"
+		if _rc != 0 {
+			di as error "parallel_sdid_wrapper: 02_spec_engine.do failed (rc=`=_rc')"
+			exit _rc
+		}
+
 		** Store all table_ids upfront (run_sdid_table will overwrite the dataset)
 		local n_obs = _N
 		forvalues i = 1/`n_obs' {
@@ -1018,10 +967,32 @@ if ${use_parallel} == 1 {
 	timer clear 1
 	timer on 1
 
-	parallel, prog(parallel_sdid_wrapper run_sdid_table sdid_log_failure): parallel_sdid_wrapper
+	** Widen linesize so `program list` headers like
+	** "project_build_signature, rclass:" don't wrap; parallel's exporter
+	** regex (parallel_export_programs.mata) requires the trailing ":" on
+	** the same line, and a wrapped header is silently dropped, leaving a
+	** stray `end` that crashes every worker with rc=199.
+	**
+	** Note: fit_spec_sdid and load_spec_panel are intentionally OMITTED
+	** from prog() — the wrapper re-sources 02_spec_engine.do at the top
+	** of each worker. That avoids the version-drift trap where the
+	** parent's in-memory copy of those programs gets serialized to
+	** workers even after the on-disk source has changed.
+	local _orig_linesize = c(linesize)
+	set linesize 255
+
+	parallel, prog(parallel_sdid_wrapper run_sdid_table sdid_log_failure ///
+		project_assert_manifest project_build_signature): parallel_sdid_wrapper
+
+	set linesize `_orig_linesize'
+	local parallel_rc = _rc
 
 	timer off 1
 	timer list 1
+	if `parallel_rc' != 0 {
+		dis as error "Parallel SDID estimation failed with rc=`parallel_rc'. Skipping combine/export to avoid overwriting outputs."
+		exit `parallel_rc'
+	}
 	dis "Parallel estimation completed at $S_TIME"
 
 	** Combine all treatment effect results
@@ -1157,11 +1128,6 @@ else {
 	** Loop over IRS and ACS Samples
 	foreach data in `data_vars' {
 
-		** Define covariates based on data type
-		** irs_sample_1 uses basic covariates; all others add property tax rate
-		if "`data'" == "irs_sample_1" local covariates "population per_capita_income"
-		else local covariates "population per_capita_income prop_tax_rate"
-
 		** Different sets of outcome variables
 		if "`data'" == "irs_sample_1" local out_type "irs irs_outstate"
 		else if "`data'" == "irs_sample_2" local out_type "irs irs_outstate"
@@ -1193,10 +1159,6 @@ else {
 				** Loop over exclusion of 2020
 				forvalues exl = 1(-1)0 {
 
-					** Define sample
-					gen sample = `samp' == 1 & `data' == 1
-					if `exl' == 1 replace sample = 0 if year == 2020
-
 					** Clear stored values
 					eststo clear
 
@@ -1214,14 +1176,6 @@ else {
 							** Loop over inclusion of covariates
 							forvalues c = 0/1 {
 
-								** Covariates
-								if `c' == 0 local covars ""
-								else if `c' == 1 local covars "covariates(`covariates')"
-
-								** Covariates for sdid_event (doesn't support 'projected' option)
-								if `c' == 0 local covars_event ""
-								else if `c' == 1 local covars_event "covariates(`covariates')"
-
 								** File Name
 								if `exl' == 0 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_"
 								if `exl' == 1 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_excl2020_"
@@ -1236,48 +1190,6 @@ else {
 									}
 								}
 
-								** Run SDID
-								capture noisily {
-									eststo sdid_`out'_`c': sdid `out' fips year Treated	///
-										if sample == 1,			 	///
-										vce(placebo) 				///
-										`covars'					///
-										reps(`reps')				///
-										graph graph_export("`path'", .pdf)
-								}
-
-								if _rc != 0 {
-									local _failed_rc = _rc
-									dis "SDID failed for `out' c=`c' exl=`exl' samp=`samp'. Skipping."
-									sdid_log_failure, rc(`_failed_rc') script("02_sdid_analysis") ///
-										tableid("`out_txt'") outcome("`out'") c(`c') exl(`exl') ///
-										samp("`samp'") context("main-serial")
-									continue
-								}
-
-								** Store model output
-								local tmp_tau = e(ATT)
-								local tmp_se = e(se)
-
-								** Store pre-treatment means and county counts
-								qui summ `out' if multnomah == 1 & Treated == 0 & sample == 1
-								local tmp_premean = r(mean)
-								estadd scalar mean = r(mean)
-
-								qui summ `out' if year == 2021 & sample == 1
-								local tmp_ncounties = r(N)
-								estadd scalar count = r(N)
-
-								** Post results to postfile (O(1) append)
-								local tmp_pval = 2 * (1 - normal(abs(`tmp_tau'/`tmp_se')))
-								local tmp_ci_lo = `tmp_tau' - 1.96 * `tmp_se'
-								local tmp_ci_hi = `tmp_tau' + 1.96 * `tmp_se'
-								local tmp_sig = abs(`tmp_tau'/`tmp_se') > 1.96
-								post `pf_results' ("`out_txt'") ("`samp'") ("`out'") ///
-									(`c') (`exl') (`tmp_tau') (`tmp_se') (`tmp_pval') ///
-									(`tmp_ci_lo') (`tmp_ci_hi') (`tmp_ncounties')     ///
-									(`tmp_premean') (`tmp_sig')
-
 								** Check if this spec qualifies for event study
 								local run_event = 1
 								if "${event_study_mode}" == "preferred" {
@@ -1289,103 +1201,101 @@ else {
 									}
 								}
 
-								if `run_event' == 1 {
-
-								** Run event-study
+								** Run SDID through shared engine. graphbase passed
+								** via compound quotes — see note at parallel call
+								** site for why.
 								capture noisily {
-									sdid_event `out' fips year Treated			///
-										if sample == 1,			 			///
-										`covars_event'						///
-										vce(placebo) 						///
-										brep(`reps') 						///
-										placebo(all)
+									fit_spec_sdid, sampledata("`out_txt'") sample(`samp') ///
+										outcome(`out') controls(`c') exclusion(`exl') ///
+										eventstudy(`run_event') reps(`reps') graphbase(`"`path'"')
 								}
 
-								local event_rc = _rc
-								capture drop ever_treated*
-
-								if `event_rc' == 0 {
-
-								** Store max year
-								qui summ year if multnomah == 1 & sample == 1
-								local max_yr = r(max)
-
-								** Move results from matrix to data
-								qui count if multnomah == 1 & sample == 1
-								local ct = r(N)
-								local ct = `ct' + 1
-
-								capture mat res = e(H)[2..`ct',1..5]
 								if _rc != 0 {
+									local _failed_rc = _rc
+									dis "SDID failed for `out' c=`c' exl=`exl' samp=`samp'. Skipping."
+									sdid_log_failure, rc(`_failed_rc') script("02_sdid_analysis") ///
+										tableid("`out_txt'") outcome("`out'") c(`c') exl(`exl') ///
+										samp("`samp'") context("main-serial")
 									continue
 								}
 
-								** Preserve data before plotting (expand creates duplicate obs)
-								preserve
-
-								** Move Matrix results to data
-								svmat res
-
-								** Generate ID variable (missing-tau rows dropped at end)
-								gen id = `max_yr' - _n + 1
-
-								** Update labeling for exclusion of 2020
-								if `exl' == 1 {
-									replace id = id - 1 if id <= 2020
-									expand 2 if id == 2019, gen(tag)
-									replace id = 2020 if tag == 1
-									replace res1 = . if tag == 1
-									replace res3 = . if tag == 1
-									replace res4 = . if tag == 1
+								local tmp_tau = r(tau)
+								local tmp_se = r(se)
+								local tmp_premean = r(pre_mean)
+								local tmp_ncounties = r(n_counties)
+								local event_ok = r(event_ok)
+								if `event_ok' == 1 {
+									tempname event_res
+									matrix `event_res' = r(event_res)
+									matrix colnames `event_res' = id res1 res3 res4
 								}
-								label var id "Year (destination)"
 
-								** Sort
-								sort id
+								estadd scalar mean = `tmp_premean'
+								estadd scalar count = `tmp_ncounties'
+								eststo sdid_`out'_`c'
 
-								** Plot
-								twoway 	(rcap res3 res4 id, lc(gs10) fc(gs11%50))	///
-										(scatter res1 id, mc(black)),				///
-									legend(off) ytitle("`label'") 					///
-									yline(0, lc("`col_zero'") lp(-)) 						///
-									xline(2020.5, lc(black) lp(solid))
+								** Post results to postfile (O(1) append)
+								local tmp_pval = 2 * (1 - normal(abs(`tmp_tau'/`tmp_se')))
+								local tmp_ci_lo = `tmp_tau' - 1.96 * `tmp_se'
+								local tmp_ci_hi = `tmp_tau' + 1.96 * `tmp_se'
+								local tmp_sig = abs(`tmp_tau'/`tmp_se') > 1.96
+								post `pf_results' ("`out_txt'") ("`samp'") ("`out'") ///
+									(`c') (`exl') (`tmp_tau') (`tmp_se') (`tmp_pval') ///
+									(`tmp_ci_lo') (`tmp_ci_hi') (`tmp_ncounties')     ///
+									(`tmp_premean') (`tmp_sig')
 
-								if `exl' == 0 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_eventstudy.jpg"
-								if `exl' == 1 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_excl2020_eventstudy.jpg"
+								if `run_event' == 1 & `event_ok' == 1 {
 
-								graph export "`path'", 	///
-									as(jpg) name("Graph") quality(100) replace
+									preserve
+									clear
+									svmat double `event_res', names(col)
 
-								** Save machine-readable event-study results
-								capture drop sample
-								gen str40 sample_data = "`out_txt'"
-								gen str40 sample = "`samp'"
-								gen str60 outcome = "`out'"
-								gen controls = `c'
-								gen exclusion = `exl'
-								gen event_year = id
-								gen event_tau = res1
-								gen event_ci_lo = res3
-								gen event_ci_hi = res4
-								gen event_se = (event_ci_hi - event_ci_lo) / (2 * 1.96) ///
-									if !missing(event_ci_lo) & !missing(event_ci_hi)
-								gen outstate = strpos("`out'", "_outstate") > 0 | strpos("`out'", "_irs5") > 0
-								gen preferred = inlist("`samp'", "sample_all", "sample_stringency") ///
-									& `c' == 1 & `exl' == 1 ///
-									& inlist("`out_txt'", "irs_full_16_22", "acs_16_24_col", ///
-										"irs_outstate_full_16_22", "acs_outstate_16_24_col")
-								keep sample_data sample outcome controls exclusion ///
-									event_year event_tau event_se event_ci_lo event_ci_hi ///
-									outstate preferred
-								drop if missing(event_tau)
-								local ++event_seq
-								local event_file "${results}sdid/temp_event_results/event_`event_seq'.dta"
-								save "`event_file'", replace
+									if `exl' == 1 {
+										expand 2 if id == 2019, gen(tag)
+										replace id = 2020 if tag == 1
+										replace res1 = . if tag == 1
+										replace res3 = . if tag == 1
+										replace res4 = . if tag == 1
+									}
+									label var id "Year (destination)"
+									sort id
 
-								** Restore data (removes expanded rows and temp variables)
-								restore
+									twoway 	(rcap res3 res4 id, lc(gs10) fc(gs11%50))	///
+											(scatter res1 id, mc(black)),				///
+										legend(off) ytitle("`label'") 					///
+										yline(0, lc("`col_zero'") lp(-)) 						///
+										xline(2020.5, lc(black) lp(solid))
 
-								} // END event_rc == 0
+									if `exl' == 0 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_eventstudy.jpg"
+									if `exl' == 1 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_excl2020_eventstudy.jpg"
+
+									graph export "`path'", 	///
+										as(jpg) name("Graph") quality(100) replace
+
+									gen str40 sample_data = "`out_txt'"
+									gen str40 sample = "`samp'"
+									gen str60 outcome = "`out'"
+									gen controls = `c'
+									gen exclusion = `exl'
+									gen event_year = id
+									gen event_tau = res1
+									gen event_ci_lo = res3
+									gen event_ci_hi = res4
+									gen event_se = (event_ci_hi - event_ci_lo) / (2 * 1.96) ///
+										if !missing(event_ci_lo) & !missing(event_ci_hi)
+									gen outstate = strpos("`out'", "_outstate") > 0 | strpos("`out'", "_irs5") > 0
+									gen preferred = inlist("`samp'", "sample_all", "sample_stringency") ///
+										& `c' == 1 & `exl' == 1 ///
+										& inlist("`out_txt'", "irs_full_16_22", "acs_16_24_col", ///
+											"irs_outstate_full_16_22", "acs_outstate_16_24_col")
+									keep sample_data sample outcome controls exclusion ///
+										event_year event_tau event_se event_ci_lo event_ci_hi ///
+										outstate preferred
+									drop if missing(event_tau)
+									local ++event_seq
+									local event_file "${results}sdid/temp_event_results/event_`event_seq'.dta"
+									save "`event_file'", replace
+									restore
 
 								} // END event study conditional
 
@@ -1451,9 +1361,6 @@ else {
 						} // end foreach _outfile
 
 					} // END MIGRATION TYPE LOOP
-
-					** Drop sample var
-					drop sample
 
 				} // END EXCLUSION LOOP
 

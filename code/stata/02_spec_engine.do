@@ -3,16 +3,34 @@ File Name:      02_spec_engine.do
 Creator:        John Iselin
 Date Created:   2026-04-24
 
-Purpose:        Shared engine of pure per-specification programs used by
-                downstream scripts (post_spec, tables_figures, bootstrap).
+Purpose:        Shared engine of per-specification programs used by
+                downstream scripts (post_spec, tables_figures, bootstrap,
+                and eventually sdid_analysis once estimation is rewired).
 
-                The engine defines four public programs:
+                The engine defines seven public programs:
 
                   load_revenue_params       — reads revenue_parameters.dta
                                               into global scalars; computes
                                               the four delta_ln_ntr_total*
                                               denominators used by elasticity
                                               calculations.
+
+                  load_spec_panel           — loads the prepared SDID panel
+                                              for one sample_data block and
+                                              returns the associated data_var,
+                                              out_type, and covariate set.
+
+                  fit_spec_sdid             — fits one SDID specification and
+                                              optionally one event study;
+                                              returns tau, se, pre_mean,
+                                              n_counties, and event-study
+                                              year/tau pairs.
+
+                  donor_resample            — cluster-bootstrap resample of
+                                              donor counties with replacement,
+                                              keeping the treated county fixed
+                                              and renaming duplicate donor
+                                              draws to unique IDs.
 
                   compute_spec_elasticities — given one spec's tau, se,
                                               pre_mean, migration, data_type,
@@ -35,14 +53,16 @@ Purpose:        Shared engine of pure per-specification programs used by
                 (elast_tex_open / elast_tex_notes_open / elast_tex_close)
                 that any table-generating driver can reuse.
 
-                Programs are pure: they accept scalars / matrices as args,
-                return via r(), and read shared rate-and-share scalars from
-                globals set by load_revenue_params. No program touches disk
-                except load_revenue_params (which reads one .dta file).
+                Arithmetic programs are pure: they accept scalars / matrices
+                as args, return via r(), and read shared rate-and-share
+                scalars from globals set by load_revenue_params.
+                The panel-loading / estimation helpers intentionally replace
+                the dataset in memory as part of their contract.
 
-Callers:        02_post_spec.do (to be created, Phase A)
-                02_tables_figures.do (to be created, Phase A)
+Callers:        02_post_spec.do
+                02_tables_figures.do
                 02_bootstrap.do (to be created, Phase B)
+                02_sdid_analysis.do (to be rewired, Phase B)
 
 Requires:       ${data}working/revenue_parameters.dta (from 02_revenue_microsim.do)
                 project_assert_manifest (from 00_stata_config.do)
@@ -53,6 +73,11 @@ Testing:        This file defines programs only. To verify arithmetic matches
                 spec_results.dta against elasticity_results.dta +
                 the per-spec implied_loss_i column from 02_revenue_microsim.do §12.
                 Acceptance: bit-identical numeric columns.
+
+                To verify the Phase-B helpers, compare one known spec's tau,
+                se, pre_mean, and event-study point estimates from
+                fit_spec_sdid against the current inline code in
+                02_sdid_analysis.do.
 
 Authors: John Iselin
 
@@ -70,14 +95,17 @@ For more information, contact john.iselin@yale.edu
 ** Open a threeparttable with caption/label and begin the tabular.
 capture program drop elast_tex_open
 program define elast_tex_open
-	syntax, HANDLE(string) CAP(string asis) LBL(string) ///
-		COLS(string asis) [FONTSIZE(string)]
+	syntax, HANDLE(string) CAP(string) LBL(string) ///
+		COLS(string) [FONTSIZE(string)]
+	** char(92) is `\` — Stata's macro expansion eats a literal `\`
+	** that immediately precedes a backtick-delimited local reference.
+	local bs = char(92)
 	file write `handle' "\begin{table}[htbp]" _n
 	file write `handle' "\centering" _n
 	file write `handle' "\begin{threeparttable}" _n
+	if "`fontsize'" != "" file write `handle' "`bs'`fontsize'" _n
 	file write `handle' `"\caption{`cap'}"' _n
 	file write `handle' "\label{`lbl'}" _n
-	if "`fontsize'" != "" file write `handle' "\`fontsize'" _n
 	file write `handle' `"\begin{tabular}{`cols'}"' _n
 	file write `handle' "\toprule" _n
 end
@@ -101,6 +129,47 @@ program define elast_tex_close
 	file write `handle' "\end{tablenotes}" _n
 	file write `handle' "\end{threeparttable}" _n
 	file write `handle' "\end{table}" _n
+end
+
+** ------------------------------------------------------------------
+** elast_tex_notes_inference
+**
+** Emits a single sentence describing the inference shown in the table
+** (parenthetical SEs vs. bracketed bootstrap percentile CIs), with the
+** parameters-as-fixed caveat. Caller decides where in the notes to call
+** this — typically as the last sentence before elast_tex_close.
+**
+** Branches on ${show_bootstrap_cis}:
+**   == 1: bracketed CIs sentence with `${ci_level}\\%` interpolated
+**   == 0: analytic SEs sentence with the cumulative-stock-SE caveat
+**         (as it stands in the current point-estimate-only pipeline)
+**
+** STOCK option: when set, adds the cumulative-stock-SE clause to the
+** SE branch. Tables with a stock-elasticity column (the main and
+** stock-compare tables) pass STOCK; pure flow tables (gross in/out)
+** omit it.
+** ------------------------------------------------------------------
+capture program drop elast_tex_notes_inference
+program define elast_tex_notes_inference
+	syntax, HANDLE(string) [STOCK]
+
+	if "${show_bootstrap_cis}" == "" global show_bootstrap_cis = 0
+	if "${ci_level}" == "" global ci_level = 95
+
+	if ${show_bootstrap_cis} == 1 {
+		file write `handle' "Bracketed values are ${ci_level}\% percentile confidence intervals from a " _n
+		file write `handle' "donor-cluster bootstrap that resamples non-treated counties with replacement, " _n
+		file write `handle' "holding the treated county fixed; revenue and tax parameters " _n
+		file write `handle' "(federal/Oregon/FICA/PFA rates, AGI base, and microsimulation denominators) " _n
+		file write `handle' "are treated as fixed throughout the bootstrap." _n
+	}
+	else {
+		file write `handle' "Standard errors in parentheses are SDID placebo-inference SEs for $\hat{\tau}$ and the implied $\beta$. " _n
+		if "`stock'" != "" {
+			file write `handle' "Cumulative stock elasticities require joint event-study covariances that the current pipeline does not export, " _n
+			file write `handle' "so analytic SEs are not reported for those columns; donor-cluster bootstrap CIs are available as a separate output." _n
+		}
+	}
 end
 
 ** ------------------------------------------------------------------
@@ -130,9 +199,13 @@ program define load_revenue_params
 	local file "${data}working/revenue_parameters.dta"
 	if "`using'" != "" local file "`using'"
 
-	** Manifest check — fail fast if signature drifted upstream
+	** Manifest check — fail fast if signature drifted upstream. Skipped
+	** when the data file path has no `.dta` extension (e.g., a .tmp
+	** tempfile from a future caller); subinstr would otherwise leave
+	** mfile == file and try to validate the data itself as a manifest.
+	** Mirrors the same guard in load_spec_panel.
 	local mfile = subinstr("`file'", ".dta", "_manifest.dta", .)
-	if fileexists("`mfile'") {
+	if "`mfile'" != "`file'" & fileexists("`mfile'") {
 		project_assert_manifest using "`mfile'", artifact("revenue_parameters")
 	}
 
@@ -149,6 +222,8 @@ program define load_revenue_params
 		total_agi_2022 agi_total agi_impacted agi_college                     ///
 		agi_college_impacted impacted_agi_share college_agi_share             ///
 		college_impacted_agi_share                                            ///
+		actual_oregon_revenue statewide_oregon_revenue                        ///
+		multnomah_agi_share total_oregon_agi_2019                             ///
 		delta_ln_ntr_total delta_ln_ntr_total_college                         ///
 		delta_ln_ntr_total_shs delta_ln_ntr_total_college_shs {
 		capture scalar drop `s'
@@ -166,7 +241,9 @@ program define load_revenue_params
 		baseline_pfa_revenue baseline_state_revenue                           ///
 		total_agi_2022 agi_total agi_impacted agi_college                     ///
 		agi_college_impacted impacted_agi_share college_agi_share             ///
-		college_impacted_agi_share {
+		college_impacted_agi_share                                            ///
+		actual_oregon_revenue statewide_oregon_revenue                        ///
+		multnomah_agi_share total_oregon_agi_2019 {
 		capture confirm variable `v'
 		if _rc == 0 {
 			scalar `v' = `v'[1]
@@ -177,6 +254,15 @@ program define load_revenue_params
 		}
 	}
 	restore
+
+	** Publish ${actual_oregon_revenue} as a macro global so compute_spec_revenue
+	** picks up the Multnomah-share value when scripts are re-run standalone
+	** (i.e., without re-running 02_revenue_microsim.do). 00_stata_config.do
+	** sets ${statewide_oregon_revenue} but no longer sets actual_oregon_revenue
+	** directly; that value depends on Multnomah's IRS AGI share, which is
+	** computed during the microsim and persisted to revenue_parameters.dta.
+	global actual_oregon_revenue    = scalar(actual_oregon_revenue)
+	global statewide_oregon_revenue = scalar(statewide_oregon_revenue)
 
 	** Derived denominators — the four flavors of Δln(1-τ).
 	** Main (non-college) and subgroup-specific (college proxy) versions,
@@ -202,6 +288,414 @@ program define load_revenue_params
 			" outside [0.20, 0.55]"
 		exit 459
 	}
+end
+
+** ------------------------------------------------------------------
+** load_spec_panel, rclass
+**
+** Loads the prepared SDID analysis panel for one sample_data block and
+** returns the metadata the current inline code reconstructs repeatedly:
+** the corresponding data-window indicator, outcome suffix, and
+** covariate set.
+**
+** This helper intentionally replaces the dataset in memory. The caller
+** owns persistence if it needs to preserve an existing dataset.
+**
+** Required args:
+**     SAMPLEDATA    one of:
+**                   irs_full_16_22
+**                   irs_outstate_full_16_22
+**                   irs_389_16_22
+**                   irs_outstate_389_16_22
+**                   acs_16_22_all
+**                   acs_16_22_col
+**                   acs_16_24_all
+**                   acs_16_24_col
+**                   acs_outstate_16_22_all
+**                   acs_outstate_16_22_col
+**                   acs_outstate_16_24_all
+**                   acs_outstate_16_24_col
+**
+** Optional args:
+**     DATAFILE      defaults to ${data}working/sdid_analysis_data.dta
+**
+** Returns via r():
+**     r(sample_data)   echoed input sample_data
+**     r(data_var)      panel-window indicator used for sample restriction
+**     r(out_type)      outcome suffix used in outcome variable names
+**     r(covariates)    covariate varlist for controls == 1
+** ------------------------------------------------------------------
+capture program drop load_spec_panel
+program define load_spec_panel, rclass
+	syntax, SAMPLEDATA(string) [DATAFILE(string)]
+
+	local data_file "${data}working/sdid_analysis_data.dta"
+	if `"`datafile'"' != "" local data_file `"`datafile'"'
+
+	local data_var ""
+	local out_type ""
+
+	if "`sampledata'" == "irs_full_16_22" {
+		local data_var "irs_sample_1"
+		local out_type "irs"
+	}
+	else if "`sampledata'" == "irs_outstate_full_16_22" {
+		local data_var "irs_sample_1"
+		local out_type "irs_outstate"
+	}
+	else if "`sampledata'" == "irs_389_16_22" {
+		local data_var "irs_sample_2"
+		local out_type "irs"
+	}
+	else if "`sampledata'" == "irs_outstate_389_16_22" {
+		local data_var "irs_sample_2"
+		local out_type "irs_outstate"
+	}
+	else if "`sampledata'" == "acs_16_22_all" {
+		local data_var "acs_period_1"
+		local out_type "acs1"
+	}
+	else if "`sampledata'" == "acs_16_22_col" {
+		local data_var "acs_period_1"
+		local out_type "acs2"
+	}
+	else if "`sampledata'" == "acs_outstate_16_22_all" {
+		local data_var "acs_period_1"
+		local out_type "acs1_outstate"
+	}
+	else if "`sampledata'" == "acs_outstate_16_22_col" {
+		local data_var "acs_period_1"
+		local out_type "acs2_outstate"
+	}
+	else if "`sampledata'" == "acs_16_24_all" {
+		local data_var "acs_period_2"
+		local out_type "acs1"
+	}
+	else if "`sampledata'" == "acs_16_24_col" {
+		local data_var "acs_period_2"
+		local out_type "acs2"
+	}
+	else if "`sampledata'" == "acs_outstate_16_24_all" {
+		local data_var "acs_period_2"
+		local out_type "acs1_outstate"
+	}
+	else if "`sampledata'" == "acs_outstate_16_24_col" {
+		local data_var "acs_period_2"
+		local out_type "acs2_outstate"
+	}
+	else {
+		dis as error "load_spec_panel: unsupported sample_data `sampledata'"
+		exit 198
+	}
+
+	local covariates "population per_capita_income"
+	if "`data_var'" != "irs_sample_1" local covariates "`covariates' prop_tax_rate"
+
+	** Manifest check applies only to the canonical .dta artifact. Bootstrap
+	** callers pass Stata tempfiles (.tmp), where subinstr leaves the path
+	** unchanged and the data file itself would be treated as the manifest,
+	** producing a spurious "variable artifact not found" rc=111.
+	local mfile = subinstr("`data_file'", ".dta", "_manifest.dta", .)
+	if "`mfile'" != "`data_file'" & fileexists("`mfile'") {
+		project_assert_manifest using "`mfile'", artifact("sdid_analysis_data")
+	}
+
+	use "`data_file'", clear
+	capture confirm variable `data_var'
+	if _rc != 0 {
+		dis as error "load_spec_panel: `data_var' not found in `data_file'"
+		exit 111
+	}
+
+	keep if `data_var' == 1
+	sort fips year
+	isid fips year
+
+	return local sample_data "`sampledata'"
+	return local data_var "`data_var'"
+	return local out_type "`out_type'"
+	return local covariates "`covariates'"
+end
+
+** ------------------------------------------------------------------
+** fit_spec_sdid, rclass
+**
+** Fits one SDID specification and optionally extracts event-study
+** point estimates in machine-readable year/tau form.
+**
+** This helper intentionally replaces the dataset in memory by calling
+** load_spec_panel. It does not write to disk or export graphs.
+**
+** Required args:
+**     SAMPLEDATA    sample_data label understood by load_spec_panel
+**     SAMPLE        donor-pool indicator variable (e.g. sample_all)
+**     OUTCOME       outcome variable to estimate
+**     CONTROLS      0 or 1
+**     EXCLUSION     0 or 1 (drop 2020 from the estimation sample)
+**
+** Optional args:
+**     EVENTSTUDY    0 or 1; if 1, attempt sdid_event and return
+**                   year/tau and year/CI matrices
+**     VCE           full vce/reps clause passed to sdid; default matches
+**                   the current production path
+**     REPS          bootstrap/placebo reps for the default VCE path
+**     DATAFILE      alternate sdid_analysis_data.dta path
+**     GRAPHBASE     base path passed through to
+**                   graph graph_export("GRAPHBASE", .pdf)
+**
+** Returns via r():
+**     r(tau), r(se), r(pre_mean), r(n_counties), r(event_ok)
+**     r(sample_data), r(sample), r(outcome), r(covariates)
+**     r(event_taus) when EVENTSTUDY == 1 and extraction succeeds
+**     r(event_res)  four-column matrix: event_year, event_tau,
+**                   event_ci_lo, event_ci_hi
+** ------------------------------------------------------------------
+capture program drop fit_spec_sdid
+program define fit_spec_sdid, rclass
+	syntax, SAMPLEDATA(string) SAMPLE(name) OUTCOME(name) ///
+		CONTROLS(integer) EXCLUSION(integer) ///
+		[EVENTSTUDY(integer 0) VCE(string asis) REPS(integer 100) ///
+		 DATAFILE(string) GRAPHBASE(string)]
+
+	load_spec_panel, sampledata("`sampledata'") datafile(`"`datafile'"')
+
+	local covariates `"`r(covariates)'"'
+	local sample_data `"`r(sample_data)'"'
+
+	capture confirm variable `sample'
+	if _rc != 0 {
+		dis as error "fit_spec_sdid: sample variable `sample' not found"
+		exit 111
+	}
+	capture confirm variable `outcome'
+	if _rc != 0 {
+		dis as error "fit_spec_sdid: outcome variable `outcome' not found"
+		exit 111
+	}
+	capture confirm variable Treated
+	if _rc != 0 {
+		dis as error "fit_spec_sdid: Treated not found in loaded panel"
+		exit 111
+	}
+
+	tempvar in_sample
+	gen byte `in_sample' = `sample' == 1
+	if `exclusion' == 1 replace `in_sample' = 0 if year == 2020
+
+	qui count if multnomah == 1 & `in_sample' == 1
+	if r(N) == 0 {
+		dis as error "fit_spec_sdid: no treated observations remain in sample for `sample_data' / `sample'"
+		exit 2000
+	}
+
+	local covars ""
+	local covars_event ""
+	tempname sdid_est
+	if `controls' == 1 {
+		local covars "covariates(`covariates')"
+		local covars_event "covariates(`covariates')"
+	}
+
+	local vceopt `"`vce'"'
+	if `"`vceopt'"' == "" local vceopt "vce(placebo) reps(`reps')"
+	local graphopt ""
+	if `"`graphbase'"' != "" local graphopt `"graph graph_export("`graphbase'", .pdf)"'
+
+	capture noisily sdid `outcome' fips year Treated ///
+		if `in_sample' == 1, ///
+		`vceopt' ///
+		`graphopt' ///
+		`covars'
+	if _rc != 0 {
+		local failed_rc = _rc
+		dis as error "fit_spec_sdid: sdid failed for `sample_data' / `sample' / `outcome'"
+		exit `failed_rc'
+	}
+	** vce(noinference) leaves sdid without a full posted result, so a bare
+	** `estimates store` raises rc=301 ("last estimates not found"). Capture
+	** the store and gate the corresponding restore/drop on success. The
+	** event-study block reads e(H) directly and does not need the stored
+	** estimates handle.
+	capture qui estimates store `sdid_est'
+	local has_stored_est = (_rc == 0)
+
+	local tmp_tau = e(ATT)
+	local tmp_se = .
+	capture local tmp_se = e(se)
+	qui summ `outcome' if multnomah == 1 & Treated == 0 & `in_sample' == 1
+	local tmp_premean = r(mean)
+	qui count if year == 2021 & `in_sample' == 1
+	local tmp_ncounties = r(N)
+	local event_ok = 0
+
+	if `eventstudy' == 1 {
+		local eventopts "vce(placebo) brep(`reps') placebo(all)"
+		if strpos(lower(`"`vceopt'"'), "noinference") > 0 {
+			** sdid_event's vce() allowlist is {off, placebo, bootstrap} —
+			** it rejects vce(noinference) even though the main `sdid`
+			** command accepts it. vce(off) is sdid_event's equivalent
+			** inference-skipping option. Bootstrap callers derive
+			** uncertainty from the outer rep loop, so the inner solver
+			** never needs an SE pass.
+			local eventopts "vce(off)"
+		}
+
+		capture noisily sdid_event `outcome' fips year Treated ///
+			if `in_sample' == 1, ///
+			`covars_event' ///
+			`eventopts'
+		local event_rc = _rc
+		capture drop ever_treated*
+
+		if `event_rc' == 0 {
+			qui summ year if multnomah == 1 & `in_sample' == 1
+			local max_yr = r(max)
+
+			** sdid_event's e(H) shape depends on the vce() option:
+			**   vce(placebo) placebo(all):
+			**     rows = 1 ATT + N_post + N_pre placebos = 1 + N_treated_obs
+			**     cols = 5 (Estimate, SE, ci_lo, ci_hi, Switchers)
+			**   vce(off) (used by the bootstrap path):
+			**     rows = 1 ATT + N_post
+			**     cols = 3 (Estimate, SE=., Switchers) — no CI columns
+			** Read the matrix's actual shape instead of inferring from the
+			** sample. ci_lo/ci_hi reads are gated on `has_ci' so vce(off)
+			** doesn't trip rc=503 from indexing nonexistent columns.
+			local n_eH_rows = rowsof(e(H))
+			local n_eH_cols = colsof(e(H))
+			local last_col  = min(`n_eH_cols', 5)
+			local has_ci    = (`n_eH_cols' >= 4)
+
+			tempname res event_taus rowmat
+			capture matrix `res' = e(H)[2..`n_eH_rows', 1..`last_col']
+			if _rc == 0 {
+				tempname event_res
+				local posted = 0
+				local nrows = rowsof(`res')
+				forvalues i = 1/`nrows' {
+					local tau_i = `res'[`i', 1]
+					if missing(`tau_i') continue
+					local yr = `max_yr' - `i' + 1
+					if `exclusion' == 1 & `yr' <= 2020 local yr = `yr' - 1
+					local ci_lo_i = .
+					local ci_hi_i = .
+					if `has_ci' {
+						local ci_lo_i = `res'[`i', 3]
+						local ci_hi_i = `res'[`i', 4]
+					}
+					matrix `rowmat' = (`yr', `tau_i')
+					tempname rowfull
+					matrix `rowfull' = (`yr', `tau_i', `ci_lo_i', `ci_hi_i')
+					if `posted' == 0 {
+						matrix `event_taus' = `rowmat'
+						matrix `event_res' = `rowfull'
+						local posted = 1
+					}
+					else {
+						matrix `event_taus' = `event_taus' \ `rowmat'
+						matrix `event_res' = `event_res' \ `rowfull'
+					}
+				}
+				if `posted' == 1 {
+					local event_ok = 1
+				}
+			}
+		}
+	}
+	if `has_stored_est' {
+		capture quietly estimates restore `sdid_est'
+		capture estimates drop `sdid_est'
+	}
+	return scalar tau = `tmp_tau'
+	return scalar se = `tmp_se'
+	return scalar pre_mean = `tmp_premean'
+	return scalar n_counties = `tmp_ncounties'
+	return scalar event_ok = `event_ok'
+	return local sample_data "`sample_data'"
+	return local sample "`sample'"
+	return local outcome "`outcome'"
+	return local covariates "`covariates'"
+	if `event_ok' == 1 {
+		return matrix event_taus = `event_taus'
+		return matrix event_res = `event_res'
+	}
+end
+
+** ------------------------------------------------------------------
+** donor_resample
+**
+** Cluster-bootstrap resample of donor counties. Keeps the treated
+** county fixed, resamples donor county IDs with replacement, and
+** assigns duplicate donor draws unique new IDs so the estimator sees
+** them as distinct units.
+**
+** This helper intentionally replaces the dataset in memory with the
+** resampled panel.
+**
+** Required args:
+**     TREATEDCOUNTY   numeric county identifier to keep fixed
+**
+** Optional args:
+**     IDVAR           panel unit identifier; defaults to fips
+**
+** Returns via r():
+**     r(n_donors)     number of distinct donor counties in the source panel
+**     r(n_draws)      number of donor draws in the resample
+** ------------------------------------------------------------------
+capture program drop donor_resample
+program define donor_resample, rclass
+	syntax, TREATEDCOUNTY(integer) [IDVAR(name)]
+
+	local id_var "`idvar'"
+	if "`id_var'" == "" local id_var "fips"
+
+	capture confirm variable `id_var'
+	if _rc != 0 {
+		dis as error "donor_resample: id variable `id_var' not found"
+		exit 111
+	}
+
+	tempfile source treated donor_pool draws
+	qui save `source', replace
+
+	use `source', clear
+	keep if `id_var' == `treatedcounty'
+	save `treated', replace
+
+	use `source', clear
+	keep if `id_var' != `treatedcounty'
+	levelsof `id_var', local(donors) clean
+	local n_donors : word count `donors'
+	if `n_donors' == 0 {
+		dis as error "donor_resample: no donor counties remain after removing treated county"
+		exit 2000
+	}
+	save `donor_pool', replace
+
+	clear
+	set obs `n_donors'
+	gen int draw_idx = ceil(runiform() * `n_donors')
+	gen long orig_id = .
+	tokenize "`donors'"
+	forvalues i = 1/`n_donors' {
+		qui replace orig_id = real("``i''") if draw_idx == `i'
+	}
+	sort orig_id
+	by orig_id: gen int dup_idx = _n
+	gen long new_id = orig_id * 1000 + dup_idx
+	keep orig_id new_id
+	save `draws', replace
+
+	use `donor_pool', clear
+	rename `id_var' orig_id
+	joinby orig_id using `draws'
+	drop orig_id
+	rename new_id `id_var'
+	append using `treated'
+	sort `id_var' year
+
+	return scalar n_donors = `n_donors'
+	return scalar n_draws = `n_donors'
 end
 
 ** ------------------------------------------------------------------
@@ -263,11 +757,22 @@ program define compute_spec_elasticities, rclass
 	** NOTE: Stata `syntax` option names cannot contain underscores reliably
 	** — they cause the program-call to hang in batch mode. Option names
 	** here are concatenated (premean, datatype, eventtaus, pfastart,
-	** commonend) for that reason. See also elast_hist_plot header note.
+	** commonend) for that reason. Same constraint applies to the
+	** elast_speccurve_plot helper in 02_tables_figures.do.
 	syntax, TAU(real) SE(real) PREMEAN(real) ///
 		MIGRATION(string) DATATYPE(string) ///
 		[EVENTTAUS(name) PFASTART(integer 2021) ///
 		 COMMONEND(integer 2022)]
+
+	** Precondition: the four delta_ln_ntr_total* + share scalars must be
+	** populated. They live in the `scalar` global namespace and are set
+	** by load_revenue_params. Without them, every elasticity below silently
+	** returns missing — a failure mode that looks like a successful run.
+	capture confirm scalar college_agi_share
+	if _rc != 0 {
+		dis as error "compute_spec_elasticities: revenue scalars not loaded — call load_revenue_params first."
+		exit 111
+	}
 
 	** Map to intuitive locals used in the body
 	local pre_mean       `premean'
@@ -447,14 +952,24 @@ end
 ** (outstate == 1) net migration. Other (migration, outstate) combos
 ** return missing.
 **
+** SCOPE NOTE: actual_oregon_revenue is the Multnomah-resident share of
+** statewide Oregon individual income tax (statewide collections × Multnomah
+** AGI share, computed in 02_revenue_microsim.do Section 3). Both
+** baseline_state_revenue and actual_oregon_revenue are therefore
+** Multnomah-resident-only, so the (R_m / dynamic) × actual rescale is an
+** apples-to-apples adjustment within the Multnomah scope. The statewide
+** total is preserved as ${statewide_oregon_revenue} for reference but is
+** not used in this calculation.
+**
 ** Required args:
 **     TAU          SDID coefficient, in pp
 **     MIGRATION    "net" | "in" | "out"
 **     OUTSTATE     0 | 1
 **     DATA_TYPE    (as above)
 **
-** Requires ${actual_pfa_revenue} and ${actual_oregon_revenue} globals
-** set by 00_stata_config.do.
+** Requires ${actual_pfa_revenue} (set by 00_stata_config.do) and
+** ${actual_oregon_revenue} (set by 02_revenue_microsim.do Section 3 once
+** the Multnomah AGI share has been computed from IRS county data).
 **
 ** Returns via r():
 **     r(pfa_loss)     $M implied PFA revenue loss (. if not applicable)

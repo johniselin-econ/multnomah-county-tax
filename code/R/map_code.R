@@ -493,6 +493,64 @@ map2_tax <- ggplot() +
 save_map(map2_tax, filepath2_tax, width = 10, height = 8)
 
 # ============================================================
+# MAP 2-TAX (inset variant) — tax-shaded close-up sized for inset placement
+# in map_combined_tax. Same shading as map2_tax but with the per-figure
+# legend suppressed; the combined figure shows a single horizontal legend
+# below both panels.
+# ============================================================
+map2_tax_inset <- ggplot() +
+  geom_sf(
+    data = cty_tax,
+    aes(fill = rate_label),
+    color = "gray55", linewidth = 0.3
+  ) +
+  geom_sf(data = or_state_reg, fill = NA, color = "gray20", linewidth = 0.7) +
+  geom_sf(data = wa_state_reg, fill = NA, color = "gray20", linewidth = 0.7) +
+  geom_sf(
+    data = multnomah_outline, fill = NA,
+    color = "black", linewidth = 0.7
+  ) +
+  geom_sf_text(
+    data = tax_label_centroids |> dplyr::filter(NAME == "Multnomah"),
+    aes(label = NAME),
+    nudge_x = 10000, nudge_y = -5000,
+    size = 4.5, fontface = "bold"
+  ) +
+  geom_sf_text(
+    data = tax_label_centroids |> dplyr::filter(NAME != "Multnomah"),
+    aes(label = NAME),
+    size = 3.5
+  ) +
+  geom_sf_text(
+    data = sf::st_centroid(metro_poly_reg), aes(label = "METRO"),
+    color = ppb_shade(PPB_SEA, 0.35), size = 3.5, fontface = "bold"
+  ) +
+  scale_fill_manual(
+    values = tax_palette,
+    name   = "Avg. marginal tax rate",
+    drop   = FALSE
+  ) +
+  map_bg_theme(border = TRUE) +
+  coord_sf(expand = FALSE) +
+  theme(legend.position = "none")
+
+# Horizontal-bar legend that lives below the combined figure.
+.legend_plot <- ggplot(data.frame(rate_label = factor(names(tax_palette),
+                                                       levels = names(tax_palette)))) +
+  geom_bar(aes(x = rate_label, fill = rate_label)) +
+  scale_fill_manual(values = tax_palette, name = "Avg. marginal tax rate",
+                    drop = FALSE) +
+  guides(fill = guide_legend(nrow = 1, reverse = FALSE)) +
+  theme_void() +
+  theme(legend.position = "bottom",
+        legend.text = element_text(color = "black", size = 10),
+        legend.title = element_text(color = "black", size = 11),
+        legend.key.width  = grid::unit(1.0, "cm"),
+        legend.key.height = grid::unit(0.4, "cm"))
+
+map2_tax_legend <- cowplot::get_legend(.legend_plot)
+
+# ============================================================
 # COMBINED MAP — Overview with inset close-up
 # ============================================================
 
@@ -556,6 +614,40 @@ map_combined_full <- ggdraw() +
 save_map(map_combined, filepath_combined, width = 16, height = 10)
 save_map(map_combined_minimal, filepath_combined_minimal, width = 16, height = 10)
 save_map(map_combined_full, filepath_combined_full, width = 16, height = 10)
+
+# ============================================================
+# COMBINED TAX MAP — overview + tax-shaded inset + legend below
+# (item 2 of the May 2026 paper revision TODO)
+# ============================================================
+filepath_combined_tax <- file.path(maps_dir, "map_combined_tax.png")
+
+# Reserve a horizontal strip at the bottom for the legend.
+LEG_H <- 0.10
+
+map_combined_tax <- ggdraw() +
+  draw_plot(map1_with_box,
+            x = 0, y = LEG_H,
+            width = INSET_MAIN_W, height = 1 - LEG_H) +
+  draw_plot(map2_tax_inset,
+            x = INSET_X,
+            y = LEG_H + INSET_Y * (1 - LEG_H),
+            width = INSET_W,
+            height = INSET_H * (1 - LEG_H)) +
+  draw_line(
+    x = c(ZOOM_BOX_RIGHT, INSET_X),
+    y = c(LEG_H + ZOOM_BOX_TOP * (1 - LEG_H),
+          LEG_H + (INSET_Y + INSET_H - 0.07) * (1 - LEG_H)),
+    color = PPB_VERMILLION, size = 0.6, linetype = "dashed"
+  ) +
+  draw_line(
+    x = c(ZOOM_BOX_RIGHT, INSET_X),
+    y = c(LEG_H + ZOOM_BOX_BOTTOM * (1 - LEG_H),
+          LEG_H + (INSET_Y + 0.07) * (1 - LEG_H)),
+    color = PPB_VERMILLION, size = 0.6, linetype = "dashed"
+  ) +
+  draw_grob(map2_tax_legend, x = 0, y = 0, width = 1, height = LEG_H)
+
+save_map(map_combined_tax, filepath_combined_tax, width = 16, height = 10)
 
 # ============================================================
 # MAP 3 — Contiguous US counties by in/out sample status + state borders

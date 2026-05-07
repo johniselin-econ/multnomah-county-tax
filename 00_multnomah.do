@@ -40,6 +40,7 @@ capture log close
 clear matrix
 clear all
 set more off
+set linesize 120
 
 ** Load shared project defaults and helper programs
 local cwd = subinstr("`c(pwd)'", "\", "/", .)

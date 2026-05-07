@@ -81,21 +81,37 @@ download_nhgis_demographics <- function(dir_data, api_codes_path, overwrite = FA
   # Read the downloaded data
   nhgis_data <- read_nhgis(dl_path)
 
-  # Expected columns (from codebook)
+  # Expected columns (from codebook). Identifiers and geo names are
+  # informational; the four data columns (and their margin-of-error pairs)
+  # carry the analytical content used downstream by Stata.
   expected_cols <- c("GISJOIN", "YEAR", "STATE", "STATEFP", "STATENH",
                      "COUNTY", "COUNTYFP", "COUNTYNH", "NAME",
                      "AV0AA", "D15AA", "D15AB", "B79AA",
                      "AV0AAM", "B79AAM")
 
-  # Ensure column names match (ipumsr should produce these by default)
+  # Hard-fail on any missing data column. A silent column rename in a future
+  # ipumsr release would silently corrupt downstream Stata processing if the
+  # NA-fill below were applied to a real data column.
+  data_cols <- c("AV0AA", "D15AA", "D15AB", "B79AA")
   actual_cols <- names(nhgis_data)
-  missing <- setdiff(expected_cols, actual_cols)
-  if (length(missing) > 0) {
-    warning("NHGIS extract missing expected columns: ", paste(missing, collapse = ", "),
-            "\n  Available columns: ", paste(actual_cols, collapse = ", "))
+  missing_data <- setdiff(data_cols, actual_cols)
+  if (length(missing_data) > 0) {
+    stop("NHGIS extract missing required data columns: ",
+         paste(missing_data, collapse = ", "), "\n",
+         "  Available columns: ", paste(actual_cols, collapse = ", "), "\n",
+         "  This usually indicates an ipumsr API/version drift. Inspect the\n",
+         "  downloaded file before retrying.", call. = FALSE)
   }
 
-  # Keep only expected columns (in order), adding NAs for any missing
+  missing_other <- setdiff(expected_cols, actual_cols)
+  if (length(missing_other) > 0) {
+    warning("NHGIS extract missing optional columns (will fill with NA): ",
+            paste(missing_other, collapse = ", "))
+  }
+
+  # Keep only expected columns (in order). Identifier / margin-of-error
+  # columns may be NA-filled if absent, but data columns are guaranteed
+  # to be present by the stop() above.
   for (col in expected_cols) {
     if (!col %in% names(nhgis_data)) {
       nhgis_data[[col]] <- NA

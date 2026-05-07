@@ -321,12 +321,16 @@ foreach sample in "acs" "all" {
 			if mover == 1 `sample_cond', 								///
 			absorb(year flow_id) vce(cluster flow_id)
 		estimates store `outcome'_with_covars
+		** Sample-tagged copy for the cross-sample appendix table
+		** (item 21c of the May 2026 revision TODO).
+		estimates store `outcome'_`sample'_with
 
 		** Regression 1b: Without covariates
 		ppmlhdfe `outcome' i.out_multnomah_post i.in_multnomah_post 	///
 			if mover == 1 `sample_cond', 								///
 			absorb(year flow_id) vce(cluster flow_id)
 		estimates store `outcome'_no_covars
+		estimates store `outcome'_`sample'_no
 
 		** Plot both regressions
 		coefplot 	(`outcome'_with_covars, label("With Covariates") 	///
@@ -1283,6 +1287,54 @@ foreach sample in "acs" "all" {
 	} // END OUTCOME LOOP
 
 } // END SAMPLE LOOP (all vs acs)
+
+
+********************************************************************************
+** APPENDIX TABLE: PPML flow regression results (item 21c of May 2026 TODO)
+**
+** Combines the four sample × covars-or-not specifications into one
+** appendix table parallel to the DiD table (tab_did_combined.tex).
+** Uses the sample-tagged estimates stored inside the loop above.
+********************************************************************************
+
+dis ""
+dis "=============================================="
+dis "Appendix Table: PPML flow regression results"
+dis "=============================================="
+
+** Confirm all four AGI estimates exist before exporting (defensive)
+local all_present = 1
+foreach est in agi_all_with agi_all_no agi_acs_with agi_acs_no {
+	capture estimates dir `est'
+	if _rc != 0 local all_present = 0
+}
+
+if `all_present' == 1 {
+	** esttab the four AGI specs into one 4-column table.
+	** Coefficients of interest: 1.out_multnomah_post and 1.in_multnomah_post.
+	esttab agi_all_no agi_all_with agi_acs_no agi_acs_with ///
+		using "${results}flows/tab_flow_regression.tex", replace ///
+		keep(1.out_multnomah_post 1.in_multnomah_post) ///
+		coeflabels(1.out_multnomah_post "Multnomah origin $\times$ Post" ///
+		           1.in_multnomah_post  "Multnomah destination $\times$ Post") ///
+		mtitles("All, no cov." "All, cov." "ACS, no cov." "ACS, cov.") ///
+		b(%9.3f) se(%9.3f) ///
+		star(* 0.10 ** 0.05 *** 0.01) ///
+		stats(N, fmt(%9.0fc) labels("Observations")) ///
+		nonotes booktabs label fragment ///
+		prehead("\begin{tabular}{l*{4}{w{c}{2.5cm}}}" "\toprule") ///
+		postfoot("\bottomrule" "\end{tabular}")
+	dis "Wrote: ${results}flows/tab_flow_regression.tex"
+
+	if "${overleaf}" == "1" {
+		copy "${results}flows/tab_flow_regression.tex" ///
+			"${ol_tab}tab_flow_regression.tex", replace
+		dis "Synced: ${ol_tab}tab_flow_regression.tex"
+	}
+}
+else {
+	dis as error "Skipping flow-regression appendix table: not all 4 AGI estimates are stored."
+}
 
 
 ** Clean up parallel data file

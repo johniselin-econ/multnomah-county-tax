@@ -299,38 +299,92 @@ If TAXSIM is not installed or fails, `02_revenue_microsim.do` automatically fall
 
 ## Usage
 
-The preferred pipeline now runs in three stages: **R downloads, then Stata, then post-Stata R**.
+The pipeline runs in three stages: **R downloads → Stata → post-Stata R**. The split exists because the post-Stata maps depend on `data/working/acs_county_sample.xlsx`, which is produced by Stata.
 
-### Step 1: Run R data downloads
+### TL;DR
 
-From the project root directory:
+```text
+Stage 1 (R)     →  source("00_download_data.R")     # 30 min first run, seconds on cached re-runs
+Stage 2 (Stata) →  do "00_multnomah.do"             # 2–4 hr (full SDID + 100-rep bootstrap)
+Stage 3 (R)     →  source("00_post_stata.R")        # ~1 min — diagrams + maps
+```
+
+All three commands are run from the project root. R commands assume `setwd("path/to/multnomah-county-tax")` first.
+
+### Stage 1 — `00_download_data.R`
+
+Inside `code/R/multnomah_r_common.R::run_multnomah_data_pulls()`, in order:
+
+1. **`api_code.R`** — IPUMS ACS microdata, year by year, into `data/acs/acs_YYYY.csv`. Per-year skip if the CSV already exists.
+2. **`census_age_shares.R`** — Census B01001 (Sex by Age) via `tidycensus`, ACS 2015–2019 5-year, → `data/working/age_shares_county.csv`.
+3. **`download_public_data.R`** — BLS LAUS, DOL childcare, Census county centroids. Each is skipped if its destination file exists.
+4. **`download_nhgis.R`** — NHGIS time-series demographics via the IPUMS NHGIS API → `data/demographic/nhgis0031_csv/`.
+
+Each step is individually idempotent. Set `overwrite_csv <- TRUE` near the top of `multnomah_r_common.R` to force re-downloads. `api_codes.txt` must exist at the project root before this stage runs.
+
+### Stage 2 — `00_multnomah.do` (Stata)
+
+Reads R-produced data plus auto-downloads of IRS / BEA / NYTimes Covid (handled by `01b_download.do`). Runs `01_clean_data.do` (which calls `01a–01h`), then the analysis stages (`02_sdid_analysis`, `02_did_analysis`, `02_flow_analysis`, `02_revenue_microsim`, `02_descriptives`, `02_post_spec`, `02_bootstrap`, `02_bootstrap_tables`, `02_tables_figures`, plus appendices).
+
+Key globals in the panel at the top of `00_multnomah.do`:
+
+- `${run_bootstrap}` (0/1) — toggle the donor-cluster bootstrap stage.
+- `${bootstrap_reps}` — `20` smoke / `100` stress / `500` publication.
+- `${use_parallel}`, `${n_clusters}` — parallel SDID / bootstrap settings.
+- `${overleaf}` — auto-set to 1 if `profile.do` defines `oth_path`.
+
+### Stage 3 — `00_post_stata.R`
+
+Inside `code/R/multnomah_r_common.R::run_multnomah_post_stata()`:
+
+1. **`fig_diagrams.R`** — emits `results/fig_empirical_approach.pdf` (Fig 3) and `results/fig_data_comparison.pdf` (Fig 2). Always runs; needs only the colorblind-safe palette include.
+2. **`map_code.R`** — emits all maps to `results/maps/` including `map_combined.png`, `map2_tax.png` (Fig 1, county-level cumulative tax-rate shading with Metro split), `map_us_pool.png`, and the AGI flow delta maps. Skipped with a warning if `data/working/acs_county_sample.xlsx` is missing.
+
+When `profile.R` defines `oth_path`, all PDFs/PNGs are also copied to the Overleaf `figures/` folder.
+
+### Compatibility wrapper
+
+`00_multnomah.R` runs Stage 1 and Stage 3 back-to-back. It is safe to use but will skip maps gracefully if Stage 2 hasn't yet produced `acs_county_sample.xlsx`. The split workflow above is preferred.
+
+### Common patterns
 
 ```r
-source("00_download_data.R")
+# Re-render Figs 2 + 3 only (no maps)
+setwd("path/to/multnomah-county-tax")
+source(here::here("code", "R", "fig_diagrams.R"))
+
+# Re-render maps only (assumes Stata has run)
+setwd("path/to/multnomah-county-tax")
+source(here::here("code", "R", "map_code.R"))
+
+# Force redownload of one ACS year
+.sourced_by_main <- TRUE
+source(here::here("code", "R", "multnomah_r_common.R"))
+cfg <- multnomah_r_init("force-2024")
+source(file.path(cfg$dir_code_r, "api_code.R"))
+download_ipums_acs(cfg$project_root, cfg$dir_data_acs, cfg$api_codes_path,
+                   start_year = 2024, end_year = 2024, overwrite_csv = TRUE)
 ```
 
-This downloads all external data managed by the R side of the pipeline: ACS microdata, Census age shares, BLS, DOL, county centroids, and NHGIS.
+### Health check
 
-### Step 2: Run Stata pipeline
-
-```stata
-cd "path/to/multnomah-county-tax"
-do "00_multnomah.do"
-```
-
-This cleans all data sources and runs the full analysis (SDID, DiD, flows, revenue, etc.). All output directories (`results/`, subdirectories) are created automatically.
-
-### Step 3: Run post-Stata R outputs
-
-After Stata creates the working data, run the post-Stata R script to generate maps and other R outputs that depend on cleaned Stata data:
+Verify the data inputs and Stage-2 hand-off file are present before re-rendering figures:
 
 ```r
-source("00_post_stata.R")
+files_ok <- c(
+  "api_codes.txt",
+  "data/acs/acs_2024.csv",
+  "data/working/age_shares_county.csv",
+  "data/demographic/bls/la.data.64.County",
+  "data/demographic/dol/NDCP2022.xlsx",
+  "data/demographic/PopCenterCounty_US.csv",
+  "data/demographic/nhgis0031_csv/nhgis0031_ts_nominal_county.csv",
+  "data/working/acs_county_sample.xlsx"
+)
+for (f in files_ok) cat(sprintf("  %-65s %s\n", f, ifelse(file.exists(f), "ok", "** MISSING **")))
 ```
 
-### Compatibility option
-
-`00_multnomah.R` still exists as a wrapper that runs both R stages in sequence. It remains safe to use, but the split scripts above are the recommended workflow.
+All eight should read `ok`. If any are missing, identify which stage produces them (see "Stage" sections above) and re-run that stage.
 
 ## Citation
 

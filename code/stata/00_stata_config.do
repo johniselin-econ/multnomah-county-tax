@@ -33,6 +33,7 @@ if "${date}" == ""    global date "`: di %tdCY-N-D daily("$S_DATE", "DMY")'"
 
 ** Shared defaults for reproducibility and artifact signatures
 if "${master_seed}" == ""            global master_seed = 56403
+if "${bootstrap_seed_offset}" == ""  global bootstrap_seed_offset = 60000
 if "${artifact_schema_version}" == "" global artifact_schema_version "2026-03-15"
 if "${preferred_spec_version}" == ""  global preferred_spec_version "2026-03-main"
 

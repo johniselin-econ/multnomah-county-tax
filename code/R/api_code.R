@@ -1,6 +1,20 @@
 # =============================================================================
 # Author: John Iselin (refactor)
 # Purpose: Download ACS microdata via IPUMS (year-by-year) and write per-year CSVs
+#
+# Maintenance notes:
+# - Sample IDs follow IPUMS USA convention: `usYYYYa` (e.g., `us2024a`).
+#   IPUMS typically releases the new ACS 1-year sample in the early winter
+#   following the survey year (e.g., `us2024a` ≈ Dec 2025 / Jan 2026).
+#   Bumping `end_year` past the latest available sample triggers a hard
+#   error from `submit_extract()`. Verify availability at:
+#   https://usa.ipums.org/usa-action/samples
+#
+# - The variable list defined below is locked to what the analysis needs.
+#   New IPUMS variables introduced in later releases are not picked up
+#   automatically. To use a new variable, add a `var_spec(...)` line and a
+#   string entry to the `variables = list(...)` block below, then
+#   re-run with `overwrite_csv = TRUE` for the affected years.
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -79,23 +93,40 @@ download_ipums_acs <- function(project_root,
       proptx99   <- var_spec("PROPTX99", data_quality_flags = TRUE)
       
       
-      acs_data <- define_extract_micro(
+      sample_id <- paste0("us", y, "a")
+      extract_def <- define_extract_micro(
         collection  = "usa",
         description = extract_name,
-        samples     = paste0("us", y, "a"),
+        samples     = sample_id,
         variables   = list(
           "YEAR", "SAMPLE", "SERIAL", "HHWT", "PERWT", "CLUSTER", "CPI99",
           "STATEFIP", "COUNTYFIP",
           "PERNUM", "RELATED",
-          "NCHILD", "YNGCH", "Nchlt5",  "SPLOC", 
+          "NCHILD", "YNGCH", "Nchlt5",  "SPLOC",
           "AGE", "SEX", "RACE", "HISPAN", "MARST", "CITIZEN", "SCHOOL", "EDUCD",
           inctot, ftotinc, incwage, incearn, incbus00, incinvst, incwelfr, incsupp, incother,
           gq, workedyr, empstat, empstatd,
-          migrate1, migrate1d, migplac1, migcounty1, pwcounty, pwstate2, 
+          migrate1, migrate1d, migplac1, migcounty1, pwcounty, pwstate2,
           rent, valueh, proptx99
         )
-      ) |>
-        submit_extract() |>
+      )
+
+      submitted <- tryCatch(
+        submit_extract(extract_def),
+        error = function(e) {
+          msg <- conditionMessage(e)
+          if (grepl("sample", msg, ignore.case = TRUE)) {
+            stop("IPUMS rejected sample '", sample_id, "' — likely the ", y,
+                 " ACS 1-year sample is not yet released.\n",
+                 "  Check availability at https://usa.ipums.org/usa-action/samples\n",
+                 "  and lower `end_year` until the sample lands.\n",
+                 "  Underlying error: ", msg, call. = FALSE)
+          }
+          stop(e)
+        }
+      )
+
+      acs_data <- submitted |>
         wait_for_extract() |>
         download_extract(download_dir = dir_data_acs, overwrite = overwrite_extract_files) |>
         read_ipums_micro() |>
