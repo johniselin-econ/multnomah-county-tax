@@ -365,7 +365,7 @@ file write `fh' `"\setlength{\tabcolsep}{4pt}"' _n
 file write `fh' `"\begin{tabular}{l r r r r r}"' _n
 file write `fh' `"\toprule"' _n
 file write `fh' `" & N flows & Median n1 & Mean n1 & Mean n2 & Mean AGI \\"' _n
-file write `fh' `" & & (returns) & (returns) & (exemptions) & (\$1{,}000s) \\"' _n
+file write `fh' `" & & (returns) & (returns) & (exemptions) & (USD thousands) \\"' _n
 file write `fh' `"\midrule"' _n
 
 local row_labels `""Multnomah-touching flows" "Non-Multnomah flows""'
