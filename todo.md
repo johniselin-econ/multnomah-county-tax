@@ -90,6 +90,16 @@ Plan file: `quality_reports/plans/2026-05-06_paper-revision-todos.md`
   * [PENDING] (e) Specification curves for N1 and N2 (Net, Out, In; out-of-state and county-level). Assets in Overleaf.
   * [PENDING] (f) Influence figures from `results/sdid/influence` for AGI net/in/out.
 
+* [PENDING — Phase 4 verification] *(Item 22)* Audit: every appendix figure has at least one `\ref` from main text or appendix prose (not just its own `\figurenotes`).
+  - Audit run 2026-05-07 against `Conway_Iselin_Rork_2026.tex`. Currently orphaned (no main-text reference):
+    - A3 `fig:speccurves_n1`, A4 `fig:speccurves_n1_outstate`, A5 `fig:speccurves_n2`, A6 `fig:speccurves_n2_outstate` → resolved by Item 21(e).
+    - A7 `fig:sdid_influence_agi` (only cited inside A8's figurenote), A8 `fig:sdid_influence_agi_outstate` → resolved by Item 21(f).
+    - A15 `fig:condmean_educ_age` → resolved by Item 21(d).
+    - A16 `fig:strip_mult` → resolved by Item 21(a).
+    - C4 `fig:dq_acs_timeseries`, C5 `fig:dq_acs_dist` → **not on existing TODO**; both are introduced in Section C "ACS Cross-Validation" (line 1192) but the prose only mentions them generically. Needs a `\ref` per figure.
+  - Re-run after Phase 3 tex pass to confirm zero orphans.
+  - Also re-check after each new appendix figure is added going forward.
+
 ---
 
 # Workstream 2: Bootstrap implementation
