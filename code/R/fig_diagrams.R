@@ -76,12 +76,16 @@ open_pdf <- function(file, width, height) {
 # ==========================================================================
 draw_empirical_approach <- function(out_file, with_title = FALSE) {
 
-  open_pdf(out_file, width = 10, height = 13)
+  # Crop ~28 units of empty space below the Step 3 box (yscale lower bound
+  # raised from 0 to 28) and shorten the PDF accordingly so the LaTeX figure
+  # note doesn't get pushed down. Net effect on box-in-inches: roughly +6%
+  # taller (PDF height 13->11 vs yscale span 155->124).
+  open_pdf(out_file, width = 10, height = 11)
   grid.newpage()
 
   pushViewport(viewport(
     x = 0.5, y = 0.5, width = 0.94, height = 0.96,
-    xscale = c(0, 130), yscale = c(0, 155)
+    xscale = c(0, 130), yscale = c(28, 152)
   ))
 
   # Step 1 colors (turquoise family)
@@ -132,11 +136,11 @@ draw_empirical_approach <- function(out_file, with_title = FALSE) {
   ar(48, 119, 42, 115.5)
   ar(82, 119, 88, 115.5)
 
-  # --- OUTPUT BOXES ---
-  bx(42, 112, 28, 7, NA, ob_bdr, lwd = 1)
+  # --- OUTPUT BOXES (widened + slightly taller so labels breathe) ---
+  bx(42, 112, 32, 8.5, NA, ob_bdr, lwd = 1)
   tx(42, 112, "Specification Curves", sz = 12, face = "bold", col = ob_txt)
 
-  bx(88, 112, 28, 7, NA, ob_bdr, lwd = 1)
+  bx(88, 112, 32, 8.5, NA, ob_bdr, lwd = 1)
   tx(88, 112, "Event Studies", sz = 12, face = "bold", col = ob_txt)
 
   # --- DASHED LINE 1 ---
@@ -166,26 +170,26 @@ draw_empirical_approach <- function(out_file, with_title = FALSE) {
   ar(84, 88, 81, 83.5)
   ar(110, 88, 113, 83.5)
 
-  # --- IRS SUB-BOXES ---
-  bx(17, 76, 26, 15, NA, irs_sb)
+  # --- IRS SUB-BOXES (widened to 30, taller to 17) ---
+  bx(17, 76, 30, 17, NA, irs_sb)
   tx(17, 80.5, "Descriptive Maps", sz = 12, face = "bold", col = irs_txt)
   tx(17, 77.5, "Change in AGI flows", sz = 10, col = desc_col)
   tx(17, 75.5, "to/from Multnomah", sz = 10, col = desc_col)
 
-  bx(49, 76, 26, 15, NA, irs_sb)
+  bx(49, 76, 30, 17, NA, irs_sb)
   tx(49, 81, "PPML Flow Models", sz = 12, face = "bold", col = irs_txt)
   tx(49, 78.5, "Mijt with flow FE,", sz = 10, col = desc_col)
   tx(49, 76.5, "time\u2013varying controls", sz = 10, col = desc_col)
   tx(49, 74.5, "(Equation 3)", sz = 10, col = desc_col)
 
-  # --- ACS SUB-BOXES ---
-  bx(81, 76, 26, 15, NA, acs_sb)
+  # --- ACS SUB-BOXES (widened to 30, taller to 17) ---
+  bx(81, 76, 30, 17, NA, acs_sb)
   tx(81, 80.5, "Conditional Means", sz = 12, face = "bold", col = acs_txt)
   tx(81, 78.5, "Migration rates by", sz = 10, col = desc_col)
   tx(81, 76.5, "income, education,", sz = 10, col = desc_col)
   tx(81, 74.5, "age, # of children (Eq. 4)", sz = 10, col = desc_col)
 
-  bx(113, 76, 26, 15, NA, acs_sb)
+  bx(113, 76, 30, 17, NA, acs_sb)
   tx(113, 81, "DiD Models", sz = 12, face = "bold", col = acs_txt)
   tx(113, 78.5, "College educ. as proxy", sz = 10, col = desc_col)
   tx(113, 76.5, "for treatment (Eq. 5)", sz = 10, col = desc_col)
@@ -196,18 +200,18 @@ draw_empirical_approach <- function(out_file, with_title = FALSE) {
   ar(107, 68.5, 101, 65)
   ar(119, 68.5, 123, 65)
 
-  # --- PPML SUB-SUB-BOXES ---
-  bx(39, 61.5, 20, 7, NA, irs_ob, lwd = 1)
+  # --- PPML SUB-SUB-BOXES (widened + slightly taller) ---
+  bx(39, 61.5, 22, 8.5, NA, irs_ob, lwd = 1)
   tx(39, 61.5, "Event Studies", sz = 11, face = "bold", col = ob_txt)
 
-  bx(59, 61.5, 20, 7, NA, irs_ob, lwd = 1)
+  bx(59, 61.5, 22, 8.5, NA, irs_ob, lwd = 1)
   tx(59, 61.5, "Placebo Tests", sz = 11, face = "bold", col = ob_txt)
 
-  # --- DiD SUB-SUB-BOXES ---
-  bx(101, 61.5, 22, 7, NA, acs_ob, lwd = 1)
+  # --- DiD SUB-SUB-BOXES (widened + slightly taller) ---
+  bx(101, 61.5, 24, 8.5, NA, acs_ob, lwd = 1)
   tx(101, 61.5, "Out\u2013Migration", sz = 11, face = "bold", col = ob_txt)
 
-  bx(123, 61.5, 18, 7, NA, acs_ob, lwd = 1)
+  bx(123, 61.5, 20, 8.5, NA, acs_ob, lwd = 1)
   tx(123, 61.5, "In\u2013Migration", sz = 11, face = "bold", col = ob_txt)
 
   # --- DASHED LINE 2 + converging arrows to Step 3 ---

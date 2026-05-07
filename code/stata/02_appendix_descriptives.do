@@ -112,21 +112,33 @@ local cond_sample_urban75_covid  "sample_urban75_covid == 1"
 local cond_sample_demog          "sample_demog == 1"
 local cond_sample_stringency     "sample_stringency == 1"
 
-** Build SDID descriptive matrices: 6 rows × 7 cols (N + 6 rate means)
-tempname M_SDID_IRS M_SDID_ACS
-matrix `M_SDID_IRS' = J(6, 7, .)
-matrix `M_SDID_ACS' = J(6, 7, .)
-matrix colnames `M_SDID_IRS' = N out_cty in_cty net_cty out_st in_st net_st
-matrix colnames `M_SDID_ACS' = N out_cty in_cty net_cty out_st in_st net_st
+** Build three SDID descriptive matrices: 6 rows × 7 cols (N + 6 rate means).
+** Three panels: IRS, ACS all-25+ (acs1), ACS College (acs2). Each panel's
+** N-counties column counts only counties observable in that data source
+** (mirrors the Table 1 fix: ACS only identifies ~389 counties, so the
+** ACS-panel donor counts are far smaller than the IRS-panel counts).
+tempname M_SDID_IRS M_SDID_ACS1 M_SDID_ACS2
+foreach m in `M_SDID_IRS' `M_SDID_ACS1' `M_SDID_ACS2' {
+    matrix `m' = J(6, 7, .)
+    matrix colnames `m' = N out_cty in_cty net_cty out_st in_st net_st
+    matrix rownames `m' = mult all urban95 urban_covid demog stringency
+}
 
-** N counties from a single year snapshot
+** Per-panel observability flags from a single year snapshot.
 preserve
 keep if year == 2019
+gen byte has_irs  = !missing(agi_out_rate_irs)
+gen byte has_acs1 = !missing(agi_out_rate_acs1)
+gen byte has_acs2 = !missing(agi_out_rate_acs2)
+
 local row = 1
 foreach pool of local pool_list {
-    qui count if `cond_`pool''
+    qui count if `cond_`pool'' & has_irs == 1
     matrix `M_SDID_IRS'[`row', 1] = r(N)
-    matrix `M_SDID_ACS'[`row', 1] = r(N)
+    qui count if `cond_`pool'' & has_acs1 == 1
+    matrix `M_SDID_ACS1'[`row', 1] = r(N)
+    qui count if `cond_`pool'' & has_acs2 == 1
+    matrix `M_SDID_ACS2'[`row', 1] = r(N)
     local ++row
 }
 restore
@@ -149,26 +161,32 @@ foreach pool of local pool_list {
 }
 restore
 
-** ---- ACS College panel: time-pooled means 2018-2024 (excluding 2020) ----
-preserve
-keep if inrange(year, 2018, 2024) & year != 2020
-local row = 1
-foreach pool of local pool_list {
-    local i = 0
-    foreach scope in "acs2" "acs2_outstate" {
-        foreach dir in "out" "in" "net" {
-            local ++i
-            local col = `i' + 1
-            qui summ agi_`dir'_rate_`scope' if `cond_`pool''
-            matrix `M_SDID_ACS'[`row', `col'] = r(mean)
+** ---- ACS panels (all-25+ and college): time-pooled means 2018-2024 (excl. 2020) ----
+foreach acs_pair in "M_SDID_ACS1 acs1" "M_SDID_ACS2 acs2" {
+    local matname : word 1 of `acs_pair'
+    local src     : word 2 of `acs_pair'
+
+    preserve
+    keep if inrange(year, 2018, 2024) & year != 2020
+    local row = 1
+    foreach pool of local pool_list {
+        local i = 0
+        foreach scope in "`src'" "`src'_outstate" {
+            foreach dir in "out" "in" "net" {
+                local ++i
+                local col = `i' + 1
+                qui summ agi_`dir'_rate_`scope' if `cond_`pool''
+                matrix ``matname''[`row', `col'] = r(mean)
+            }
         }
+        local ++row
     }
-    local ++row
+    restore
 }
-restore
 
 mat list `M_SDID_IRS'
-mat list `M_SDID_ACS'
+mat list `M_SDID_ACS1'
+mat list `M_SDID_ACS2'
 
 ** Write tex
 local _dests `""${results}tables/tableA1_sdid.tex""'
@@ -197,27 +215,35 @@ file write `fh' `"\cmidrule(lr){3-5} \cmidrule(lr){6-8}"' _n
 file write `fh' `" & counties & Out & In & Net & Out & In & Net \\"' _n
 file write `fh' `"\midrule"' _n
 
-** Helper: write one panel's 6 rows
-foreach panel in IRS ACS {
-    if "`panel'" == "IRS" {
-        file write `fh' `"\multicolumn{8}{l}{\textit{Panel A: IRS (2018-2022, excl.\ 2020)}} \\"' _n
-        local matname "`M_SDID_IRS'"
-    }
-    else {
+** Three-panel write: A=IRS, B=ACS all-25+, C=ACS college.
+** matname_<letter> stores the local-NAME (not resolved tempname) so that
+** double-dereference ``matname'' works at use time.
+local matname_A "M_SDID_IRS"
+local matname_B "M_SDID_ACS1"
+local matname_C "M_SDID_ACS2"
+local hdr_A "Panel A: IRS (2018-2022, excl.\ 2020)"
+local hdr_B "Panel B: ACS, all 25+ (2018-2024, excl.\ 2020)"
+local hdr_C "Panel C: ACS, college-educated (2018-2024, excl.\ 2020)"
+
+foreach letter in A B C {
+    local matname  "`matname_`letter''"
+    local panel_hdr "`hdr_`letter''"
+
+    if "`letter'" != "A" {
         file write `fh' `"\midrule"' _n
         file write `fh' `"\addlinespace[0.4em]"' _n
-        file write `fh' `"\multicolumn{8}{l}{\textit{Panel B: ACS College (2018-2024, excl.\ 2020)}} \\"' _n
-        local matname "`M_SDID_ACS'"
     }
+    file write `fh' `"\multicolumn{8}{l}{\textit{`panel_hdr'}} \\"' _n
     file write `fh' `"\addlinespace"' _n
+
     forvalues r = 1/6 {
         local pool : word `r' of `pool_list'
         local lab  "`pool_label_`pool''"
-        local nC : di %12.0fc `matname'[`r', 1]
+        local nC : di %12.0fc ``matname''[`r', 1]
         local nC = strtrim("`nC'")
         local cells ""
         forvalues c = 2/7 {
-            local v : di %5.2f `matname'[`r', `c']
+            local v : di %5.2f ``matname''[`r', `c']
             local v = strtrim("`v'")
             local cells "`cells' & `v'"
         }
@@ -231,7 +257,8 @@ file write `fh' `"\end{tabular}"' _n
 file write `fh' `"\begin{tablenotes}[flushleft]"' _n
 file write `fh' `"\small"' _n
 file write `fh' `"\item \textit{Notes:} Time-pooled means of AGI migration rates (\% of base population) within each comparison group. Each rate is averaged over the in-sample years (2020 excluded). County-level migration counts moves to / from any other county; out-of-state migration restricts to moves crossing the Oregon state line. Means are simple county-level means (each county weighted equally), matching the SDID donor-pool construction."' _n
-file write `fh' `"\item Source: IRS SOI county-to-county migration flows (Panel~A); ACS microdata, college-educated subsample (Panel~B). See Appendix~B for donor-pool construction."' _n
+file write `fh' `"\item \textit{N counties.} Counts reflect each panel's observable universe at year~2019: IRS covers nearly all U.S.\ counties, while the public-use ACS only identifies about 389 counties of residence."' _n
+file write `fh' `"\item Source: IRS SOI county-to-county migration flows (Panel~A); ACS microdata, all 25+ subsample (Panel~B); ACS microdata, college-educated subsample (Panel~C). See Appendix~B for donor-pool construction."' _n
 file write `fh' `"\end{tablenotes}"' _n
 file write `fh' `"\end{threeparttable}"' _n
 file write `fh' `"\end{table}"' _n
