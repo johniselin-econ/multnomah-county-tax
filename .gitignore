@@ -30,6 +30,7 @@ drafts/
 
 # Scratch / misc
 other/
+sandbox/
 
 # Top-level R pipeline (work in progress, not yet ready for tracking)
 /R/

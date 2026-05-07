@@ -1,18 +1,102 @@
 # TODO - Multnomah County Tax
 
-Current working list. This file now reflects the post-refactor Stata pipeline
-that is currently in the repo:
+Two active workstreams:
 
-- `02_revenue_microsim.do`
-- `02_spec_engine.do`
-- `02_post_spec.do`
-- `02_tables_figures.do`
-
-The old `02_elasticities.do` review notes were useful during the refactor, but
-they are no longer a reliable implementation guide and have been superseded by
-the items below.
+1. **Paper revision** — Phase 3 tex pass + remaining asset/code items.
+2. **Bootstrap implementation** — V3/V4 reps and CI-rendering polish.
 
 ---
+
+# Workstream 1: Paper revision
+
+Original instructions: identify code vs tex changes, work through code changes
+first, then make the tex changes in a single pass. For each change consider
+references elsewhere in the text and the code-to-Overleaf pipeline.
+
+Plan file: `quality_reports/plans/2026-05-06_paper-revision-todos.md`
+
+## Status (last updated 2026-05-07)
+
+- Code-side: ALL 12 items DONE (13, 14, 15, 9, 10, 16, 3, 21c, 2, 4, 8, 11).
+- Tex-side: Phase 3 tex edits still pending — collected to a single edit pass.
+- Next: Phase 3 single tex pass on `updated.tex` covering items 1, 5, 6, 7,
+  12, 17, 18, 19, 20, 21a, 21b, 21d, 21e, 21f. Then Phase 4: verify + Overleaf
+  compile.
+
+## Items
+
+* [DONE — Phase 3 tex pass] Drop the equations from the SDID text (4.1) — those are DID equations, not SDID equations.
+
+* [DONE — code in `code/R/map_code.R`, 2026-05-07] *(Item 2)* Figure 1: OR/WA area with a Portland cutout that includes the Average Marginal Tax rate shading, with the legend below the full figure.
+  → New `map_combined_tax.png` produced and synced to Overleaf. Built from `map1_with_box` overview + new `map2_tax_inset` (tax-shaded close-up, internal legend suppressed) + horizontal tax-rate legend strip below. Phase 3 tex pass switches updated.tex Fig 1 from `map2_tax.png` to `map_combined_tax.png`.
+
+* [DONE — `code/R/fig_diagrams.R`, 2026-05-07] *(Item 3)* Figures 2 and 3: bigger text, no colored boxes; Figure 3 drop trailing "Outcome variables", "Key Controls", "Donor Pool Restrictions".
+  → Bumped `tx()` font sizes by ~2 points; replaced colored fills with `NA`; deleted bottom-info section in `draw_empirical_approach`. Re-rendered and synced to Overleaf.
+
+* [DONE — `fig_diagrams.R` and `02_tables_figures.do`, 2026-05-07] *(Item 4)* All figures: produce versions with and without titles/subtitles/notes; paper uses bare versions.
+  → R-side conceptual diagrams now produce two variants: `fig_*.pdf` (paper) and `fig_*_titled.pdf` (slides). Stata-side `${clean_figs}` global toggle (default 0) wired through both preferred-overlay event-study blocks. Maps were already title-free. Spec curves keep minor titles for now.
+
+* [PENDING — Phase 3 tex pass] *(Item 5)* Figure 6: use the OR/WA versions in main, West Coast in appendix. Just an `\includegraphics` swap; assets exist.
+
+* [PENDING — Phase 3 tex pass] *(Item 6)* Figure 7: stack the two event-studies vertically rather than side-by-side. Subfigure layout change.
+
+* [PENDING — Phase 3 tex pass] *(Item 7)* Figure 10: use newly-created specification curves. Switch `\includegraphics` from `fig_revenue_dist_*.pdf` to `fig_speccurve_revenue_*.pdf` (assets in Overleaf).
+
+* [DONE — `02_descriptives_supp.do`, 2026-05-07] *(Item 8)* Table 1: drop Panel B; expand Panel A by replicating the structure for ACS as a new Panel B; add a counties column; include all five samples.
+  → New `table1_combined.tex`: 2 panels (IRS + ACS College) × 6 rows × 9 cols. IRS uses 2018-19 vs 2021-22; ACS uses 2018-19 vs 2021-24. Synced to Overleaf.
+
+* [DONE — `02_tables_figures.do`, 2026-05-07] *(Item 9)* Elasticity figures: clearer y-axis labels (e.g. "Migration Stock Elasticity"); define mathematically in the note.
+  → Y-axis labels updated to "Migration Semi-Elasticity (β)", "Migration Stock Elasticity", "Migration Flow Elasticity" with PFA+SHS variants. Math definitions go in figure notes during Phase 3 tex pass.
+
+* [DONE — `02_tables_figures.do`, 2026-05-07] *(Item 10)* Add Figure A3 counterparts for flow elasticities and semi-elasticities.
+  → 4 new flow-elasticity distribution figures: `fig_speccurve_elast_flow_in.pdf`, `_out`, +SHS variants. Synced to Overleaf.
+
+* [DONE — new `02_appendix_descriptives.do`, 2026-05-07] *(Item 11)* Re-think Table A1: one table per method (SDID, IRS county-to-county flow, ACS individual data).
+  → Three method-specific tables synced to Overleaf:
+    - `tableA1_sdid.tex`: 2 panels × 6 rows × 7 cols, time-pooled means by donor pool.
+    - `tableA1_irs_flow.tex`: 2 panels (All / ACS-restricted) × 2 rows × 5 cols. Median n1 replaces "share with 0 movers" (IRS suppresses low-count flows).
+    - `tableA1_acs.tex`: 2 panels (out / in samples) × 2 rows × 5 cols.
+  → Old `tableA1_variables.tex` remains on disk; Phase 3 tex pass swaps `\input` lines to point at the three new files.
+
+* [PENDING — Phase 3 tex pass] *(Item 12)* Drop Table A2.
+
+* [DONE — `02_spec_engine.do`, 2026-05-06] *(Item 13)* Check extraneous quotation marks in elasticity measures.
+  → Dropped `string asis` from `cap()` and `cols()` in `elast_tex_open`. Tables now have clean `\caption{...}` and `\begin{tabular}{...}`.
+
+* [DONE code-side; PENDING tex pass for Metro-tax appendix counterpart] *(Item 14)* Table 2: footnote text after "each post year" was garbled; ensure last three columns are equally spaced and centered. Confirm whether the ATR used in elasticities includes the Metro tax — if not, add appendix table including Metro tax.
+  → Math fix: rephrased to avoid `$h$` / `$H$` / `$T$` / `$s_\text{...}` patterns Stata's macro engine eats; used `char(96)+char(96)` for `` `` ``. Last 3 cols already centered with `ccc`.
+  → ATR + Metro tax: SHS variant `tbl_elasticities_shs.tex` already exists; will be included as appendix counterpart in Phase 3 tex pass.
+
+* [DONE — `02_tables_figures.do`, 2026-05-07] *(Item 15)* Table A3: `\footnotesize` above title; replace flow elasticities with stock elasticities.
+  → Stock-elasticity column replaces flow column in `tbl_elasticities_inout.tex` (PFA + SHS). Header changed to "Stock ε". Notes updated. `\footnotesize` placement uses `char(92)`.
+
+* [DONE — `02_tables_figures.do`, 2026-05-07] *(Item 16)* Add appendix table with coefficients and SEs from preferred SDID estimates.
+  → New `results/sdid/tab_sdid_preferred.tex` (synced to Overleaf). 4 specs × 3 directions with τ̂, SE, N counties.
+
+* [PENDING — Phase 3 tex pass] *(Item 17)* Add Appendix B section on the conditional means regression model — data, controls, equations. Pull from main.tex as needed.
+
+* [PENDING — Phase 3 tex pass] *(Item 18)* Appendix B3: include relevant SDID equations, pulling from main.tex as needed.
+
+* [PENDING — Phase 3 tex pass] *(Item 19)* Appendix B6: add a description of the bootstrap procedure for standard errors.
+
+* [PENDING — Phase 3 tex pass + asset copies] *(Item 20)* Add Appendix C — IRS Migration Data Quality appendix from main.tex. Review and include figures from `results/appx_irs_data` as needed.
+
+* [PARTIAL — code in `02_flow_analysis.do` is staged; some Phase 3 tex] *(Item 21)*
+  * [PENDING] (a) `fig_strip_agi_mult.png` (and matching n1, n2) → Appendix referencing overall migration rate in Multnomah for context.
+  * [PENDING] (b) DiD results table (use `results/did/tab_did_combined.tex`).
+  * [DONE code-side; AUTO-GENERATES on next 02_flow_analysis.do run] (c) Flow results table parallel to DiD table.
+    → Sample-tagged `estimates store` calls added inside the sample loop. End-of-script esttab block produces `results/flows/tab_flow_regression.tex` + auto-syncs to Overleaf when `${overleaf}=1`. Triggering requires re-running the full PPML pipeline (~30 min).
+  * [PENDING] (d) Conditional mean figures for education and age (from `results/individual`).
+  * [PENDING] (e) Specification curves for N1 and N2 (Net, Out, In; out-of-state and county-level). Assets in Overleaf.
+  * [PENDING] (f) Influence figures from `results/sdid/influence` for AGI net/in/out.
+
+---
+
+# Workstream 2: Bootstrap implementation
+
+Reflects the post-refactor Stata pipeline currently in the repo:
+`02_revenue_microsim.do`, `02_spec_engine.do`, `02_post_spec.do`, `02_tables_figures.do`.
+The old `02_elasticities.do` review notes were superseded by the items below.
 
 ## Section A - Active pipeline items
 
