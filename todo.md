@@ -170,7 +170,7 @@ The old `02_elasticities.do` review notes were superseded by the items below.
     on 100% of rows because `vce(placebo)` runs random donor relabelings
     without per-spec seed reset — that divergence is RNG noise inherent to
     the existing code path, not a rewire bug. See
-    `quality_reports/plans/2026-04-26_sdid-rewire-v1-verification.md`.
+    `quality_reports/plans/done/2026-04-26_sdid-rewire-v1-verification.md`.
 
 ### B3. Create `02_bootstrap.do`
 
