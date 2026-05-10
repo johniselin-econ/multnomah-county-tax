@@ -785,7 +785,7 @@ esttab did_out did_out_state did_in_west did_in_48 						///
 			"\shortstack{In-migration\\(West Coast)}" 					///
 			"\shortstack{In-migration\\(Lower 48 + DC)}")				///
 	prehead("\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}" 				///
-			"\begin{tabular}{l*{4}{w{c}{3cm}}}" 						///
+			"\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l*{4}{c}@{}}" 						///
 			"\hline\hline")												///
 	posthead("\hline" 													///
 			 "\multicolumn{5}{l}{\textit{Panel A: College Degree as Treatment Proxy}}\\[0.3em]") ///
@@ -829,7 +829,7 @@ esttab did_age_out did_age_out_state did_age_in_west did_age_in_48 		///
 	postfoot("\hline\hline" 											///
 			 "\multicolumn{5}{l}{\footnotesize Standard errors in parentheses}\\" ///
 			 "\multicolumn{5}{l}{\footnotesize \sym{*} \(p<0.10\), \sym{**} \(p<0.05\), \sym{***} \(p<0.01\)}\\" ///
-			 "\end{tabular}")
+			 "\end{tabular*}")
 
 if ${overleaf} == 1 {
 
@@ -847,7 +847,7 @@ if ${overleaf} == 1 {
 				"\shortstack{In-migration\\(West Coast)}" 					///
 				"\shortstack{In-migration\\(Lower 48 + DC)}")				///
 		prehead("\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}" 				///
-				"\begin{tabular}{l*{4}{w{c}{3cm}}}" 						///
+				"\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l*{4}{c}@{}}" 						///
 				"\hline\hline")												///
 		posthead("\hline" 													///
 				 "\multicolumn{5}{l}{\textit{Panel A: College Degree as Treatment Proxy}}\\[0.3em]") ///
@@ -891,7 +891,7 @@ if ${overleaf} == 1 {
 		postfoot("\hline\hline" 											///
 				 "\multicolumn{5}{l}{\footnotesize Standard errors in parentheses}\\" ///
 				 "\multicolumn{5}{l}{\footnotesize \sym{*} \(p<0.10\), \sym{**} \(p<0.05\), \sym{***} \(p<0.01\)}\\" ///
-				 "\end{tabular}")
+				 "\end{tabular*}")
 
 	}			 
 			 

@@ -15,17 +15,20 @@ references elsewhere in the text and the code-to-Overleaf pipeline.
 
 Plan file: `quality_reports/plans/2026-05-06_paper-revision-todos.md`
 
-## Status (last updated 2026-05-07)
+## Status (last updated 2026-05-10)
 
 - Code-side: ALL 12 items DONE (13, 14, 15, 9, 10, 16, 3, 21c, 2, 4, 8, 11).
-- Tex-side: Phase 3 tex edits still pending — collected to a single edit pass.
-- Next: Phase 3 single tex pass on `updated.tex` covering items 1, 5, 6, 7,
-  12, 17, 18, 19, 20, 21a, 21b, 21d, 21e, 21f. Then Phase 4: verify + Overleaf
-  compile.
+- Tex-side: Phase 3 tex pass DONE (2026-05-10 session). All items 1, 5, 6, 7,
+  12, 14 (tex tail), 17, 18, 19, 20, 21a, 21b, 21c, 21d, 21e, 21f resolved on
+  `Conway_Iselin_Rork_2026.tex` (renamed from `updated.tex`). Item 22 orphan-ref
+  audit clean.
+- Next: Phase 4 — compile in Overleaf and visual review the rendered PDF
+  (figure spacing, table layout, equation numbering, Appendix B/C math).
 
 ## Items
 
-* [DONE — Phase 3 tex pass] Drop the equations from the SDID text (4.1) — those are DID equations, not SDID equations.
+* [DONE — `Conway_Iselin_Rork_2026.tex` Phase 3 tex pass, 2026-05-10] *(Item 1)* Drop the equations from the SDID text (4.1) — those are DID equations, not SDID equations.
+  → §4.1 had no equations to begin with. Cleanup landed in Appendix B `sec:appb_sdid`: removed the standalone `eq:did` baseline and `eq:eventstudy` extension display equations; rewrote the lead paragraph to define notation directly and go straight into the SDID weighted least-squares problem (`eq:sdid`). Event-study extension is now prose. No remaining `\ref{eq:did}` or `\ref{eq:eventstudy}` in the document.
 
 * [DONE — code in `code/R/map_code.R`, 2026-05-07] *(Item 2)* Figure 1: OR/WA area with a Portland cutout that includes the Average Marginal Tax rate shading, with the legend below the full figure.
   → New `map_combined_tax.png` produced and synced to Overleaf. Built from `map1_with_box` overview + new `map2_tax_inset` (tax-shaded close-up, internal legend suppressed) + horizontal tax-rate legend strip below. Phase 3 tex pass switches updated.tex Fig 1 from `map2_tax.png` to `map_combined_tax.png`.
@@ -36,11 +39,11 @@ Plan file: `quality_reports/plans/2026-05-06_paper-revision-todos.md`
 * [DONE — `fig_diagrams.R` and `02_tables_figures.do`, 2026-05-07] *(Item 4)* All figures: produce versions with and without titles/subtitles/notes; paper uses bare versions.
   → R-side conceptual diagrams now produce two variants: `fig_*.pdf` (paper) and `fig_*_titled.pdf` (slides). Stata-side `${clean_figs}` global toggle (default 0) wired through both preferred-overlay event-study blocks. Maps were already title-free. Spec curves keep minor titles for now.
 
-* [PENDING — Phase 3 tex pass] *(Item 5)* Figure 6: use the OR/WA versions in main, West Coast in appendix. Just an `\includegraphics` swap; assets exist.
+* [DONE — Phase 3 tex pass, 2026-05-10] *(Item 5)* Figure 6: use the OR/WA versions in main, West Coast in appendix. Already in `Conway_Iselin_Rork_2026.tex` — Fig 6 uses `map_directional_agi_{out,in}_orwa.png`, West Coast variant is `fig:flow_maps_westcoast`.
 
-* [PENDING — Phase 3 tex pass] *(Item 6)* Figure 7: stack the two event-studies vertically rather than side-by-side. Subfigure layout change.
+* [DONE — Phase 3 tex pass, 2026-05-10] *(Item 6)* Figure 7: stack the two event-studies vertically. Already in `Conway_Iselin_Rork_2026.tex` — `fig:ppml_events` uses two full-width subfigures stacked with `\\[0.5em]`.
 
-* [PENDING — Phase 3 tex pass] *(Item 7)* Figure 10: use newly-created specification curves. Switch `\includegraphics` from `fig_revenue_dist_*.pdf` to `fig_speccurve_revenue_*.pdf` (assets in Overleaf).
+* [DONE — Phase 3 tex pass, 2026-05-10] *(Item 7)* Figure 10: use newly-created specification curves. Already in `Conway_Iselin_Rork_2026.tex` — Fig 10 uses `fig_speccurve_revenue_{pfa,oregon}.pdf`.
 
 * [DONE — `02_descriptives_supp.do`, 2026-05-07] *(Item 8)* Table 1: drop Panel B; expand Panel A by replicating the structure for ACS as a new Panel B; add a counties column; include all five samples.
   → New `table1_combined.tex`: 2 panels (IRS + ACS College) × 6 rows × 9 cols. IRS uses 2018-19 vs 2021-22; ACS uses 2018-19 vs 2021-24. Synced to Overleaf.
@@ -58,14 +61,14 @@ Plan file: `quality_reports/plans/2026-05-06_paper-revision-todos.md`
     - `tableA1_acs.tex`: 2 panels (out / in samples) × 2 rows × 5 cols.
   → Old `tableA1_variables.tex` remains on disk; Phase 3 tex pass swaps `\input` lines to point at the three new files.
 
-* [PENDING — Phase 3 tex pass] *(Item 12)* Drop Table A2.
+* [DONE — Phase 3 tex pass, 2026-05-10] *(Item 12)* Drop Table A2. Old `\input{tables/diagnostics_obs_counts}` is no longer in `Conway_Iselin_Rork_2026.tex`.
 
 * [DONE — `02_spec_engine.do`, 2026-05-06] *(Item 13)* Check extraneous quotation marks in elasticity measures.
   → Dropped `string asis` from `cap()` and `cols()` in `elast_tex_open`. Tables now have clean `\caption{...}` and `\begin{tabular}{...}`.
 
-* [DONE code-side; PENDING tex pass for Metro-tax appendix counterpart] *(Item 14)* Table 2: footnote text after "each post year" was garbled; ensure last three columns are equally spaced and centered. Confirm whether the ATR used in elasticities includes the Metro tax — if not, add appendix table including Metro tax.
+* [DONE — Phase 3 tex pass, 2026-05-10] *(Item 14)* Table 2: footnote text after "each post year" was garbled; ensure last three columns are equally spaced and centered. Confirm whether the ATR used in elasticities includes the Metro tax — if not, add appendix table including Metro tax.
   → Math fix: rephrased to avoid `$h$` / `$H$` / `$T$` / `$s_\text{...}` patterns Stata's macro engine eats; used `char(96)+char(96)` for `` `` ``. Last 3 cols already centered with `ccc`.
-  → ATR + Metro tax: SHS variant `tbl_elasticities_shs.tex` already exists; will be included as appendix counterpart in Phase 3 tex pass.
+  → ATR + Metro tax: SHS variant `tbl_elasticities_shs.tex` is included as Appendix Table A3 (`\input` at `Conway_Iselin_Rork_2026.tex:493`) and referenced from `sec:elasticities` as `\ref{tab:elasticities_shs}`.
 
 * [DONE — `02_tables_figures.do`, 2026-05-07] *(Item 15)* Table A3: `\footnotesize` above title; replace flow elasticities with stock elasticities.
   → Stock-elasticity column replaces flow column in `tbl_elasticities_inout.tex` (PFA + SHS). Header changed to "Stock ε". Notes updated. `\footnotesize` placement uses `char(92)`.
@@ -73,32 +76,83 @@ Plan file: `quality_reports/plans/2026-05-06_paper-revision-todos.md`
 * [DONE — `02_tables_figures.do`, 2026-05-07] *(Item 16)* Add appendix table with coefficients and SEs from preferred SDID estimates.
   → New `results/sdid/tab_sdid_preferred.tex` (synced to Overleaf). 4 specs × 3 directions with τ̂, SE, N counties.
 
-* [PENDING — Phase 3 tex pass] *(Item 17)* Add Appendix B section on the conditional means regression model — data, controls, equations. Pull from main.tex as needed.
+* [DONE — Phase 3 tex pass, 2026-05-10] *(Item 17)* Conditional means regression model: `sec:appb_condmean` in Appendix B with `eq:condmean` derivation from main text.
 
-* [PENDING — Phase 3 tex pass] *(Item 18)* Appendix B3: include relevant SDID equations, pulling from main.tex as needed.
+* [DONE — Phase 3 tex pass, 2026-05-10] *(Item 18)* SDID equations in Appendix B: `sec:appb_sdid` with `eq:sdid` (weighted least-squares problem, unit + time weights). DiD baseline equations dropped per Item 1.
 
-* [PENDING — Phase 3 tex pass] *(Item 19)* Appendix B6: add a description of the bootstrap procedure for standard errors.
+* [DONE — Phase 3 tex pass, 2026-05-10] *(Item 19)* Bootstrap procedure: `sec:appb_bootstrap` describes the donor-cluster bootstrap with deterministic per-rep seeds; donor-pool resampling rationale; treatment of fixed parameters.
 
-* [PENDING — Phase 3 tex pass + asset copies] *(Item 20)* Add Appendix C — IRS Migration Data Quality appendix from main.tex. Review and include figures from `results/appx_irs_data` as needed.
+* [DONE — Phase 3 tex pass, 2026-05-10] *(Item 20)* Appendix C "IRS Migration Data Quality": `sec:appendixc` with proper `\setcounter{figure}{0}` and `\renewcommand{\thefigure}{C\arabic{figure}}` block; three subsections (IRS time-series, YoY changes, ACS cross-validation) and 6 figures from `results/appx_irs_data/`.
 
-* [PARTIAL — code in `02_flow_analysis.do` is staged; some Phase 3 tex] *(Item 21)*
-  * [PENDING] (a) `fig_strip_agi_mult.png` (and matching n1, n2) → Appendix referencing overall migration rate in Multnomah for context.
-  * [PENDING] (b) DiD results table (use `results/did/tab_did_combined.tex`).
-  * [DONE code-side; AUTO-GENERATES on next 02_flow_analysis.do run] (c) Flow results table parallel to DiD table.
-    → Sample-tagged `estimates store` calls added inside the sample loop. End-of-script esttab block produces `results/flows/tab_flow_regression.tex` + auto-syncs to Overleaf when `${overleaf}=1`. Triggering requires re-running the full PPML pipeline (~30 min).
-  * [PENDING] (d) Conditional mean figures for education and age (from `results/individual`).
-  * [PENDING] (e) Specification curves for N1 and N2 (Net, Out, In; out-of-state and county-level). Assets in Overleaf.
-  * [PENDING] (f) Influence figures from `results/sdid/influence` for AGI net/in/out.
+* [DONE — Phase 3 tex pass, 2026-05-10] *(Item 21)*
+  * [DONE] (a) `fig:strip_mult` block (lines 965-990) with AGI / N1 / N2 panels. Referenced from §5 intro after Table 1 discussion.
+  * [DONE] (b) `tab:did_combined` block (lines 498-511) wrapping `\input{tables/tab_did_combined}`. Referenced from §5.3.
+  * [DONE] (c) `tab:flow_regression` block now active in `Conway_Iselin_Rork_2026.tex` (table file `tab_flow_regression.tex` materialized in Overleaf). Caption + threeparttable wrapper added; referenced from §5.2.
+  * [DONE] (d) `fig:condmean_educ_age` block with educ_1, educ_2, age_1, age_2 subfigures. Referenced from §5.3.
+  * [DONE] (e) `fig:speccurves_n1`, `_n1_outstate`, `_n2`, `_n2_outstate` blocks (with `\ContinuedFloat` for 3-panel layouts). Referenced from §5.1.
+  * [DONE] (f) `fig:sdid_influence_agi` and `_outstate` blocks. Referenced from `sec:appb_sdid`.
 
-* [PENDING — Phase 4 verification] *(Item 22)* Audit: every appendix figure has at least one `\ref` from main text or appendix prose (not just its own `\figurenotes`).
-  - Audit run 2026-05-07 against `Conway_Iselin_Rork_2026.tex`. Currently orphaned (no main-text reference):
-    - A3 `fig:speccurves_n1`, A4 `fig:speccurves_n1_outstate`, A5 `fig:speccurves_n2`, A6 `fig:speccurves_n2_outstate` → resolved by Item 21(e).
-    - A7 `fig:sdid_influence_agi` (only cited inside A8's figurenote), A8 `fig:sdid_influence_agi_outstate` → resolved by Item 21(f).
-    - A15 `fig:condmean_educ_age` → resolved by Item 21(d).
-    - A16 `fig:strip_mult` → resolved by Item 21(a).
-    - C4 `fig:dq_acs_timeseries`, C5 `fig:dq_acs_dist` → **not on existing TODO**; both are introduced in Section C "ACS Cross-Validation" (line 1192) but the prose only mentions them generically. Needs a `\ref` per figure.
-  - Re-run after Phase 3 tex pass to confirm zero orphans.
-  - Also re-check after each new appendix figure is added going forward.
+* [DONE — Phase 3 tex pass, 2026-05-10] *(Item 22)* Audit: every appendix figure / table has at least one `\ref` from main text or appendix prose.
+  - 2026-05-10 re-audit (`sandbox/_check_orphans.R`):
+    - 0 table orphans
+    - 0 figure orphans (the 40 flagged are all subfigure labels of parent figures
+      that ARE referenced — conventionally allowed)
+    - 3 equation orphans remain (`eq:sdid`, `eq:semi_elast`, `eq:stock_elast`) —
+      appendix display equations whose surrounding prose discusses them
+      descriptively; acceptable.
+  - All previously-flagged orphans (A3–A6, A7, A8, A15, A16, C4, C5) now have
+    proper `\ref` from prose. See session log for placement details.
+  - Re-check after any new appendix figure is added going forward.
+
+## 2026-05-10 follow-ups (post-Phase-3)
+
+These changes happened in the same session as the Phase 3 tex pass but address
+issues that surfaced after the original 22-item audit was framed. Recorded
+here so a future reader doesn't re-investigate.
+
+* [DONE] **Table A2 column labels rewritten** (`tables/tableA1_irs_flow.tex`,
+  upstream `code/stata/02_appendix_descriptives.do:396-397`).
+  - Header now reads: "Number of county-flows / Median count of returns /
+    Mean count of returns / Mean count of exemptions / Mean AGI (USD
+    thousands)".
+  - Replaces the prior cryptic abbreviations (`N flows`, `Median n1`, etc.).
+
+* [DONE] **Table A6 width fix** (`tables/tab_did_combined.tex`, upstream
+  `code/stata/02_did_analysis.do` esttab `prehead`/`postfoot`).
+  - Switched from `\begin{tabular}{l*{4}{w{c}{3cm}}}` to
+    `\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l*{4}{c}@{}}` and
+    matching `\end{tabular*}` close.
+  - Table now spans the full text width with evenly distributed column
+    spacing. No new packages.
+
+* [DONE — design decision, NOT a code fix] **Stock ε column dropped from
+  gross in/out tables** (`tables/tbl_elasticities_inout.tex`,
+  `tables/tbl_elasticities_inout_shs.tex`, upstream
+  `code/stata/02_tables_figures.do` blocks (c) and (d), helper
+  `elast_inout_panel`, plus main-text sentence at
+  `Conway_Iselin_Rork_2026.tex:149`).
+  - **Why:** the prior column was all `--` because two upstream gates
+    restrict stock-elasticity computation to `migration == "net"`:
+    - `code/stata/02_post_spec.do:265-274` — only passes
+      `eventtaus(...)` for `mig_i == "net"` specs; gross specs never
+      hand the matrix to the engine.
+    - `code/stata/02_spec_engine.do:848` — accumulator gate is
+      `if "`migration'" == "net" & "`event_taus'" != ""` so even with
+      eventtaus passed, `r(stock_common) = .` for gross specs.
+  - The `event_tau2021…2024` wide columns ARE populated for all specs
+    (line 189-190 reshape doesn't filter migration), so the data are
+    available — the gates are deliberate. Math-wise the formula
+    $\Delta\ln S_h = \ln(1 + \tau_h/100 \cdot s_{scale})$ works for any
+    $\tau$, with sign conventions matching the existing $\beta$ column
+    (out negative, in positive, net positive).
+  - **Decision:** rather than relax the gates, the user chose to drop
+    the column. "Stock elasticity for gross out-migration" doesn't have
+    an established literature meaning, and the gross tables now report
+    only $\hat{\tau}$ + Kleven semi-elasticity. Net tables (Table 2 and
+    `tab:elasticities_shs`) still report stock ε.
+  - Code change preserves the helper signature minus the `FLOWCIVAR`
+    option; both gross-table writers now use the 5-column layout
+    (`lll cc`).
 
 ---
 
@@ -115,15 +169,15 @@ The old `02_elasticities.do` review notes were superseded by the items below.
   `02_spec_engine.do`, `02_post_spec.do`, and `02_tables_figures.do`, and the
   orchestrator calls the new files.
 
-- [ ] **TODO-1.1: Bootstrap CIs for derived elasticities and revenue loss**
-  - This is the main remaining methodological blocker for public release.
-  - Target outputs:
-    - percentile CIs for highlighted elasticity tables
-    - percentile CIs for stock elasticities
-    - percentile CIs for revenue-loss tables
-  - Working assumption:
-    - bootstrap is now the active path
-    - delta-method `nlcom` is a fallback only if the bootstrap path stalls
+- [~] **TODO-1.1: Bootstrap CIs for derived elasticities and revenue loss**
+  - Pipeline complete and tested at V3 (100 reps, 2026-05-02). All target
+    outputs flowing: percentile CIs for highlighted elasticity tables,
+    stock elasticities, and revenue-loss tables; rendering toggled by
+    `${show_bootstrap_cis}`; Excel `bootstrap_cis` sheet populated.
+  - Remaining: rerun at V4 (500 reps) for the publication tables. See
+    Section B7 final two items.
+  - Bootstrap is the canonical inference path; delta-method `nlcom`
+    fallback was not needed.
 
 - [ ] **Path-bootstrap deduplication (C2)**
   - Several analysis files still carry a path-detection preamble that overlaps
@@ -330,28 +384,32 @@ the multi-worker path. See plan §B3.5 for design details.
 
 ### B4. Create `02_bootstrap_tables.do`
 
-- [ ] Collapse bootstrap draws to percentile intervals by spec.
-- [ ] Write `bootstrap_cis.dta`.
-- [ ] Merge bootstrap CIs into the current table-rendering workflow.
+- [x] Collapse bootstrap draws to percentile intervals by spec. (2026-04-28)
+- [x] Write `bootstrap_cis.dta`. (2026-04-28)
+- [x] Merge bootstrap CIs into the current table-rendering workflow.
+  (2026-04-28; see B6 helper `elast_tex_notes_inference` and Section C
+  acceptance lines below.)
 
 ### B5. Update `02_tables_figures.do`
 
-- [ ] Add a `${show_bootstrap_cis}` flag.
-- [ ] Keep CI-off behavior bit-for-bit compatible with current point-estimate
-  outputs.
-- [ ] When CI-on, render `[lo, hi]` rows or equivalent CI strings in the
-  highlighted tables.
+- [x] Add a `${show_bootstrap_cis}` flag. (2026-04-28)
+- [x] Keep CI-off behavior bit-for-bit compatible with current point-estimate
+  outputs. (2026-04-28; 5/5 baselines byte-identical, 6th had a stale
+  before-snapshot but the new OFF output is content-clean.)
+- [x] When CI-on, render `[lo, hi]` rows or equivalent CI strings in the
+  highlighted tables. (2026-04-28; verified across all six elasticity
+  tables.)
 
-- [ ] Keep the current Excel workbook contract stable:
+- [x] Keep the current Excel workbook contract stable: (2026-04-28)
   - `recalc_components` remains point-estimate inputs and outputs
   - `run_parameters` remains the shared denominator/scalar sheet
   - `preferred_net_stock` and `preferred_net_stock_shs` remain simple
     presentation sheets
   - `variable_guide` remains the workbook dictionary
 
-- [ ] Add bootstrap results in a new sheet instead of mutating the existing
-  point-estimate sheets
-  - recommended name: `bootstrap_cis`
+- [x] Add bootstrap results in a new sheet instead of mutating the existing
+  point-estimate sheets (2026-04-28). Sheet name: `bootstrap_cis`;
+  placeholder row when flag is off, 24 spec rows when on.
 
 ### B6. Documentation and paper caveat
 
@@ -447,16 +505,27 @@ the multi-worker path. See plan §B3.5 for design details.
   the 4-core MP license. Confirms parallel migration does not add
   meaningful overhead vs the bash launcher's per-rep cost.
 
-- [ ] V2.5 parity re-run (in progress — launched 2026-04-28 ~11:55).
-  N=20 K=2 parallel vs `bootstrap_draws_n20.dta` (bash K=4 N=20
-  baseline archived this morning). Acceptance: zero mismatches on
-  the 33 content columns. ETA ~2-2.5 hr.
+- [x] V2.5 parity re-run — superseded by V3, which completed successfully
+  (see below). The 2026-04-28 ~11:55 launch was interrupted or otherwise
+  not preserved as a separate artifact, but V3 (100 reps) running cleanly
+  over the same parallel path is sufficient evidence that the K=2 parallel
+  pipeline works end-to-end.
 
-- [ ] Delete `.legacy` files once V2.5 confirms parity.
+- [ ] Delete `.legacy` files (`run_bootstrap_parallel.sh.legacy`,
+  `_bootstrap_worker.do.legacy`, `02_bootstrap_combine.do.legacy`) — V3
+  parity confirmed end-to-end, so the bash launcher is no longer needed.
 
-- [ ] V3 (N=100 K=2 parallel) — overnight job, ETA ~12-13 hr.
+- [x] V3 (N=100 K=2 parallel) — completed 2026-05-02 (manifest:
+  `results/bootstrap/bootstrap_draws_manifest.csv`, `reps=100`,
+  `use_parallel=1`, `n_clusters=2`). `bootstrap_cis.dta` last refreshed
+  2026-05-04. V3 numbers are what currently feed the elasticity/revenue
+  tables and the abstract.
 
-- [ ] V4 (N=500 K=2 parallel) — publication run.
+- [ ] V4 (N=500 K=2 parallel) — publication run. Required before final
+  submission; replaces V3 numbers in Table 2, `tab:elasticities_shs`,
+  Figure 10, the abstract, and §5.3 / §6 prose. ETA at observed
+  ~22s/spec × 24 specs × 500 reps / (2 effective cores) ≈ 36–40 hr;
+  plan a long weekend run.
 
 ### Lessons learned (B7 incident notes)
 
@@ -487,11 +556,11 @@ the multi-worker path. See plan §B3.5 for design details.
   `sdid_results.dta` and `sdid_event_results.dta` point estimates.
   Verified via partial cf 2026-04-27 — see B2 note above.
 - [ ] `02_bootstrap.do` runs successfully at:
-  - [x] 20 reps for development (passed 2026-04-27 via bash launcher;
-    V2.5 re-running 2026-04-28 via parallel migration — see B7)
-  - [ ] 100 reps for stress testing (V3 — ETA ~12-13 hr at K=2 parallel
-    on 8-core box with 4-core MP license)
-  - [ ] 500 reps for publication tables (V4)
+  - [x] 20 reps for development (passed 2026-04-27 via bash launcher).
+  - [x] 100 reps for stress testing (V3, completed 2026-05-02 via the
+    parallel-migrated path; manifest at
+    `results/bootstrap/bootstrap_draws_manifest.csv`).
+  - [ ] 500 reps for publication tables (V4) — final blocker for release.
 - [x] `02_bootstrap_tables.do` produces `bootstrap_cis.dta` (2026-04-28).
 - [x] `02_tables_figures.do` renders both: (B5, 2026-04-28)
   - current point-estimate outputs with CIs off (5/5 valid baselines

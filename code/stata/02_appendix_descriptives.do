@@ -393,8 +393,8 @@ file write `fh' `"\label{tab:tableA1_irs_flow}"' _n
 file write `fh' `"\setlength{\tabcolsep}{4pt}"' _n
 file write `fh' `"\begin{tabular}{l r r r r r}"' _n
 file write `fh' `"\toprule"' _n
-file write `fh' `" & N flows & Median n1 & Mean n1 & Mean n2 & Mean AGI \\"' _n
-file write `fh' `" & & (returns) & (returns) & (exemptions) & (USD thousands) \\"' _n
+file write `fh' `" & Number of & Median count & Mean count & Mean count & Mean AGI \\"' _n
+file write `fh' `" & county-flows & of returns & of returns & of exemptions & (USD thousands) \\"' _n
 file write `fh' `"\midrule"' _n
 
 local row_labels `""Multnomah-touching flows" "Non-Multnomah flows""'
@@ -431,7 +431,7 @@ file write `fh' `"\bottomrule"' _n
 file write `fh' `"\end{tabular}"' _n
 file write `fh' `"\begin{tablenotes}[flushleft]"' _n
 file write `fh' `"\small"' _n
-file write `fh' `"\item \textit{Notes:} County-pair flow rows from IRS SOI 2016-2022, after dropping state-aggregate rows. A flow is Multnomah-touching if either origin or destination is Multnomah County. The ACS-restricted panel keeps only flows where both endpoints are among the county-identified counties in the public-use ACS (drawn from the unique fips set in the ACS county-year panel), matching the smaller-sample PPML specification used in the paper. Mean and median flow sizes are computed across all observed flow rows in the group; n1 is returns (households), n2 is exemptions (individuals), AGI is in thousands of dollars. The data drop county-pair-years with fewer than ~20 movers (the IRS suppression threshold), so explicit zero-mover rows do not appear."' _n
+file write `fh' `"\item \textit{Notes:} County-pair flow rows from IRS SOI 2016-2022, after dropping state-aggregate rows. A flow is Multnomah-touching if either origin or destination is Multnomah County. The ACS-restricted panel keeps only flows where both endpoints are among the county-identified counties in the public-use ACS (drawn from the unique fips set in the ACS county-year panel), matching the smaller-sample PPML specification used in the paper. Mean and median flow sizes are computed across all observed flow rows in the group; returns are tax-filing households, exemptions are individuals (IRS variables \texttt{n1} and \texttt{n2}), and AGI is in thousands of dollars. The data drop county-pair-years with fewer than ~20 movers (the IRS suppression threshold), so explicit zero-mover rows do not appear."' _n
 file write `fh' `"\item Source: IRS SOI county-to-county migration flows (2016-2022)."' _n
 file write `fh' `"\end{tablenotes}"' _n
 file write `fh' `"\end{threeparttable}"' _n

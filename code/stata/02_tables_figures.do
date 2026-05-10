@@ -111,8 +111,10 @@ if ${show_bootstrap_cis} == 1 {
 ** elast_inout_panel — writes one migration-direction panel of the
 ** gross in/out tables. Assumes the current dataset has data_type,
 ** sample, migration, migr_label, and the formatted str20 columns
-** tau_str, se_str, beta_str, beta_se_str, fe_str, fe_se_str
-** (generated once per table in the caller's preserve block).
+** tau_str, se_str, beta_str, beta_se_str (generated once per table
+** in the caller's preserve block). The gross tables report
+** $\hat{\tau}$ and the Kleven semi-elasticity only; stock elasticity
+** is reported on the net-migration tables (Tables 2 / A3) instead.
 **
 ** elast_speccurve_plot — writes a specification-curve plot with
 ** ranked point estimates (and bootstrap CI whiskers if available) in
@@ -129,18 +131,15 @@ if ${show_bootstrap_cis} == 1 {
 
 capture program drop elast_inout_panel
 program define elast_inout_panel
-	** BETACIVAR / FLOWCIVAR: variable names of the pre-built CI
-	** strings in the working dataset. Default to the non-SHS columns;
-	** SHS callers override to flow_semi_shs_ci_str / flow_e_shs_ci_str.
+	** BETACIVAR: variable name of the pre-built bootstrap-CI string
+	** for the Kleven semi-elasticity in the working dataset. Defaults
+	** to flow_semi_ci_str; SHS caller overrides to flow_semi_shs_ci_str.
 	** Only consulted when ${show_bootstrap_cis} == 1.
-	** Note the concatenated option names: Stata's `syntax` parser
-	** does not reliably accept option names containing underscores
-	** (see compute_spec_elasticities's header note for the full story).
-	syntax, HANDLE(string) DIRECTION(string) ///
-		[BETACIVAR(name) FLOWCIVAR(name)]
+	** Note the concatenated option name: Stata's `syntax` parser does
+	** not reliably accept option names containing underscores.
+	syntax, HANDLE(string) DIRECTION(string) [BETACIVAR(name)]
 
 	if "`betacivar'" == "" local betacivar flow_semi_ci_str
-	if "`flowcivar'" == "" local flowcivar flow_e_ci_str
 
 	local N = _N
 	local prev_dt ""
@@ -156,27 +155,20 @@ program define elast_inout_panel
 		local se_val = se_str[`i']
 		local b      = beta_str[`i']
 		local b_se   = beta_se_str[`i']
-		local fe     = fe_str[`i']
-		local fe_se  = fe_se_str[`i']
-
-		if "`fe'" == "" local fe "--"
-		if "`fe_se'" == "" local fe_se ""
 
 		if "`prev_dt'" != "" & "`prev_dt'" != "`dt'" {
 			file write `handle' "\addlinespace" _n
 		}
 		local prev_dt "`dt'"
 
-		file write `handle' "`dt' & `smp' & `mg' & `t_val' & `b' & `fe' \\" _n
+		file write `handle' "`dt' & `smp' & `mg' & `t_val' & `b' \\" _n
 		if ${show_bootstrap_cis} == 1 {
 			local tau_ci  = tau_ci_str[`i']
 			local beta_ci = `betacivar'[`i']
-			local fe_ci   = `flowcivar'[`i']
-			if "`fe_ci'" == "" local fe_ci ""
-			file write `handle' " & & & `tau_ci' & `beta_ci' & `fe_ci' \\" _n
+			file write `handle' " & & & `tau_ci' & `beta_ci' \\" _n
 		}
 		else {
-			file write `handle' " & & & `se_val' & `b_se' & `fe_se' \\" _n
+			file write `handle' " & & & `se_val' & `b_se' \\" _n
 		}
 	}
 end
@@ -609,7 +601,7 @@ forvalues i = 1/`N' {
 }
 
 elast_tex_notes_open, handle(`fh')
-file write `fh' "Semi-elasticity $\beta$ follows Kleven et al.\ (2024, NBER WP 32153): " _n
+file write `fh' "Semi-elasticity $\beta$ follows \citet{kleven_taxation_2024}: " _n
 file write `fh' "$\beta = (\hat{\tau}/100) / \Delta\ln(1-\tau_\text{total})$, where $\tau_\text{total}$ is the combined " _n
 file write `fh' "federal income + Oregon state income + FICA employee share + PFA rate on impacted filers. " _n
 file write `fh' "A negative $\beta$ for out-migration (or positive for in-migration) indicates more migration when the net-of-tax rate falls. " _n
@@ -636,7 +628,7 @@ file write `fh' "This is a horizon-specific stock object, \emph{not} the Kleven 
 file write `fh' "Positive values indicate that the AGI stock shrinks when the tax rate rises because the after-tax rate falls. " _n
 file write `fh' "Average effective PFA rate: `pfa_pct'\%; average total tax rate on impacted filers: `total_pct'\%. " _n
 file write `fh' "FICA reflects the employee share only. " _n
-file write `fh' "Gross out- and in-migration semi- and stock elasticities are reported in Appendix Table~\ref{tab:elasticities_inout}. " _n
+file write `fh' "Semi-elasticities for gross out- and in-migration are reported in Appendix Table~\ref{tab:elasticities_inout}. " _n
 elast_tex_notes_inference, handle(`fh') stock
 elast_tex_close, handle(`fh')
 
@@ -735,14 +727,6 @@ gen str20 tau_str = string(tau, "%9.3f")
 gen str20 se_str = "(" + string(se, "%9.3f") + ")"
 gen str20 beta_str = string(beta_kleven, "%9.3f")
 gen str20 beta_se_str = "(" + string(beta_se_kleven, "%9.3f") + ")"
-** Stock-elasticity column for the gross in/out table (item 15: replaces
-** the prior flow-elasticity column). The fe_* variables remain available
-** for spec_engine internals; we override fe_str/fe_se_str here so that
-** elast_inout_panel writes the stock-elasticity numbers without a
-** signature change.
-gen str20 fe_str = string(stock_elast_total_common, "%9.3f") ///
-	if !missing(stock_elast_total_common)
-gen str20 fe_se_str = "" // analytic SE not exported for stock elasticity
 
 gen str20 migr_label = ""
 replace migr_label = "In" if migration == "in"
@@ -753,35 +737,33 @@ file open `fh' using "${results}elasticities/tbl_elasticities_inout.tex", write 
 
 elast_tex_open, handle(`fh') ///
 	cap("Highlighted Gross AGI Migration Elasticities (Kleven 2024 Framework)") ///
-	lbl("tab:elasticities_inout") cols("lll ccc") ///
+	lbl("tab:elasticities_inout") cols("lll cc") ///
 	fontsize("footnotesize")
-file write `fh' "Data & Sample & Dir.\ & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ $\beta$ & Stock $\varepsilon$ \\" _n
+file write `fh' "Data & Sample & Dir.\ & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ $\beta$ \\" _n
 file write `fh' "\midrule" _n
 
 sort data_type sample migration
 
 file write `fh' "\addlinespace" _n
-file write `fh' "\multicolumn{6}{l}{\textit{Panel A: Out-Migration}} \\" _n
+file write `fh' "\multicolumn{5}{l}{\textit{Panel A: Out-Migration}} \\" _n
 file write `fh' "\addlinespace" _n
 elast_inout_panel, handle(`fh') direction("out")
 
 file write `fh' "\addlinespace[0.75em]" _n
 file write `fh' "\midrule" _n
 file write `fh' "\addlinespace" _n
-file write `fh' "\multicolumn{6}{l}{\textit{Panel B: In-Migration}} \\" _n
+file write `fh' "\multicolumn{5}{l}{\textit{Panel B: In-Migration}} \\" _n
 file write `fh' "\addlinespace" _n
 elast_inout_panel, handle(`fh') direction("in")
 
 elast_tex_notes_open, handle(`fh')
-file write `fh' "Semi-elasticity $\beta$ follows Kleven et al.\ (2024, NBER WP 32153): " _n
+file write `fh' "Semi-elasticity $\beta$ follows \citet{kleven_taxation_2024}: " _n
 file write `fh' "$\beta = (\hat{\tau}/100) / \Delta\ln(1-\tau_\text{total})$, where $\tau_\text{total}$ is the combined " _n
 file write `fh' "federal income + Oregon state income + FICA employee share + PFA rate on impacted filers. " _n
-file write `fh' "Stock elasticity: $\varepsilon_{\text{stock},H} = \Delta\ln S_H / \Delta\ln(1-\tau_\text{total})$, where the cumulative AGI stock is built recursively from the SDID event-study coefficients over the post-treatment horizon. " _n
 file write `fh' "FICA reflects the employee share only. " _n
 file write `fh' "Sign convention: $\beta = (\hat{\tau}/100) / \Delta\ln(1-\tau_\text{total})$ with $\Delta\ln(1-\tau_\text{total}) < 0$ under a tax hike. " _n
 file write `fh' "For out-migration, \emph{negative} $\beta$ indicates a larger outflow when the tax rate rises; " _n
 file write `fh' "for in-migration, \emph{positive} $\beta$ indicates a smaller inflow. " _n
-file write `fh' "Stock elasticity is reported on the total AGI base for the 2021--2022 horizon. " _n
 file write `fh' "Average effective PFA rate: `pfa_pct'\%; total rate on impacted filers: `total_pct'\%. " _n
 elast_tex_notes_inference, handle(`fh')
 elast_tex_close, handle(`fh')
@@ -957,13 +939,6 @@ gen str20 tau_str = string(tau, "%9.3f")
 gen str20 se_str = "(" + string(se, "%9.3f") + ")"
 gen str20 beta_str = string(beta_kleven_shs, "%9.3f")
 gen str20 beta_se_str = "(" + string(beta_se_kleven_shs, "%9.3f") + ")"
-** Stock-elasticity column (item 15: replaces flow elasticity in the
-** SHS variant of the gross in/out table). Use the SHS-tax-rate version
-** of the stock elasticity for consistency with the Metro-inclusive
-** denominator used elsewhere in this table.
-gen str20 fe_str = string(stock_elast_total_common_shs, "%9.3f") ///
-	if !missing(stock_elast_total_common_shs)
-gen str20 fe_se_str = ""
 
 gen str20 migr_label = ""
 replace migr_label = "In" if migration == "in"
@@ -975,26 +950,26 @@ file open `fh_shs_io' using "${results}elasticities/tbl_elasticities_inout_shs.t
 
 elast_tex_open, handle(`fh_shs_io') ///
 	cap("Highlighted Gross AGI Migration Elasticities Including Metro SHS 1\% (Kleven 2024 Framework)") ///
-	lbl("tab:elasticities_inout_shs") cols("lll ccc") ///
+	lbl("tab:elasticities_inout_shs") cols("lll cc") ///
 	fontsize("footnotesize")
-file write `fh_shs_io' "Data & Sample & Dir.\ & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ $\beta$ & Stock $\varepsilon$ \\" _n
+file write `fh_shs_io' "Data & Sample & Dir.\ & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ $\beta$ \\" _n
 file write `fh_shs_io' "\midrule" _n
 
 sort data_type sample migration
 
 file write `fh_shs_io' "\addlinespace" _n
-file write `fh_shs_io' "\multicolumn{6}{l}{\textit{Panel A: Out-Migration}} \\" _n
+file write `fh_shs_io' "\multicolumn{5}{l}{\textit{Panel A: Out-Migration}} \\" _n
 file write `fh_shs_io' "\addlinespace" _n
 elast_inout_panel, handle(`fh_shs_io') direction("out") ///
-	betacivar(flow_semi_shs_ci_str) flowcivar(flow_e_shs_ci_str)
+	betacivar(flow_semi_shs_ci_str)
 
 file write `fh_shs_io' "\addlinespace[0.75em]" _n
 file write `fh_shs_io' "\midrule" _n
 file write `fh_shs_io' "\addlinespace" _n
-file write `fh_shs_io' "\multicolumn{6}{l}{\textit{Panel B: In-Migration}} \\" _n
+file write `fh_shs_io' "\multicolumn{5}{l}{\textit{Panel B: In-Migration}} \\" _n
 file write `fh_shs_io' "\addlinespace" _n
 elast_inout_panel, handle(`fh_shs_io') direction("in") ///
-	betacivar(flow_semi_shs_ci_str) flowcivar(flow_e_shs_ci_str)
+	betacivar(flow_semi_shs_ci_str)
 
 elast_tex_notes_open, handle(`fh_shs_io')
 file write `fh_shs_io' "SHS-inclusive version of Table~\ref{tab:elasticities_inout}. " _n
