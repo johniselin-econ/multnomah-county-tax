@@ -1483,7 +1483,7 @@ gen data_type = ""
 replace data_type = "IRS" if strpos(outcome, "_irs") > 0 & strpos(outcome, "_irs_outstate") == 0
 replace data_type = "IRS (Out-of-State)" if strpos(outcome, "_irs_outstate") > 0
 replace data_type = "IRS (389)" if strpos(sample_data, "irs_389") > 0 & strpos(outcome, "_irs_outstate") == 0
-replace data_type = "IRS (389, Out-of-State)" if strpos(sample_data, "irs_389") > 0 & strpos(outcome, "_irs_outstate") > 0
+replace data_type = "IRS (389, Out-of-State)" if strpos(sample_data, "irs_outstate_389") > 0 & strpos(outcome, "_irs_outstate") > 0
 replace data_type = "ACS All (Out-of-State)" if strpos(outcome, "_acs1_outstate") > 0
 replace data_type = "ACS College (Out-of-State)" if strpos(outcome, "_acs2_outstate") > 0
 replace data_type = "ACS All" if strpos(outcome, "_acs1") > 0 & strpos(outcome, "_acs1_outstate") == 0
@@ -1730,7 +1730,9 @@ foreach otype in "n1" "n2" "agi" {
 
 		else if "`pset'" == "outstate" {
 
-		** 11 indicator rows for outstate plot set
+		** 11 indicator rows for outstate plot set; labels match the
+		** county-level plot (no redundant "(Out-of-State)" suffix since the
+		** figure title already conveys it).
 		local yp1  = `ind_top'
 		local yp2  = `ind_top' - 1
 		local yp3  = `ind_top' - 2
@@ -1743,17 +1745,17 @@ foreach otype in "n1" "n2" "agi" {
 		local yp10 = `ind_top' - 9
 		local yp11 = `ind_top' - 10
 
-		gen y_all              = `yp1'  if spec_all == 1
-		gen y_urban            = `yp2'  if spec_urban95 == 1
-		gen y_covid            = `yp3'  if spec_covid == 1
-		gen y_demog            = `yp4'  if spec_demog == 1
-		gen y_stringency       = `yp5'  if spec_stringency == 1
-		gen y_covars           = `yp6'  if spec_covars == 1
-		gen y_excl             = `yp7'  if spec_excl2020 == 1
-		gen y_irs_outstate     = `yp8'  if spec_irs_outstate == 1
-		gen y_irs_outstate_389 = `yp9'  if spec_irs_outstate_389 == 1
-		gen y_acs_all_outstate = `yp10' if spec_acs_all_outstate == 1
-		gen y_acs_col_outstate = `yp11' if spec_acs_col_outstate == 1
+		gen y_all                  = `yp1'  if spec_all == 1
+		gen y_urban                = `yp2'  if spec_urban95 == 1
+		gen y_covid                = `yp3'  if spec_covid == 1
+		gen y_demog                = `yp4'  if spec_demog == 1
+		gen y_stringency           = `yp5'  if spec_stringency == 1
+		gen y_covars               = `yp6'  if spec_covars == 1
+		gen y_excl                 = `yp7'  if spec_excl2020 == 1
+		gen y_irs_outstate         = `yp8'  if spec_irs_outstate == 1
+		gen y_irs_outstate_389     = `yp9'  if spec_irs_outstate_389 == 1
+		gen y_acs_all_outstate     = `yp10' if spec_acs_all_outstate == 1
+		gen y_acs_col_outstate     = `yp11' if spec_acs_col_outstate == 1
 
 		twoway 	(rcap ci_lo_sig_notpref ci_hi_sig_notpref spec_rank, 		///
 					lc("`col_sig_notpref'") lw(vthin)) 						///
@@ -1803,10 +1805,10 @@ foreach otype in "n1" "n2" "agi" {
 				   `yp5'  "Stringency Match" 								///
 				   `yp6'  "Covariates" 										///
 				   `yp7'  "Excl. 2020" 										///
-				   `yp8'  "IRS Out-of-State (all counties)" 				///
-				   `yp9'  "IRS Out-of-State (ACS counties)" 				///
-				   `yp10' "ACS All (Out-of-State)" 							///
-				   `yp11' "ACS College (Out-of-State)", 					///
+				   `yp8'  "IRS (all counties)" 								///
+				   `yp9'  "IRS (ACS counties)" 								///
+				   `yp10' "ACS All" 										///
+				   `yp11' "ACS College", 									///
 				labsize(vsmall) angle(0) notick nogrid add) 				///
 			legend(order(5 "Sig. (p<0.05)" 6 "Insig." 						///
 						 7 "Sig., Preferred" 8 "Insig., Preferred") 		///

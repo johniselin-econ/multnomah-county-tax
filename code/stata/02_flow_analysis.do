@@ -1237,7 +1237,7 @@ foreach sample in "acs" "all" {
 			yline(0, lc(gs10) lp(dash)) 										///
 			xline(2020.5, lc(black) lp(solid))									///
 			xlabel(2016(1)2022) 												///
-			ytitle("Coefficient (relative to 2020)") 							///
+			ytitle("Coefficient (relative to 2019)") 							///
 			xtitle("Year")														///
 			legend(order(2 "With Covariates" 4 "Without Covariates") 			///
 				pos(6) rows(1)) 												///
@@ -1253,7 +1253,7 @@ foreach sample in "acs" "all" {
 			yline(0, lc(gs10) lp(dash)) 										///
 			xline(2020.5, lc(black) lp(solid))									///
 			xlabel(2016(1)2022) 												///
-			ytitle("Coefficient (relative to 2020)") 							///
+			ytitle("Coefficient (relative to 2019)") 							///
 			xtitle("Year")														///
 			legend(order(2 "With Covariates" 4 "Without Covariates") 			///
 				pos(6) rows(1)) 												///
@@ -1269,7 +1269,7 @@ foreach sample in "acs" "all" {
 			yline(0, lc(gs10) lp(dash)) 										///
 			xline(2020.5, lc(black) lp(solid))									///
 			xlabel(2016(1)2022) 												///
-			ytitle("Coefficient (relative to 2020)") 							///
+			ytitle("Coefficient (relative to 2019)") 							///
 			xtitle("Year")														///
 			legend(order(2 "Out-migration" 4 "In-migration") 					///
 				pos(6) rows(1)) 												///

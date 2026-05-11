@@ -562,10 +562,9 @@ tempname fh
 file open `fh' using "${results}elasticities/tbl_elasticities.tex", write replace
 
 elast_tex_open, handle(`fh') ///
-	cap("Highlighted AGI Net-Migration Elasticities (Kleven 2024 Framework)") ///
-	lbl("tab:elasticities") cols("ll ccc")
-file write `fh' "Data & Sample & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ $\beta$ & Stock $\varepsilon$ \\" _n
-file write `fh' " & & & (Kleven) & (Total AGI, 2021--2022) \\" _n
+	cap("Highlighted AGI Net-Migration Elasticities, PFA-Only Sensitivity") ///
+	lbl("tab:elasticities_pfa_only") cols("ll ccc")
+file write `fh' "Data & Sample & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ & Stock $\varepsilon$ \\" _n
 file write `fh' "\midrule" _n
 
 sort data_type sample
@@ -601,35 +600,12 @@ forvalues i = 1/`N' {
 }
 
 elast_tex_notes_open, handle(`fh')
-file write `fh' "Semi-elasticity $\beta$ follows \citet{kleven_taxation_2024}: " _n
-file write `fh' "$\beta = (\hat{\tau}/100) / \Delta\ln(1-\tau_\text{total})$, where $\tau_\text{total}$ is the combined " _n
-file write `fh' "federal income + Oregon state income + FICA employee share + PFA rate on impacted filers. " _n
-file write `fh' "A negative $\beta$ for out-migration (or positive for in-migration) indicates more migration when the net-of-tax rate falls. " _n
-** Use char() for literal LaTeX quote pairs — Stata's macro engine
-** reads `` (two backticks) as the start of a nested macro reference,
-** which silently eats the quoted phrase.
-local lq = char(96) + char(96)
-local rq = char(39) + char(39)
-file write `fh' "Kleven's informal reading of $\beta$ as `lq'pp change in the migration rate per pp change in the tax rate`rq' holds only when $\tau$ is small: " _n
-file write `fh' "formally $\beta \approx -(1 - \bar{\tau}_\text{total}) \cdot (\Delta\text{mig}_\text{pp}/\Delta\tau_\text{pp})$, so at the Multnomah total rate of `total_pct'\% the log-NTR $\beta$ is roughly $(1-\bar{\tau}_\text{total}) \approx 0.60\times$ the naive pp-per-pp reading " _n
-file write `fh' "(equivalently, the naive reading is $1/(1-\bar{\tau}_\text{total}) \approx 1.67\times$ $\beta$). " _n
-file write `fh' "Stock elasticity is reported with respect to the after-tax rate: $\varepsilon_{\text{stock},H} = \Delta\ln S_H / \Delta\ln(1-\tau_\text{total})$. " _n
-** Note on math escaping: Stata expands `$h`, `$H`, `$T`, `$s_\text{...}`
-** as global macro references (they happen to be valid macro names).
-** The `$\beta`, `$\Delta`, `$\tau`, `$\varepsilon` patterns survive because
-** the backslash immediately after `$` is not a valid macro-name char and
-** halts macro parsing. So we phrase math statements that need `$h`-style
-** symbols without the surrounding $...$ delimiters where possible, and
-** rely on the surrounding text to convey the variable.
-file write `fh' "For each post-treatment year, we build the stock recursively from net migration effects using $\Delta\ln S_h = \ln(1 + \hat{\tau}_h\, s_\text{scale}/100)$ and sum those log changes through the relevant horizon. " _n
-file write `fh' "The table reports the 2021--2022 stock elasticity on the total AGI base; the per-period scaling factor in the recursion is 1 for IRS and ACS All specifications, and equals the impacted-college share for ACS College. " _n
-file write `fh' "Impacted-base stock elasticities are exported to the Excel workbook for revenue calculations. " _n
-file write `fh' "This is a horizon-specific stock object, \emph{not} the Kleven steady-state stock elasticity (which would require a demographic lifespan parameter that we do not estimate). " _n
-file write `fh' "Positive values indicate that the AGI stock shrinks when the tax rate rises because the after-tax rate falls. " _n
-file write `fh' "Average effective PFA rate: `pfa_pct'\%; average total tax rate on impacted filers: `total_pct'\%. " _n
-file write `fh' "FICA reflects the employee share only. " _n
-file write `fh' "Semi-elasticities for gross out- and in-migration are reported in Appendix Table~\ref{tab:elasticities_inout}. " _n
-elast_tex_notes_inference, handle(`fh') stock
+file write `fh' "PFA-only sensitivity counterpart to Table~\ref{tab:elasticities}. " _n
+file write `fh' "Point estimates of $\hat{\tau}$ are unchanged; only the denominator differs. " _n
+file write `fh' "Here $\tau_\text{total}$ excludes the Metro SHS contribution (average total rate on impacted filers: `total_pct'\%). " _n
+file write `fh' "Because the denominator $|\Delta\ln(1-\tau_\text{total})|$ is smaller without SHS, $|\beta|$ and stock $\varepsilon$ are correspondingly larger than in Table~\ref{tab:elasticities}. " _n
+file write `fh' "See Appendix~\ref{sec:appb_elast} for formulas. " _n
+file write `fh' "Bracketed values are 95\% donor-cluster bootstrap percentile CIs. " _n
 elast_tex_close, handle(`fh')
 
 file close `fh'
@@ -736,10 +712,10 @@ tempname fh
 file open `fh' using "${results}elasticities/tbl_elasticities_inout.tex", write replace
 
 elast_tex_open, handle(`fh') ///
-	cap("Highlighted Gross AGI Migration Elasticities (Kleven 2024 Framework)") ///
-	lbl("tab:elasticities_inout") cols("lll cc") ///
+	cap("Highlighted Gross AGI Migration Elasticities, PFA-Only Sensitivity") ///
+	lbl("tab:elasticities_inout_pfa_only") cols("lll cc") ///
 	fontsize("footnotesize")
-file write `fh' "Data & Sample & Dir.\ & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ $\beta$ \\" _n
+file write `fh' "Data & Sample & Dir.\ & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ \\" _n
 file write `fh' "\midrule" _n
 
 sort data_type sample migration
@@ -757,15 +733,11 @@ file write `fh' "\addlinespace" _n
 elast_inout_panel, handle(`fh') direction("in")
 
 elast_tex_notes_open, handle(`fh')
-file write `fh' "Semi-elasticity $\beta$ follows \citet{kleven_taxation_2024}: " _n
-file write `fh' "$\beta = (\hat{\tau}/100) / \Delta\ln(1-\tau_\text{total})$, where $\tau_\text{total}$ is the combined " _n
-file write `fh' "federal income + Oregon state income + FICA employee share + PFA rate on impacted filers. " _n
-file write `fh' "FICA reflects the employee share only. " _n
-file write `fh' "Sign convention: $\beta = (\hat{\tau}/100) / \Delta\ln(1-\tau_\text{total})$ with $\Delta\ln(1-\tau_\text{total}) < 0$ under a tax hike. " _n
-file write `fh' "For out-migration, \emph{negative} $\beta$ indicates a larger outflow when the tax rate rises; " _n
-file write `fh' "for in-migration, \emph{positive} $\beta$ indicates a smaller inflow. " _n
-file write `fh' "Average effective PFA rate: `pfa_pct'\%; total rate on impacted filers: `total_pct'\%. " _n
-elast_tex_notes_inference, handle(`fh')
+file write `fh' "PFA-only sensitivity counterpart to Table~\ref{tab:elasticities_inout}. " _n
+file write `fh' "Point estimates of $\hat{\tau}$ are unchanged; only the denominator differs (excludes Metro SHS; average total rate on impacted filers: `total_pct'\%). " _n
+file write `fh' "Because the denominator is smaller without SHS, $|\beta|$ is correspondingly larger than in Table~\ref{tab:elasticities_inout}. " _n
+file write `fh' "See Appendix~\ref{sec:appb_elast} for formulas. " _n
+file write `fh' "Bracketed values are 95\% donor-cluster bootstrap percentile CIs. " _n
 elast_tex_close, handle(`fh')
 
 file close `fh'
@@ -795,10 +767,9 @@ file open `fh_shs' using "${results}elasticities/tbl_elasticities_shs.tex", ///
 	write replace
 
 elast_tex_open, handle(`fh_shs') ///
-	cap("Highlighted AGI Net-Migration Elasticities Including Metro SHS 1\% (Kleven 2024 Framework)") ///
-	lbl("tab:elasticities_shs") cols("ll ccc")
-file write `fh_shs' "Data & Sample & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ $\beta$ & Stock $\varepsilon$ \\" _n
-file write `fh_shs' " & & & (Kleven, +SHS) & (Total AGI, 2021--2022, +SHS) \\" _n
+	cap("Highlighted AGI Net-Migration Elasticities") ///
+	lbl("tab:elasticities") cols("ll ccc")
+file write `fh_shs' "Data & Sample & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ & Stock $\varepsilon$ \\" _n
 file write `fh_shs' "\midrule" _n
 
 sort data_type sample
@@ -835,13 +806,13 @@ forvalues i = 1/`N' {
 }
 
 elast_tex_notes_open, handle(`fh_shs')
-file write `fh_shs' "This table repeats Table~\ref{tab:elasticities} using a denominator that also includes the Portland Metro Supportive Housing Services (SHS) tax: " _n
-file write `fh_shs' "a flat 1\% on income above \$125{,}000 single / \$200{,}000 joint, effective 2021. " _n
-file write `fh_shs' "SHS applies throughout Metro (Multnomah, Washington, and Clackamas counties); with a national SDID donor pool, SHS is part of the differential tax change for Multnomah in 2021, " _n
-file write `fh_shs' "so including it in $\Delta\ln(1-\tau_\text{total})$ produces a more conservative (smaller in magnitude) $\beta$. " _n
-file write `fh_shs' "Average effective SHS rate on impacted filers: `shs_pct'\%; total rate including SHS: `total_shs_pct'\%. " _n
-file write `fh_shs' "Point estimates of $\hat{\tau}$ are unchanged relative to Table~\ref{tab:elasticities} — only the denominator differs. " _n
-elast_tex_notes_inference, handle(`fh_shs') stock
+file write `fh_shs' "$\hat{\tau}$ is the SDID coefficient on the AGI net migration rate (percentage points). " _n
+file write `fh_shs' "Semi-elasticity $\beta = (\hat{\tau}/100)/\Delta\ln(1-\tau_\text{total})$ and stock elasticity $\varepsilon_{\text{stock},H} = \Delta\ln S_H / \Delta\ln(1-\tau_\text{total})$, where $S_H$ is the cumulative AGI stock at horizon $H$, are computed against the joint PFA + Metro SHS rate change; both took effect January~1, 2021. " _n
+file write `fh_shs' "Average total marginal rate on impacted filers: `total_shs_pct'\% (federal + Oregon state + FICA-employee + PFA + SHS). " _n
+file write `fh_shs' "The stock object is the 2-year cumulative AGI-stock change on the total AGI base; see Appendix~\ref{sec:appb_elast} for the recursion and Appendix Table~\ref{tab:elasticities_pfa_only} for a PFA-only-denominator sensitivity. " _n
+file write `fh_shs' "Gross out- and in-migration semi-elasticities are in Appendix Table~\ref{tab:elasticities_inout}. " _n
+file write `fh_shs' "Positive $\beta$ or stock $\varepsilon$ indicates AGI inflow / stock shrinks when the after-tax rate falls. " _n
+file write `fh_shs' "Bracketed values are 95\% donor-cluster bootstrap percentile CIs (treats tax parameters and microsimulation denominators as fixed). " _n
 elast_tex_close, handle(`fh_shs')
 
 file close `fh_shs'
@@ -949,10 +920,10 @@ file open `fh_shs_io' using "${results}elasticities/tbl_elasticities_inout_shs.t
 	write replace
 
 elast_tex_open, handle(`fh_shs_io') ///
-	cap("Highlighted Gross AGI Migration Elasticities Including Metro SHS 1\% (Kleven 2024 Framework)") ///
-	lbl("tab:elasticities_inout_shs") cols("lll cc") ///
+	cap("Highlighted Gross AGI Migration Elasticities") ///
+	lbl("tab:elasticities_inout") cols("lll cc") ///
 	fontsize("footnotesize")
-file write `fh_shs_io' "Data & Sample & Dir.\ & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ $\beta$ \\" _n
+file write `fh_shs_io' "Data & Sample & Dir.\ & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ \\" _n
 file write `fh_shs_io' "\midrule" _n
 
 sort data_type sample migration
@@ -972,11 +943,11 @@ elast_inout_panel, handle(`fh_shs_io') direction("in") ///
 	betacivar(flow_semi_shs_ci_str)
 
 elast_tex_notes_open, handle(`fh_shs_io')
-file write `fh_shs_io' "SHS-inclusive version of Table~\ref{tab:elasticities_inout}. " _n
-file write `fh_shs_io' "Denominator includes PFA + Metro SHS 1\%; $\hat{\tau}$ is unchanged. " _n
-file write `fh_shs_io' "Average effective SHS rate on impacted filers: `shs_pct'\%; total rate including SHS: `total_shs_pct'\%. " _n
-file write `fh_shs_io' "Sign conventions follow Table~\ref{tab:elasticities_inout}." _n
-elast_tex_notes_inference, handle(`fh_shs_io')
+file write `fh_shs_io' "$\hat{\tau}$ is the SDID coefficient on the AGI gross out- (Panel~A) or in- (Panel~B) migration rate (percentage points). " _n
+file write `fh_shs_io' "Semi-elasticity $\beta = (\hat{\tau}/100)/\Delta\ln(1-\tau_\text{total})$ is computed against the joint PFA + Metro SHS rate change (average total marginal rate on impacted filers: `total_shs_pct'\%); see Appendix~\ref{sec:appb_elast} for the formula and Table~\ref{tab:elasticities} for the corresponding net-migration object. " _n
+file write `fh_shs_io' "A PFA-only-denominator sensitivity is in Appendix Table~\ref{tab:elasticities_inout_pfa_only}. " _n
+file write `fh_shs_io' "Sign convention: negative $\beta$ for out-migration indicates a larger outflow when the after-tax rate falls; positive $\beta$ for in-migration indicates a smaller inflow. " _n
+file write `fh_shs_io' "Bracketed values are 95\% donor-cluster bootstrap percentile CIs. " _n
 elast_tex_close, handle(`fh_shs_io')
 
 file close `fh_shs_io'

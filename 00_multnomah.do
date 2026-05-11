@@ -1,7 +1,7 @@
 /*******************************************************************************
 	File Name:    00_multnomah.do
 	Creator:      John Iselin
-	Date Updated: March 15, 2026
+	Date Updated: May 10, 2026
 
 	Purpose:      Orchestrator for the Stata analysis pipeline examining the
 	              effect of Multnomah County's Preschool for All tax on
@@ -84,17 +84,12 @@ if `pkg_missing' {
 ** ============================================================================
 ** PROJECT GLOBALS — RUN-CONTROL FLAGS
 ** ============================================================================
-** Single source of truth for run-mode decisions. Flags here run *after*
-** 00_stata_config.do, so they unconditionally override any defaults set
-** there or elsewhere. Lazy `if "${var}" == ""` fallbacks in callee files
-** (e.g., 02_bootstrap.do) remain as safety nets for standalone do-file
-** runs but are no-ops when this orchestrator drives the pipeline.
 
 ** ----------------------------------------------------------------
 ** Bootstrap
 ** ----------------------------------------------------------------
 global run_bootstrap         = 1 		// 1 to (re)run bootstrap; 0 to skip the stage
-global bootstrap_reps        = 100		// 20=smoke, 100=stress, 500=publication
+global bootstrap_reps        = 500		// 20=smoke, 100=stress, 500=publication
 global show_bootstrap_cis    = 1		// 1 to render rcap whiskers on spec curves (requires bootstrap_cis.dta)
 global ci_level              = 95		// 90, 95, or 99 — percentile CI level for bootstrap_cis.dta
 
@@ -196,9 +191,7 @@ do "${code}02_sdid_analysis.do"
 ** Table 2 (Multnomah + neighbors), stringency KDPs, and Table 1 (combined).
 do "${code}02_descriptives.do"
 
-** ACS individual-level conditional-mean migration regressions (Fig 9, etc.).
-** Reclassified from Stage 4 (Robustness) to Stage 3: these produce primary
-** descriptive evidence on who is moving, not robustness checks.
+** ACS individual-level conditional-mean migration regressions
 do "${code}02_indiv_analysis.do"
 
 
@@ -207,24 +200,18 @@ do "${code}02_indiv_analysis.do"
 ** ============================================================================
 
 ** Revenue microsim: produces revenue_parameters.dta (rates + shares)
-** Per-spec revenue-loss distribution moved to 02_post_spec.do (Phase A).
 do "${code}02_revenue_microsim.do"
 
 ** Per-spec elasticity + revenue-loss combiner. Reads sdid_results.dta and
 ** revenue_parameters.dta; writes spec_results.dta via the spec engine.
-** Replaces the inline arithmetic previously in 02_elasticities.do §1.
 do "${code}02_post_spec.do"
 
-** Donor-cluster bootstrap for highlighted-spec CIs (Phase B3+).
+** Donor-cluster bootstrap for highlighted-spec CIs.
 ** Gated by ${run_bootstrap} from the PROJECT GLOBALS panel above.
 **
-** Two-stage pipeline (post Phase B7 migration to the `parallel` ado):
+** Two-stage pipeline:
 **   1. 02_bootstrap.do        — runs all reps and writes the canonical
-**                               bootstrap_draws.dta. Branches on
-**                               ${use_parallel}: parallel mode fires
-**                               ${n_clusters} workers via Vega's
-**                               `parallel` package; serial mode runs
-**                               in-process. Same output either way.
+**                               bootstrap_draws.dta.
 **   2. 02_bootstrap_tables.do — collapses bootstrap_draws.dta to
 **                               percentile CIs in bootstrap_cis.dta,
 **                               keyed by spec_id (uses ${ci_level}).
@@ -233,9 +220,7 @@ if ${run_bootstrap} == 1 {
 	do "${code}02_bootstrap_tables.do"
 }
 
-** Elasticity tables + figures (also revenue-loss distribution histograms,
-** previously in 02_revenue.do §12). Reads spec_results.dta produced by
-** 02_post_spec.do. Replaces 02_elasticities.do, retired in Phase A commit A5.
+** Elasticity and revenue tables + figures
 do "${code}02_tables_figures.do"
 
 
@@ -243,8 +228,7 @@ do "${code}02_tables_figures.do"
 ** STAGE 5: DIAGNOSTICS & SAMPLE COUNTS
 ** ============================================================================
 ** Observation count table for the four primary methods (SDID, narrow SDID,
-** flows, DiD). Supplemental counts for otherout SDID live in Stage 6 alongside
-** that script.
+** flows, DiD). 
 do "${code}02_diagnostics.do"
 
 
