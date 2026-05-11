@@ -34,8 +34,9 @@ Outputs:        ${results}elasticities/
                     tbl_elasticities.xlsx           5 sheets
                     preferred_net_stock.csv
                     preferred_net_stock_shs.csv
-                    fig_speccurve_elast_beta_{net,in,out}{,_shs}.{pdf,png}
-                    fig_speccurve_elast_stock{,_shs}.{pdf,png}
+                    fig_speccurve_elast_beta_{net,in,out}{,_outstate}{,_shs}.{pdf,png}
+                    fig_speccurve_elast_flow_{in,out}{,_outstate}{,_shs}.{pdf,png}
+                    fig_speccurve_elast_stock{,_in,_out}{,_outstate}{,_shs}.{pdf,png}
                 ${results}revenue/
                     fig_speccurve_revenue_pfa.{pdf,png}
                     fig_speccurve_revenue_oregon.{pdf,png}
@@ -117,11 +118,13 @@ if ${show_bootstrap_cis} == 1 {
 ** is reported on the net-migration tables (Tables 2 / A3) instead.
 **
 ** elast_speccurve_plot — writes a specification-curve plot with
-** ranked point estimates (and bootstrap CI whiskers if available) in
-** the upper zone, plus a configurable indicator-dot panel below.
-** Mirrors the SDID spec-curve template at 02_sdid_analysis.do:1452-1828.
-** Exports .pdf and .png at 2400px. Replaced the old elast_hist_plot
-** histogram view.
+** ranked point estimates in the upper zone (two-color split: blue dot
+** for each spec, orange diamond for highlighted "preferred" specs; no
+** CI whiskers) plus a configurable indicator-dot panel below. Takes a
+** scope() argument that filters by the `outstate` flag so a single
+** caller invocation can render either the county-level or out-of-state
+** variant. Mirrors the SDID spec-curve template at 02_sdid_analysis.do.
+** Exports .pdf and .png at 2400px.
 **
 ** These helpers previously lived in 02_elasticities.do and moved here
 ** when that file was retired in commit A5 (21c612c). 02_tables_figures.do
@@ -177,150 +180,87 @@ end
 ** elast_speccurve_plot
 **
 ** Specification-curve plot for derived elasticities and revenue losses.
-** Mirrors the SDID spec-curve template at 02_sdid_analysis.do:1452-1828
-** so the figures share visual language. Replaces the old elast_hist_plot
-** histogram view.
-**
-** Coefficient zone (top): point estimates ranked ascending by `var`,
-** colored by (significant × preferred). Whiskers from `lovar`/`hivar`
-** when supplied (typically the bootstrap CI columns merged from
-** bootstrap_cis.dta); falls back to dot-only when those columns are
-** absent or all-missing.
-**
-** Indicator zone (bottom): one row per spec_* dummy in INDICATORS().
-** Dummies are constructed on the fly from `sample`, `data_type`, and
-** `period_type`, so the helper does not require schema additions to
-** spec_results.dta.
+** Visual language matches the SDID spec curves at 02_sdid_analysis.do:
+** ranked point estimates in the upper zone (blue dot = single
+** specification, orange diamond = highlighted "preferred" specification),
+** an indicator-dot panel in the lower zone, no confidence-interval
+** whiskers. Two-color preferred/non-preferred split — significance
+** coloring was dropped (no inference object is plotted).
 **
 ** Required syntax:
 **     elast_speccurve_plot, var(<num>) ytitle("...") file("...") ///
 **         indicators("name1 name2 ...")                          ///
-**         [lovar(<colname>) hivar(<colname>)]                    ///
-**         [colsignotpref("...") colinsignotpref("...")           ///
-**          colsigpref("...")    colinsigpref("...")              ///
-**          colzero("...")]
+**         [scope(county|outstate|all)                            ///
+**          colpref("...") colnotpref("...") colzero("...")]
 **
-** ytitle is the metric label rendered on the y-axis (e.g.,
-** "{&beta} = ({&tau}/100) / {&Delta}ln(1{&minus}{&tau})"). In the
-** legacy elast_hist_plot signature the same string was passed as
-** xtitle because the metric was the x-axis of the histogram.
+** scope() filters by the `outstate` flag:
+**   county   → keep if outstate == 0  (county-level migration)
+**   outstate → keep if outstate == 1  (out-of-state migration)
+**   all      → no filter (default; preserves legacy behaviour)
 **
-** lovar/hivar take *string* column names rather than `varname numeric`
-** so the caller can reference bootstrap CI columns that exist only when
-** ${show_bootstrap_cis} == 1. The helper validates with `confirm numeric
-** variable` internally and falls back to dot-only when columns are
-** absent or all-missing.
-**
-** Color args default to the ${col_*} globals set in 00_stata_config.do.
 ** Recognized indicator names (each maps to one row of dots):
-**     spec_irs spec_irs_outstate spec_acs_all spec_acs_all_outstate
+**     spec_irs spec_irs_389
+**     spec_irs_outstate spec_irs_outstate_389
+**     spec_acs_all spec_acs_all_outstate
 **     spec_acs_col spec_acs_col_outstate
 **     spec_all spec_stringency spec_urban95 spec_demog spec_covid
 **     spec_16_22 spec_16_24
 **     spec_covars spec_excl2020
 **
-** Side effects: drops temporary spec_*, tau_*pref, ci_*pref, y_*, and
-** spec_rank columns it creates. Operates on the current dataset
-** in-memory and assumes the caller has already filtered to the
-** relevant subset (e.g., by migration / outstate).
+** Side effects: drops temporary spec_*, v_pref, v_notpref, y_*, and
+** spec_rank columns it creates. Operates on the current dataset via
+** preserve/restore.
 ** ------------------------------------------------------------------
 capture program drop elast_speccurve_plot
 program define elast_speccurve_plot
-	** Accept LOVAR / HIVAR as strings (not varname numeric) so callers can
-	** name columns that exist only when ${show_bootstrap_cis}==1. We confirm
-	** them ourselves below; callers don't need to branch on the flag.
 	syntax , VAR(varname numeric) YTITLE(string asis) FILE(string)        ///
 		INDICATORS(string)                                                ///
-		[ LOVAR(string) HIVAR(string)                                     ///
-		  COLSIGNOTPREF(string) COLINSIGNOTPREF(string)                   ///
-		  COLSIGPREF(string)    COLINSIGPREF(string)                      ///
-		  COLZERO(string) ]
+		[ SCOPE(string)                                                   ///
+		  COLPREF(string) COLNOTPREF(string) COLZERO(string) ]
 
-	** Color defaults from globals
-	if "`colsignotpref'"   == "" local colsignotpref   "${col_sig_notpref}"
-	if "`colinsignotpref'" == "" local colinsignotpref "${col_insig_notpref}"
-	if "`colsigpref'"      == "" local colsigpref      "${col_sig_pref}"
-	if "`colinsigpref'"    == "" local colinsigpref    "${col_insig_pref}"
-	if "`colzero'"         == "" local colzero         "${col_zero}"
+	** Defaults
+	if "`scope'"     == "" local scope     "all"
+	if "`colnotpref'" == "" local colnotpref "${col_sig_notpref}"
+	if "`colpref'"    == "" local colpref    "${col_sig_pref}"
+	if "`colzero'"    == "" local colzero    "${col_zero}"
 
-	** Drop rows where var is missing — a spec without a defined estimate
-	** has nothing to plot. Operates on a temporary working copy via preserve
-	** so the caller's data is untouched on exit.
 	preserve
 	qui keep if !missing(`var')
+
+	** Geographic scope filter.
+	if "`scope'" == "county"   qui keep if outstate == 0
+	if "`scope'" == "outstate" qui keep if outstate == 1
+
 	qui count
 	if r(N) == 0 {
-		dis as text "  No non-missing `var' values — skipping `file'."
+		dis as text "  No `scope' `var' rows — skipping `file'."
 		restore
 		exit
 	}
 	local n_specs = r(N)
 
-	** Sort and rank — ascending by `var`, ties broken arbitrarily.
 	sort `var'
 	gen long spec_rank = _n
 
-	** Decide whether bootstrap CIs are usable. Both lovar and hivar must
-	** be supplied, both must exist as numeric variables in memory, AND at
-	** least one row must have both non-missing.
-	local has_ci = 0
-	if "`lovar'" != "" & "`hivar'" != "" {
-		capture confirm numeric variable `lovar'
-		local lovar_ok = (_rc == 0)
-		capture confirm numeric variable `hivar'
-		local hivar_ok = (_rc == 0)
-		if `lovar_ok' & `hivar_ok' {
-			qui count if !missing(`lovar') & !missing(`hivar')
-			if r(N) > 0 local has_ci = 1
-		}
-	}
+	** Two-category split on preferred only (significance coloring dropped).
+	gen double v_notpref = `var' if preferred == 0
+	gen double v_pref    = `var' if preferred == 1
 
-	** Four-category split on (significant, preferred).
-	gen double v_sig_notpref   = `var' if significant == 1 & preferred == 0
-	gen double v_insig_notpref = `var' if significant == 0 & preferred == 0
-	gen double v_sig_pref      = `var' if significant == 1 & preferred == 1
-	gen double v_insig_pref    = `var' if significant == 0 & preferred == 1
-
-	if `has_ci' {
-		gen double cilo_sig_notpref   = `lovar' if significant == 1 & preferred == 0
-		gen double cihi_sig_notpref   = `hivar' if significant == 1 & preferred == 0
-		gen double cilo_insig_notpref = `lovar' if significant == 0 & preferred == 0
-		gen double cihi_insig_notpref = `hivar' if significant == 0 & preferred == 0
-		gen double cilo_sig_pref      = `lovar' if significant == 1 & preferred == 1
-		gen double cihi_sig_pref      = `hivar' if significant == 1 & preferred == 1
-		gen double cilo_insig_pref    = `lovar' if significant == 0 & preferred == 1
-		gen double cihi_insig_pref    = `hivar' if significant == 0 & preferred == 1
-	}
-
-	** y-axis range for the coefficient zone. Use CI extremes if available,
-	** otherwise the var range, with a small pad.
-	if `has_ci' {
-		qui summ `lovar'
-		local y_min = r(min)
-		qui summ `hivar'
-		local y_max = r(max)
-	}
-	else {
-		qui summ `var'
-		local y_min = r(min)
-		local y_max = r(max)
-	}
+	** y-axis range — no CIs in this view, use var range with small pad.
+	qui summ `var'
+	local y_min = r(min)
+	local y_max = r(max)
 	if missing(`y_min') | missing(`y_max') {
-		** Degenerate guard — should not happen given the n>0 check above.
 		local y_min = 0
 		local y_max = 1
 	}
 	local pad = max((`y_max' - `y_min') * 0.05, 0.0001)
 	local y_min = `y_min' - `pad'
 	local y_max = `y_max' + `pad'
-	** Force y=0 inside the coefficient zone so the dashed zero reference
-	** line never lands among the indicator dots below.
 	local y_min = min(`y_min', 0)
 	local y_max = max(`y_max', 0)
 	local data_range = `y_max' - `y_min'
 
-	** Adaptive tick step for the coefficient zone — six bins cover the full
-	** range of metrics this helper sees (β ≈ 0.05 → state_loss ≈ 100s).
 	if      `data_range' >= 100  local tick_step = 25
 	else if `data_range' >= 50   local tick_step = 10
 	else if `data_range' >= 20   local tick_step = 5
@@ -331,16 +271,11 @@ program define elast_speccurve_plot
 	local tick_lo = floor(`y_min' / `tick_step') * `tick_step'
 	local tick_hi =  ceil(`y_max' / `tick_step') * `tick_step'
 
-	** Indicator zone scales with the data range so the same template works
-	** for elasticities (β ~ 0–0.5) and revenue losses ($M, range 10–60+).
-	** Separator sits 15% of data_range below y_min; rows step down by 7%.
 	local sep_y    = `y_min' - 0.15 * `data_range'
 	local row_step = 0.07 * `data_range'
 	local ind_top  = `sep_y' - `row_step'
 
-	** Build spec_* dummies on the fly (caller may have filtered, so dummies
-	** can be all-zero on some rows; that's fine — the y_<name> = . path
-	** suppresses dots for those rows).
+	** spec_* dummies (mirrors SDID; includes both 389-restricted variants).
 	gen byte spec_all              = sample == "sample_all"
 	gen byte spec_stringency       = sample == "sample_stringency"
 	gen byte spec_urban95          = sample == "sample_urban95"
@@ -349,7 +284,9 @@ program define elast_speccurve_plot
 	gen byte spec_covars           = controls == 1
 	gen byte spec_excl2020         = exclusion == 1
 	gen byte spec_irs              = data_type == "IRS"
+	gen byte spec_irs_389          = data_type == "IRS (389)"
 	gen byte spec_irs_outstate     = data_type == "IRS (Out-of-State)"
+	gen byte spec_irs_outstate_389 = data_type == "IRS (389, Out-of-State)"
 	gen byte spec_acs_all          = data_type == "ACS All"
 	gen byte spec_acs_all_outstate = data_type == "ACS All (Out-of-State)"
 	gen byte spec_acs_col          = data_type == "ACS College"
@@ -357,8 +294,9 @@ program define elast_speccurve_plot
 	gen byte spec_16_22            = period_type == "16-22"
 	gen byte spec_16_24            = period_type == "16-24"
 
-	** Indicator label dictionary. Order in `indicators` is presentation
-	** order, top to bottom.
+	** Labels — matched to SDID spec-curve convention. Outstate-suffixed
+	** entries drop the "(Out-of-State)" wording since the figure title
+	** already conveys it.
 	local lbl_spec_all              `"All Counties"'
 	local lbl_spec_urban95          `"Urban (Top 5%)"'
 	local lbl_spec_covid            `"COVID Match"'
@@ -366,17 +304,18 @@ program define elast_speccurve_plot
 	local lbl_spec_stringency       `"Stringency Match"'
 	local lbl_spec_covars           `"Covariates"'
 	local lbl_spec_excl2020         `"Excl. 2020"'
-	local lbl_spec_irs              `"IRS"'
-	local lbl_spec_irs_outstate     `"IRS (Out-of-State)"'
+	local lbl_spec_irs              `"IRS (all counties)"'
+	local lbl_spec_irs_389          `"IRS (ACS counties)"'
+	local lbl_spec_irs_outstate     `"IRS (all counties)"'
+	local lbl_spec_irs_outstate_389 `"IRS (ACS counties)"'
 	local lbl_spec_acs_all          `"ACS All"'
-	local lbl_spec_acs_all_outstate `"ACS All (Out-of-State)"'
+	local lbl_spec_acs_all_outstate `"ACS All"'
 	local lbl_spec_acs_col          `"ACS College"'
-	local lbl_spec_acs_col_outstate `"ACS College (Out-of-State)"'
+	local lbl_spec_acs_col_outstate `"ACS College"'
 	local lbl_spec_16_22            `"16-22"'
 	local lbl_spec_16_24            `"16-24"'
 
-	** For each requested indicator, generate y-coord var and accumulate
-	** scatter layers + ylabel pairs.
+	** Indicator-row scatter layers
 	local ind_layers `""'
 	local ind_ylabels `""'
 	local row_idx = 0
@@ -390,38 +329,21 @@ program define elast_speccurve_plot
 		local row_idx = `row_idx' + 1
 		local ypos = `ind_top' - (`row_idx' - 1) * `row_step'
 		gen double y_`ind_name' = `ypos' if `ind_name' == 1
-		local ind_layers `"`ind_layers' (scatter y_`ind_name' spec_rank, mc("`colsignotpref'") ms(O) msize(vsmall))"'
+		local ind_layers `"`ind_layers' (scatter y_`ind_name' spec_rank, mc("`colnotpref'") ms(O) msize(vsmall))"'
 		local ind_ylabels `"`ind_ylabels' `ypos' "`lbl_`ind_name''" "'
 	}
 
-	** Coefficient-zone layers. rcaps only if we have CIs.
+	** Coefficient zone — two scatter layers (regular + preferred), no rcap.
 	local coef_layers `""'
-	if `has_ci' {
-		local coef_layers `"`coef_layers' (rcap cilo_sig_notpref   cihi_sig_notpref   spec_rank, lc("`colsignotpref'")   lw(vthin))"'
-		local coef_layers `"`coef_layers' (rcap cilo_insig_notpref cihi_insig_notpref spec_rank, lc("`colinsignotpref'") lw(vthin))"'
-		local coef_layers `"`coef_layers' (rcap cilo_sig_pref      cihi_sig_pref      spec_rank, lc("`colsigpref'")      lw(thin))"'
-		local coef_layers `"`coef_layers' (rcap cilo_insig_pref    cihi_insig_pref    spec_rank, lc("`colinsigpref'")    lw(thin))"'
-	}
-	** Scatter layers — these are the four legend entries (5..8 if CIs, 1..4 if not).
-	local coef_layers `"`coef_layers' (scatter v_sig_notpref   spec_rank, mc("`colsignotpref'")   ms(O) msize(vsmall))"'
-	local coef_layers `"`coef_layers' (scatter v_insig_notpref spec_rank, mc("`colinsignotpref'") ms(O) msize(vsmall))"'
-	local coef_layers `"`coef_layers' (scatter v_sig_pref      spec_rank, mc("`colsigpref'")      ms(D) msize(small))"'
-	local coef_layers `"`coef_layers' (scatter v_insig_pref    spec_rank, mc("`colinsigpref'")    ms(D) msize(small))"'
-
-	** Legend points to the four scatter layers regardless of rcap presence.
-	if `has_ci' {
-		local leg_order `"5 "Sig. (p<0.05)" 6 "Insig." 7 "Sig., Preferred" 8 "Insig., Preferred""'
-	}
-	else {
-		local leg_order `"1 "Sig. (p<0.05)" 2 "Insig." 3 "Sig., Preferred" 4 "Insig., Preferred""'
-	}
+	local coef_layers `"`coef_layers' (scatter v_notpref spec_rank, mc("`colnotpref'") ms(O) msize(vsmall))"'
+	local coef_layers `"`coef_layers' (scatter v_pref    spec_rank, mc("`colpref'")    ms(D) msize(small))"'
 
 	twoway `coef_layers' `ind_layers'                                                       ///
 		, yline(`sep_y', lc(gs12) lp(solid) lw(vthin))                                     ///
 		  yline(0, lc("`colzero'") lp(dash))                                               ///
 		  ylabel(`tick_lo'(`tick_step')`tick_hi', labsize(vsmall) nogrid)                  ///
 		  ylabel(`ind_ylabels', labsize(vsmall) angle(0) notick nogrid add)                ///
-		  legend(order(`leg_order') rows(1) pos(6) size(vsmall))                           ///
+		  legend(order(1 "Specification" 2 "Preferred") rows(1) pos(6) size(vsmall))       ///
 		  ytitle(`"`ytitle'"', size(vsmall))                                               ///
 		  xtitle("Specification (ranked by estimate)", size(vsmall))                       ///
 		  xlabel(none)                                                                      ///
@@ -431,7 +353,7 @@ program define elast_speccurve_plot
 
 	graph export "`file'.pdf", replace
 	graph export "`file'.png", as(png) width(2400) replace
-	dis as text "  Wrote `file'.{pdf,png} (`n_specs' specs, has_ci=`has_ci')"
+	dis as text "  Wrote `file'.{pdf,png} (`n_specs' specs, scope=`scope')"
 
 	restore
 end
@@ -1475,11 +1397,12 @@ dis "Section 3: Elasticity distribution figures"
 dis "=============================================="
 
 ** Indicator templates — see elast_speccurve_plot header for the dictionary.
-** β and stock-ε figures are not pre-filtered by outstate, so they show all
-** six data_type rows. PFA / state revenue figures are pre-filtered to one
-** outstate value each; the call sites use the leaner instate / outstate
-** variants below in Section 4.
-local indic_universal `"spec_irs spec_irs_outstate spec_acs_all spec_acs_all_outstate spec_acs_col spec_acs_col_outstate spec_all spec_stringency spec_urban95 spec_demog spec_covid spec_16_22 spec_16_24 spec_covars spec_excl2020"'
+** Row order matches the SDID spec-curve labelling at 02_sdid_analysis.do.
+** Two templates: county-level migration (13 rows, includes both time
+** windows) and out-of-state migration (11 rows; outstate specs run at a
+** single time window, matching the SDID convention).
+local indic_county   `"spec_all spec_urban95 spec_covid spec_demog spec_stringency spec_covars spec_excl2020 spec_irs spec_irs_389 spec_acs_all spec_acs_col spec_16_22 spec_16_24"'
+local indic_outstate `"spec_all spec_urban95 spec_covid spec_demog spec_stringency spec_covars spec_excl2020 spec_irs_outstate spec_irs_outstate_389 spec_acs_all_outstate spec_acs_col_outstate"'
 
 ** ---- β spec curves (PFA + SHS) for each migration direction ----
 foreach migr in "net" "in" "out" {
@@ -1511,16 +1434,22 @@ foreach migr in "net" "in" "out" {
 	elast_speccurve_plot, var(beta_kleven) ///
 		ytitle(`"Migration Semi-Elasticity ({&beta})"') ///
 		file("${results}elasticities/fig_speccurve_elast_beta_`migr'") ///
-		indicators("`indic_universal'") ///
-		lovar(flow_semi_lo) hivar(flow_semi_hi)
+		indicators("`indic_county'") scope(county)
+	elast_speccurve_plot, var(beta_kleven) ///
+		ytitle(`"Migration Semi-Elasticity ({&beta})"') ///
+		file("${results}elasticities/fig_speccurve_elast_beta_`migr'_outstate") ///
+		indicators("`indic_outstate'") scope(outstate)
 
 	dis as text "Kleven semi-elasticity beta distribution (`migr'), +SHS:"
 	summ beta_kleven_shs, detail
 	elast_speccurve_plot, var(beta_kleven_shs) ///
 		ytitle(`"Migration Semi-Elasticity ({&beta}, PFA+SHS)"') ///
 		file("${results}elasticities/fig_speccurve_elast_beta_`migr'_shs") ///
-		indicators("`indic_universal'") ///
-		lovar(flow_semi_shs_lo) hivar(flow_semi_shs_hi)
+		indicators("`indic_county'") scope(county)
+	elast_speccurve_plot, var(beta_kleven_shs) ///
+		ytitle(`"Migration Semi-Elasticity ({&beta}, PFA+SHS)"') ///
+		file("${results}elasticities/fig_speccurve_elast_beta_`migr'_outstate_shs") ///
+		indicators("`indic_outstate'") scope(outstate)
 
 	** ---- Flow elasticity spec curve (item 10) ----
 	** flow_e is undefined for net migration (rate ~ 0 in pre period); skip
@@ -1534,8 +1463,11 @@ foreach migr in "net" "in" "out" {
 			elast_speccurve_plot, var(flow_e) ///
 				ytitle(`"Migration Flow Elasticity"') ///
 				file("${results}elasticities/fig_speccurve_elast_flow_`migr'") ///
-				indicators("`indic_universal'") ///
-				lovar(flow_e_lo) hivar(flow_e_hi)
+				indicators("`indic_county'") scope(county)
+			elast_speccurve_plot, var(flow_e) ///
+				ytitle(`"Migration Flow Elasticity"') ///
+				file("${results}elasticities/fig_speccurve_elast_flow_`migr'_outstate") ///
+				indicators("`indic_outstate'") scope(outstate)
 		}
 		qui count if !missing(flow_e_shs)
 		if r(N) > 0 {
@@ -1544,8 +1476,11 @@ foreach migr in "net" "in" "out" {
 			elast_speccurve_plot, var(flow_e_shs) ///
 				ytitle(`"Migration Flow Elasticity (PFA+SHS)"') ///
 				file("${results}elasticities/fig_speccurve_elast_flow_`migr'_shs") ///
-				indicators("`indic_universal'") ///
-				lovar(flow_e_shs_lo) hivar(flow_e_shs_hi)
+				indicators("`indic_county'") scope(county)
+			elast_speccurve_plot, var(flow_e_shs) ///
+				ytitle(`"Migration Flow Elasticity (PFA+SHS)"') ///
+				file("${results}elasticities/fig_speccurve_elast_flow_`migr'_outstate_shs") ///
+				indicators("`indic_outstate'") scope(outstate)
 		}
 	}
 
@@ -1565,8 +1500,11 @@ if r(N) > 0 {
 	elast_speccurve_plot, var(stock_elast_total_common) ///
 		ytitle(`"Migration Stock Elasticity"') ///
 		file("${results}elasticities/fig_speccurve_elast_stock") ///
-		indicators("`indic_universal'") ///
-		lovar(stock_total_common_lo) hivar(stock_total_common_hi)
+		indicators("`indic_county'") scope(county)
+	elast_speccurve_plot, var(stock_elast_total_common) ///
+		ytitle(`"Migration Stock Elasticity"') ///
+		file("${results}elasticities/fig_speccurve_elast_stock_outstate") ///
+		indicators("`indic_outstate'") scope(outstate)
 }
 
 qui count if !missing(stock_elast_total_common_shs)
@@ -1577,8 +1515,11 @@ if r(N) > 0 {
 	elast_speccurve_plot, var(stock_elast_total_common_shs) ///
 		ytitle(`"Migration Stock Elasticity (PFA+SHS)"') ///
 		file("${results}elasticities/fig_speccurve_elast_stock_shs") ///
-		indicators("`indic_universal'") ///
-		lovar(stock_total_common_shs_lo) hivar(stock_total_common_shs_hi)
+		indicators("`indic_county'") scope(county)
+	elast_speccurve_plot, var(stock_elast_total_common_shs) ///
+		ytitle(`"Migration Stock Elasticity (PFA+SHS)"') ///
+		file("${results}elasticities/fig_speccurve_elast_stock_outstate_shs") ///
+		indicators("`indic_outstate'") scope(outstate)
 }
 restore
 
@@ -1593,8 +1534,11 @@ foreach migr in in out {
 		elast_speccurve_plot, var(stock_elast_total_common) ///
 			ytitle(`"Migration Stock Elasticity"') ///
 			file("${results}elasticities/fig_speccurve_elast_stock_`migr'") ///
-			indicators("`indic_universal'") ///
-			lovar(stock_total_common_lo) hivar(stock_total_common_hi)
+			indicators("`indic_county'") scope(county)
+		elast_speccurve_plot, var(stock_elast_total_common) ///
+			ytitle(`"Migration Stock Elasticity"') ///
+			file("${results}elasticities/fig_speccurve_elast_stock_`migr'_outstate") ///
+			indicators("`indic_outstate'") scope(outstate)
 	}
 	qui count if !missing(stock_elast_total_common_shs)
 	if r(N) > 0 {
@@ -1603,8 +1547,11 @@ foreach migr in in out {
 		elast_speccurve_plot, var(stock_elast_total_common_shs) ///
 			ytitle(`"Migration Stock Elasticity (PFA+SHS)"') ///
 			file("${results}elasticities/fig_speccurve_elast_stock_`migr'_shs") ///
-			indicators("`indic_universal'") ///
-			lovar(stock_total_common_shs_lo) hivar(stock_total_common_shs_hi)
+			indicators("`indic_county'") scope(county)
+		elast_speccurve_plot, var(stock_elast_total_common_shs) ///
+			ytitle(`"Migration Stock Elasticity (PFA+SHS)"') ///
+			file("${results}elasticities/fig_speccurve_elast_stock_`migr'_outstate_shs") ///
+			indicators("`indic_outstate'") scope(outstate)
 	}
 	restore
 }
@@ -1617,11 +1564,18 @@ if "${overleaf}" == "1" {
 	foreach base in ///
 		fig_speccurve_elast_beta_net fig_speccurve_elast_beta_in fig_speccurve_elast_beta_out ///
 		fig_speccurve_elast_beta_net_shs fig_speccurve_elast_beta_in_shs fig_speccurve_elast_beta_out_shs ///
+		fig_speccurve_elast_beta_net_outstate fig_speccurve_elast_beta_in_outstate fig_speccurve_elast_beta_out_outstate ///
+		fig_speccurve_elast_beta_net_outstate_shs fig_speccurve_elast_beta_in_outstate_shs fig_speccurve_elast_beta_out_outstate_shs ///
 		fig_speccurve_elast_flow_in fig_speccurve_elast_flow_out ///
 		fig_speccurve_elast_flow_in_shs fig_speccurve_elast_flow_out_shs ///
+		fig_speccurve_elast_flow_in_outstate fig_speccurve_elast_flow_out_outstate ///
+		fig_speccurve_elast_flow_in_outstate_shs fig_speccurve_elast_flow_out_outstate_shs ///
 		fig_speccurve_elast_stock fig_speccurve_elast_stock_shs ///
+		fig_speccurve_elast_stock_outstate fig_speccurve_elast_stock_outstate_shs ///
 		fig_speccurve_elast_stock_in fig_speccurve_elast_stock_out ///
-		fig_speccurve_elast_stock_in_shs fig_speccurve_elast_stock_out_shs {
+		fig_speccurve_elast_stock_in_shs fig_speccurve_elast_stock_out_shs ///
+		fig_speccurve_elast_stock_in_outstate fig_speccurve_elast_stock_out_outstate ///
+		fig_speccurve_elast_stock_in_outstate_shs fig_speccurve_elast_stock_out_outstate_shs {
 		capture confirm file "${results}elasticities/`base'.pdf"
 		if _rc == 0 {
 			copy "${results}elasticities/`base'.pdf" ///
@@ -1668,8 +1622,7 @@ if r(N) > 0 {
 	elast_speccurve_plot, var(pfa_loss) ///
 		ytitle("Implied PFA Revenue Loss ($ millions)") ///
 		file("${results}revenue/fig_speccurve_revenue_pfa") ///
-		indicators("`indic_instate'") ///
-		lovar(pfa_loss_lo) hivar(pfa_loss_hi)
+		indicators("`indic_instate'")
 }
 else {
 	dis as text "No pfa_loss values available — skipping fig_speccurve_revenue_pfa."
@@ -1689,8 +1642,7 @@ if r(N) > 0 {
 	elast_speccurve_plot, var(state_loss) ///
 		ytitle("Implied Oregon Revenue Loss from Multnomah Out-Migration ($ millions)") ///
 		file("${results}revenue/fig_speccurve_revenue_oregon") ///
-		indicators("`indic_outstate'") ///
-		lovar(state_loss_lo) hivar(state_loss_hi)
+		indicators("`indic_outstate'")
 }
 else {
 	dis as text "No state_loss values available — skipping fig_speccurve_revenue_oregon."
@@ -1944,8 +1896,9 @@ dis "  ${results}elasticities/tbl_elasticities_stock_compare_shs.tex"
 dis "  ${results}elasticities/tbl_elasticities.xlsx"
 dis "  ${results}elasticities/preferred_net_stock.csv"
 dis "  ${results}elasticities/preferred_net_stock_shs.csv"
-dis "  ${results}elasticities/fig_speccurve_elast_beta_{net,in,out}{,_shs}.{pdf,png}"
-dis "  ${results}elasticities/fig_speccurve_elast_stock{,_shs}.{pdf,png}"
+dis "  ${results}elasticities/fig_speccurve_elast_beta_{net,in,out}{,_outstate}{,_shs}.{pdf,png}"
+dis "  ${results}elasticities/fig_speccurve_elast_flow_{in,out}{,_outstate}{,_shs}.{pdf,png}"
+dis "  ${results}elasticities/fig_speccurve_elast_stock{,_in,_out}{,_outstate}{,_shs}.{pdf,png}"
 dis "  ${results}revenue/fig_speccurve_revenue_pfa.{pdf,png}"
 dis "  ${results}revenue/fig_speccurve_revenue_oregon.{pdf,png}"
 dis "  ${results}sdid/preferred_overlays/fig_overlay_donorpool_*_eventstudy.{pdf,jpg}"
