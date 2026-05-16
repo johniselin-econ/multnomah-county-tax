@@ -177,22 +177,21 @@ draw_empirical_approach <- function(out_file, with_title = FALSE) {
   tx(17, 75.5, "to/from Multnomah", sz = 10, col = desc_col)
 
   bx(49, 76, 30, 17, NA, irs_sb)
-  tx(49, 81, "PPML Flow Models", sz = 12, face = "bold", col = irs_txt)
+  tx(49, 80.5, "PPML Flow Models", sz = 12, face = "bold", col = irs_txt)
   tx(49, 78.5, "Mijt with flow FE,", sz = 10, col = desc_col)
   tx(49, 76.5, "time\u2013varying controls", sz = 10, col = desc_col)
-  tx(49, 74.5, "(Equation 3)", sz = 10, col = desc_col)
 
   # --- ACS SUB-BOXES (widened to 30, taller to 17) ---
   bx(81, 76, 30, 17, NA, acs_sb)
   tx(81, 80.5, "Conditional Means", sz = 12, face = "bold", col = acs_txt)
   tx(81, 78.5, "Migration rates by", sz = 10, col = desc_col)
   tx(81, 76.5, "income, education,", sz = 10, col = desc_col)
-  tx(81, 74.5, "age, # of children (Eq. 4)", sz = 10, col = desc_col)
+  tx(81, 74.5, "age, # of children", sz = 10, col = desc_col)
 
   bx(113, 76, 30, 17, NA, acs_sb)
-  tx(113, 81, "DiD Models", sz = 12, face = "bold", col = acs_txt)
+  tx(113, 80.5, "DiD Models", sz = 12, face = "bold", col = acs_txt)
   tx(113, 78.5, "College educ. as proxy", sz = 10, col = desc_col)
-  tx(113, 76.5, "for treatment (Eq. 5)", sz = 10, col = desc_col)
+  tx(113, 76.5, "for treatment", sz = 10, col = desc_col)
   tx(113, 74.5, "Lower 48 + DC / CA-OR-WA", sz = 10, col = desc_col)
 
   ar(43, 68.5, 39, 65)
@@ -357,41 +356,42 @@ draw_data_comparison <- function(out_file, with_title = FALSE) {
   tx((c3 + c4) / 2, hdr_y, "ACS",        sz = 11.5, face = "bold", col = "white")
   tx((c4 + tr) / 2, hdr_y, "Used In",    sz = 11.5, face = "bold", col = "white")
 
-  # Checkmark and dash symbols
-  chk <- "\u2713"
+  # Checkmark and dash symbols. Use heavy check (U+2714) so the glyph is
+  # unambiguous even at the small column width; bump font size so it reads
+  # as a checkmark and not a thin tick / fallback box.
+  chk <- "\u2714"
   na_sym <- "\u2014\u2014"
 
-  # Row 1: Individual migration
+  # Row 1: Individual migration -- ACS only
   y1 <- (r0 + r1) / 2
   tx(tl + 2, y1 + 1, "Individual migration (Mhit)",
      sz = 10.5, face = "italic", col = dark_col, j = "left")
   tx(c1 + 2, y1 + 1, "1 if person h moved in/out of county i in year t",
      sz = 10.5, col = desc_col, j = "left")
   tx((c2 + c3) / 2, y1 + 1, na_sym, sz = 9, col = PPB_GREY)
-  tx((c3 + c4) / 2, y1 + 1, chk, sz = 10, col = green_plus)
+  tx((c3 + c4) / 2, y1 + 1, chk, sz = 13, col = green_plus)
   tx((c3 + c4) / 2, y1 - 1.2, "(389 counties)", sz = 6.5, col = desc_col)
   tx((c4 + tr) / 2, y1, "DiD", sz = 8.5, face = "bold", col = irs_blue)
 
-  # Row 2: County-pair flows
+  # Row 2: County-pair flows -- IRS only (ACS not used for flows)
   y2 <- (r1 + r2) / 2
   tx(tl + 2, y2 + 1, "County\u2013pair flows (Mijt)",
      sz = 10.5, face = "italic", col = dark_col, j = "left")
   tx(c1 + 2, y2 + 1, "# individuals/returns/AGI from county i to j in t",
      sz = 10.5, col = desc_col, j = "left")
-  tx((c2 + c3) / 2, y2 + 1, chk, sz = 10, col = green_plus)
-  tx((c3 + c4) / 2, y2 + 1, chk, sz = 10, col = green_plus)
-  tx((c3 + c4) / 2, y2 - 1.2, "(limited)", sz = 6.5, col = desc_col)
+  tx((c2 + c3) / 2, y2 + 1, chk, sz = 13, col = green_plus)
+  tx((c3 + c4) / 2, y2 + 1, na_sym, sz = 9, col = PPB_GREY)
   tx((c4 + tr) / 2, y2, "PPML", sz = 8.5, face = "bold", col = irs_blue)
 
-  # Row 3: County migration rates
+  # Row 3: County migration rates -- both sources
   y3 <- (r2 + r3) / 2
   tx(tl + 2, y3 + 0.5, "County migration rates (Mit)",
      sz = 10.5, face = "italic", col = dark_col, j = "left")
   tx(c1 + 2, y3 + 0.5,
      "In\u2013, out\u2013, net in\u2013migration rate for county i in t",
      sz = 10.5, col = desc_col, j = "left")
-  tx((c2 + c3) / 2, y3 + 0.5, chk, sz = 10, col = green_plus)
-  tx((c3 + c4) / 2, y3 + 0.5, chk, sz = 10, col = green_plus)
+  tx((c2 + c3) / 2, y3 + 0.5, chk, sz = 13, col = green_plus)
+  tx((c3 + c4) / 2, y3 + 0.5, chk, sz = 13, col = green_plus)
   tx((c4 + tr) / 2, y3, "SDID", sz = 8.5, face = "bold", col = irs_blue)
 
   # -----------------------------------------------------------------------

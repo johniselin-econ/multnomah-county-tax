@@ -1617,14 +1617,15 @@ if _rc {
 }
 
 ** ---- Define pool list (consistent across panels) ----
-** Order: Multnomah first, then 5 donor pools.
-local pool_list "mult sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency"
+** Order: Multnomah first, then 6 donor pools.
+local pool_list "mult sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency sample_narrow"
 local pool_label_mult                  "Multnomah"
 local pool_label_sample_all            "All donor counties (mean)"
 local pool_label_sample_urban95        "Urban top-5\% (mean)"
 local pool_label_sample_urban75_covid  "Urban top-25\%, Covid match (mean)"
 local pool_label_sample_demog          "Demographic match (mean)"
 local pool_label_sample_stringency     "Stringency match (mean)"
+local pool_label_sample_narrow         "Narrow similar-cities pool (mean)"
 
 local cond_mult                  "multnomah == 1"
 local cond_sample_all            "sample_all == 1"
@@ -1632,6 +1633,7 @@ local cond_sample_urban95        "sample_urban95 == 1"
 local cond_sample_urban75_covid  "sample_urban75_covid == 1"
 local cond_sample_demog          "sample_demog == 1"
 local cond_sample_stringency     "sample_stringency == 1"
+local cond_sample_narrow         "sample_narrow == 1"
 
 ** Build one matrix per data source (6 rows x 8 cols):
 **   Cols: 1=N, 2=out_pre, 3=out_post, 4=in_pre, 5=in_post, 6=net_pre, 7=net_post, 8=net_chg
@@ -1643,9 +1645,9 @@ local cond_sample_stringency     "sample_stringency == 1"
 ** member is in that ACS-389 set).
 tempname M_IRS M_ACS1 M_ACS2
 foreach m in `M_IRS' `M_ACS1' `M_ACS2' {
-    matrix `m' = J(6, 8, .)
+    matrix `m' = J(7, 8, .)
     matrix colnames `m' = N out_pre out_post in_pre in_post net_pre net_post net_chg
-    matrix rownames `m' = mult all urban95 urban_covid demog stringency
+    matrix rownames `m' = mult all urban95 urban_covid demog stringency narrow
 }
 
 ** Build per-panel observability flags from a single year-snapshot.
@@ -1718,10 +1720,10 @@ mat list `M_IRS'
 mat list `M_ACS1'
 mat list `M_ACS2'
 
-** ---- CSV export for QA (18 rows = 3 panels x 6 pools) ----
+** ---- CSV export for QA (21 rows = 3 panels x 7 pools) ----
 preserve
 clear
-set obs 18
+set obs 21
 gen str10 panel    = ""
 gen str40 pool     = ""
 gen long  N        = .
@@ -1737,7 +1739,7 @@ local p_off = 0
 foreach panel_pair in "IRS M_IRS" "ACS M_ACS1" "ACS_College M_ACS2" {
     local plabel : word 1 of `panel_pair'
     local pmat   : word 2 of `panel_pair'
-    forvalues r = 1/6 {
+    forvalues r = 1/7 {
         local rr = `r' + `p_off'
         replace panel    = "`plabel'" in `rr'
         replace pool     = `"`pool_label_`: word `r' of `pool_list'''"' in `rr'
@@ -1750,7 +1752,7 @@ foreach panel_pair in "IRS M_IRS" "ACS M_ACS1" "ACS_College M_ACS2" {
         replace net_post = ``pmat''[`r', 7] in `rr'
         replace net_chg  = ``pmat''[`r', 8] in `rr'
     }
-    local p_off = `p_off' + 6
+    local p_off = `p_off' + 7
 }
 export delimited "${results}tables/table1_combined.csv", replace
 restore
@@ -1806,7 +1808,7 @@ foreach letter in A B C {
     file write `fh' `"\multicolumn{9}{l}{\textit{`panel_hdr'}} \\"' _n
     file write `fh' `"\addlinespace"' _n
 
-    forvalues r = 1/6 {
+    forvalues r = 1/7 {
         local pool : word `r' of `pool_list'
         local lab  "`pool_label_`pool''"
 
@@ -1829,7 +1831,7 @@ file write `fh' `"\end{tabular}"' _n
 file write `fh' `"\begin{tablenotes}[flushleft]"' _n
 file write `fh' `"\setstretch{1}\footnotesize"' _n
 file write `fh' `"\setlength{\itemsep}{1pt}"' _n
-file write `fh' `"\item \textit{Notes:} AGI in-, out-, and net-migration rates as a percentage of each county's base filing population, averaged over the indicated pre and post periods (2020 dropped). Means within each donor pool are simple county-level means (each county weighted equally), matching the SDID donor-pool construction. Counts reflect each panel's observable universe at year~2019. The all-donor-counties pool is the broad SDID benchmark: all U.S.\ counties excluding Alaska, Hawaii, California, Washington, and non-Multnomah Oregon counties. Urban top-5\% restricts to counties in the top 5\% of urban-share. Urban-Covid match restricts to the urban top-25\% k-means cluster matched to Multnomah on Covid case and death trajectories. Demographic match k-means clusters on pre-treatment per-capita income, population, urban share, and age distribution. Stringency match restricts to the urban top-25\% k-means cluster matched on OxCGRT Covid policy stringency duration. See Appendix~B for full donor-pool construction details."' _n
+file write `fh' `"\item \textit{Notes:} AGI in-, out-, and net-migration rates as a percentage of each county's base filing population, averaged over the indicated pre and post periods (2020 dropped). Means within each donor pool are simple county-level means (each county weighted equally), matching the SDID donor-pool construction. Counts reflect each panel's observable universe at year~2019. The all-donor-counties pool is the broad SDID benchmark: all U.S.\ counties excluding Alaska, Hawaii, California, Washington, and non-Multnomah Oregon counties. Urban top-5\% restricts to counties in the top 5\% of urban-share. Urban-Covid match restricts to the urban top-25\% k-means cluster matched to Multnomah on Covid case and death trajectories. Demographic match k-means clusters on pre-treatment per-capita income, population, urban share, and age distribution. Stringency match restricts to the urban top-25\% k-means cluster matched on OxCGRT Covid policy stringency duration. The narrow similar-cities pool is a hand-curated set of 21 large U.S.\ metro counties identified via Harvard Growth Lab's Metroverse similar-cities tool; unlike the other pools, it retains Sacramento, Seattle, and Vancouver from the otherwise-excluded West Coast states. See Appendix~B for full donor-pool construction details."' _n
 file write `fh' `"\item Source: IRS SOI county-to-county migration flows (Panel~A); ACS microdata, all 25+ subsample (Panel~B); ACS microdata, college-educated subsample (Panel~C)."' _n
 file write `fh' `"\end{tablenotes}"' _n
 file write `fh' `"\end{threeparttable}"' _n

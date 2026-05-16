@@ -383,13 +383,25 @@ program define load_spec_panel, rclass
 		local data_var "acs_period_2"
 		local out_type "acs2_outstate"
 	}
+	else if "`sampledata'" == "irs_intime" {
+		** In-time placebo (2012-2019); mirrors irs_full_16_22 outcome / covariate set
+		local data_var "irs_intime"
+		local out_type "irs"
+	}
+	else if "`sampledata'" == "acs_col_intime" {
+		** In-time placebo (2012-2019); mirrors acs_16_24_col outcome / covariate set
+		local data_var "acs_intime"
+		local out_type "acs2"
+	}
 	else {
 		dis as error "load_spec_panel: unsupported sample_data `sampledata'"
 		exit 198
 	}
 
 	local covariates "population per_capita_income"
-	if "`data_var'" != "irs_sample_1" local covariates "`covariates' prop_tax_rate"
+	if "`data_var'" != "irs_sample_1" & "`data_var'" != "irs_intime" {
+		local covariates "`covariates' prop_tax_rate"
+	}
 
 	** Manifest check applies only to the canonical .dta artifact. Bootstrap
 	** callers pass Stata tempfiles (.tmp), where subinstr leaves the path

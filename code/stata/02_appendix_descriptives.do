@@ -97,13 +97,14 @@ if _rc {
     gen byte multnomah = (state_fips == 41 & county_fips == 51)
 }
 
-local pool_list "mult sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency"
+local pool_list "mult sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency sample_narrow"
 local pool_label_mult                  "Multnomah"
 local pool_label_sample_all            "All donor counties"
 local pool_label_sample_urban95        "Urban top-5\%"
 local pool_label_sample_urban75_covid  "Urban top-25\%, Covid match"
 local pool_label_sample_demog          "Demographic match"
 local pool_label_sample_stringency     "Stringency match"
+local pool_label_sample_narrow         "Narrow similar-cities pool"
 
 local cond_mult                  "multnomah == 1"
 local cond_sample_all            "sample_all == 1"
@@ -111,17 +112,18 @@ local cond_sample_urban95        "sample_urban95 == 1"
 local cond_sample_urban75_covid  "sample_urban75_covid == 1"
 local cond_sample_demog          "sample_demog == 1"
 local cond_sample_stringency     "sample_stringency == 1"
+local cond_sample_narrow         "sample_narrow == 1"
 
-** Build three SDID descriptive matrices: 6 rows × 7 cols (N + 6 rate means).
+** Build three SDID descriptive matrices: 7 rows × 7 cols (N + 6 rate means).
 ** Three panels: IRS, ACS all-25+ (acs1), ACS College (acs2). Each panel's
 ** N-counties column counts only counties observable in that data source
 ** (mirrors the Table 1 fix: ACS only identifies ~389 counties, so the
 ** ACS-panel donor counts are far smaller than the IRS-panel counts).
 tempname M_SDID_IRS M_SDID_ACS1 M_SDID_ACS2
 foreach m in `M_SDID_IRS' `M_SDID_ACS1' `M_SDID_ACS2' {
-    matrix `m' = J(6, 7, .)
+    matrix `m' = J(7, 7, .)
     matrix colnames `m' = N out_cty in_cty net_cty out_st in_st net_st
-    matrix rownames `m' = mult all urban95 urban_covid demog stringency
+    matrix rownames `m' = mult all urban95 urban_covid demog stringency narrow
 }
 
 ** Per-panel observability flags from a single year snapshot.
@@ -236,7 +238,7 @@ foreach letter in A B C {
     file write `fh' `"\multicolumn{8}{l}{\textit{`panel_hdr'}} \\"' _n
     file write `fh' `"\addlinespace"' _n
 
-    forvalues r = 1/6 {
+    forvalues r = 1/7 {
         local pool : word `r' of `pool_list'
         local lab  "`pool_label_`pool''"
         local nC : di %12.0fc ``matname''[`r', 1]
@@ -256,8 +258,8 @@ file write `fh' `"\bottomrule"' _n
 file write `fh' `"\end{tabular}"' _n
 file write `fh' `"\begin{tablenotes}[flushleft]"' _n
 file write `fh' `"\small"' _n
-file write `fh' `"\item \textit{Notes:} Time-pooled means of AGI migration rates (\% of base population) within each comparison group. Each rate is averaged over the in-sample years (2020 excluded). County-level migration counts moves to / from any other county; out-of-state migration restricts to moves crossing the Oregon state line. Means are simple county-level means (each county weighted equally), matching the SDID donor-pool construction."' _n
-file write `fh' `"\item \textit{N counties.} Counts reflect each panel's observable universe at year~2019: IRS covers nearly all U.S.\ counties, while the public-use ACS only identifies about 389 counties of residence."' _n
+file write `fh' `"\item \textit{Notes:} Time-pooled means of AGI migration rates (\% of base population) within each comparison group. Each rate is averaged over the in-sample years (2020 excluded). County-level migration counts moves to / from any other county; out-of-state migration restricts to moves crossing the Oregon state line. Means are simple county-level means (each county weighted equally), matching the SDID donor-pool construction. The narrow similar-cities pool retains Sacramento, Seattle, and Vancouver as part of the Metroverse comparison group."' _n
+file write `fh' `"\item \textit{N counties.} Counts reflect each panel's observable universe at year~2019: IRS covers nearly all U.S.\ counties, while the public-use ACS only identifies about 389 counties of residence. The narrow pool has a fixed list of 22 counties (Multnomah plus 21 similar cities); ACS-panel counts are smaller when some of those counties are not ACS-identified in 2019."' _n
 file write `fh' `"\item Source: IRS SOI county-to-county migration flows (Panel~A); ACS microdata, all 25+ subsample (Panel~B); ACS microdata, college-educated subsample (Panel~C). See Appendix~B for donor-pool construction."' _n
 file write `fh' `"\end{tablenotes}"' _n
 file write `fh' `"\end{threeparttable}"' _n

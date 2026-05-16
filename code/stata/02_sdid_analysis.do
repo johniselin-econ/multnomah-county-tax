@@ -106,7 +106,12 @@ rename dollars_* acs2_dollars_*
 
 ** Drop "other counties"
 drop if county_fips == 0
-drop if year < 2016					// Sample: 2016-2024 (IRS/ACS data start 2012)
+** Keep 2012-2024. Canonical analysis still uses 2016+ via the `irs_sample_*`
+** and `acs_period_*` indicators defined below; the additional 2012-2015 rows
+** are retained only so 02_intime_placebo.do can build a longer pre-treatment
+** window via the `*_intime` indicators. Canonical SDID estimates are
+** unchanged because covariates are standardized against the 2016+ subsample.
+drop if year < 2012					// Sample: 2012-2024 (IRS/ACS data start 2012)
 
 ** Merge with Demographic data
 merge m:1 fips using "${data}working/demographics_2020", 	///
@@ -194,6 +199,12 @@ gen irs_sample_2 = inrange(year, 2016, 2022) & merge_acs_1 != 1
 gen acs_period_1 = merge_acs_1 != 1 & inrange(year, 2016, 2022)
 gen acs_period_2 = merge_acs_1 != 1 & inrange(year, 2016, 2024)
 
+** In-time placebo indicators: 2012-2019 window (excluding 2020 happens at
+** estimation time in 02_intime_placebo.do). Used only by the in-time placebo;
+** canonical SDID specs continue to use `irs_sample_*` and `acs_period_*`.
+gen irs_intime = inrange(year, 2012, 2019)
+gen acs_intime = merge_acs_1 != 1 & inrange(year, 2012, 2019)
+
 ** Make sure we have a balanced panel of ACS counties
 gen tmp = merge_acs_1 != 1
 bysort fips: egen ct_tmp = total(tmp)
@@ -203,10 +214,24 @@ replace acs_period_2 = 0 if ct_tmp < `r(max)'
 replace irs_sample_2 = 0 if ct_tmp < `r(max)'
 drop tmp ct_tmp
 
+** Balance the in-time samples on the 2012-2019 window
+gen tmp_intime = inrange(year, 2012, 2019)
+bysort fips: egen ct_intime_irs = total(tmp_intime)
+qui summ ct_intime_irs
+replace irs_intime = 0 if ct_intime_irs < `r(max)'
+
+gen tmp_acs_intime = merge_acs_1 != 1 & inrange(year, 2012, 2019)
+bysort fips: egen ct_intime_acs = total(tmp_acs_intime)
+qui summ ct_intime_acs
+replace acs_intime = 0 if ct_intime_acs < `r(max)'
+drop tmp_intime tmp_acs_intime ct_intime_irs ct_intime_acs
+
 tab year irs_sample_1
 tab year irs_sample_2
 tab year acs_period_1
 tab year acs_period_2
+tab year irs_intime
+tab year acs_intime
 tab state_name acs_period_1
 
 ** Define treated state
@@ -236,22 +261,65 @@ qui summ percent_urban if year == 2020, de
 local p75 = r(p75)
 gen urban_top75 = percent_urban >= `p75'
 
-** Define Sample of States
+** Define sample 6 (narrow): 21 similar cities + Multnomah from Harvard Growth
+** Lab Metroverse similar-cities tool. Defined BEFORE the state drops so the
+** narrow-keepers (Sacramento, Seattle, Vancouver) survive the drops below.
+gen sample_narrow = 0
+replace sample_narrow = 1 if fips == 41051   // Multnomah (Portland, OR)
+replace sample_narrow = 1 if fips == 39049   // Franklin (Columbus, OH)
+replace sample_narrow = 1 if fips == 27053   // Hennepin (Minneapolis, MN)
+replace sample_narrow = 1 if fips == 42101   // Philadelphia (Philadelphia, PA)
+replace sample_narrow = 1 if fips == 48453   // Travis (Austin, TX)
+replace sample_narrow = 1 if fips == 12095   // Orange (Orlando, FL)
+replace sample_narrow = 1 if fips == 12057   // Hillsborough (Tampa, FL)
+replace sample_narrow = 1 if fips == 49035   // Salt Lake (Salt Lake City, UT)
+replace sample_narrow = 1 if fips == 26163   // Wayne (Detroit, MI)
+replace sample_narrow = 1 if fips == 53011   // Clark (Vancouver, WA)        [keeper]
+replace sample_narrow = 1 if fips == 53033   // King (Seattle, WA)           [keeper]
+replace sample_narrow = 1 if fips == 24510   // Baltimore City (Baltimore, MD)
+replace sample_narrow = 1 if fips == 55079   // Milwaukee (Milwaukee, WI)
+replace sample_narrow = 1 if fips == 29510   // St. Louis City (St. Louis, MO)
+replace sample_narrow = 1 if fips == 08031   // Denver (Denver, CO)
+replace sample_narrow = 1 if fips == 29095   // Jackson (Kansas City, MO)
+replace sample_narrow = 1 if fips == 18097   // Marion (Indianapolis, IN)
+replace sample_narrow = 1 if fips == 13121   // Fulton (Atlanta, GA)
+replace sample_narrow = 1 if fips == 32003   // Clark (Las Vegas, NV)
+replace sample_narrow = 1 if fips == 06067   // Sacramento (Sacramento, CA)  [keeper]
+replace sample_narrow = 1 if fips == 48029   // Bexar (San Antonio, TX)
+replace sample_narrow = 1 if fips == 25025   // Suffolk (Boston, MA)
+label var sample_narrow "Narrow pool: 21 Metroverse similar cities + Multnomah"
+
+** Flag narrow-only keeper counties (Sacramento, Seattle, Vancouver) so the
+** other 5 pools and the k-means clustering steps below can exclude them.
+** Multnomah itself is in narrow but should still appear in every other pool,
+** so the flag is restricted to non-Multnomah CA/WA/OR narrow members.
+gen narrow_only = sample_narrow == 1 & multnomah == 0 & ///
+    inlist(state_name, "California", "Washington", "Oregon")
+label var narrow_only "County belongs only to narrow pool (CA/WA/OR keeper)"
+
+** Define Sample of States. Drop AK/HI unconditionally; for CA/WA/OR keep
+** narrow-pool members so the similar-cities donor frame is preserved.
 drop if state_name == "Alaska"
 drop if state_name == "Hawaii"
-drop if state_name == "California"
-drop if state_name == "Washington"
-drop if state_name == "Oregon" & multnomah == 0
+drop if state_name == "California" & sample_narrow == 0
+drop if state_name == "Washington" & sample_narrow == 0
+drop if state_name == "Oregon" & multnomah == 0 & sample_narrow == 0
+
+** Force the five main pool indicators to 0 for narrow-only keepers so they
+** are restricted to the narrow donor pool only. The kmeans-based pools below
+** add `narrow_only == 0` to their cluster-input cells for the same reason.
+replace sample_all     = 0 if narrow_only == 1
+replace sample_urban95 = 0 if narrow_only == 1
 
 ** Define sample 3: Counties in top 95 + covid
 cluster kmeans cases_cum* deaths_cum* if 	///
-	urban_top75 == 1 & year == 2020 & covid_merge == 3 , k(5) gen(kmean)
+	urban_top75 == 1 & year == 2020 & covid_merge == 3 & narrow_only == 0, k(5) gen(kmean)
 bysort fips: egen kmean_group = mean(kmean)
 
 ** Pull out kmeans cluster with Multnomah
 gen tmp1 = kmean if urban_top75 == 1 & year == 2020 & covid_merge == 3 & multnomah == 1
 egen tmp2 = mean(tmp1)
-gen sample_urban75_covid = urban_top75 == 1 & kmean_group == tmp2
+gen sample_urban75_covid = urban_top75 == 1 & kmean_group == tmp2 & narrow_only == 0
 drop tmp1 tmp2
 label var sample_urban75_covid "Urban counties (top 25%) w. COVID k-means match (excluding AK, CA, HI OR, WA)"
 tab sample_urban75_covid if year == 2020
@@ -272,13 +340,13 @@ foreach v in pci_pre pop_census share_under_24 share_over_65 percent_urban {
 }
 
 cluster kmeans std_pci_pre std_pop_census std_share_under_24 std_share_over_65 std_percent_urban if ///
-	year == 2020 & not_missing == 1, k(10) gen(kmean_demog)
+	year == 2020 & not_missing == 1 & narrow_only == 0, k(10) gen(kmean_demog)
 bysort fips: egen kmean_demog_group = mean(kmean_demog)
 
 ** Pull out kmeans cluster containing Multnomah
 gen tmp1 = kmean_demog if year == 2020 & multnomah == 1
 egen tmp2 = mean(tmp1)
-gen sample_demog = kmean_demog_group == tmp2
+gen sample_demog = kmean_demog_group == tmp2 & narrow_only == 0
 drop tmp1 tmp2 std_* pci_pre
 label var sample_demog "Counties with Demographic Kmean Match (excluding AK, CA, HI OR, WA)"
 tab sample_demog if year == 2020
@@ -296,24 +364,26 @@ foreach v in msahodays restclosedays gatherbandays strictgatherbandays maskpubda
 ** K-means on standardized stringency measures
 cluster kmeans std_msahodays std_restclosedays std_gatherbandays 	///
 	std_strictgatherbandays std_maskpubdays if 						///
-	urban_top75 == 1 & year == 2020 & jii_merge == 3, k(5) gen(kmean_string)
+	urban_top75 == 1 & year == 2020 & jii_merge == 3 & narrow_only == 0, k(5) gen(kmean_string)
 bysort fips: egen kmean_string_group = mean(kmean_string)
 
 ** Identify Multnomah's cluster
 gen tmp1 = kmean_string if urban_top75 == 1 & year == 2020 & jii_merge == 3 & multnomah == 1
 egen tmp2 = mean(tmp1)
-gen sample_stringency = urban_top75 == 1 & kmean_string_group == tmp2
+gen sample_stringency = urban_top75 == 1 & kmean_string_group == tmp2 & narrow_only == 0
 drop tmp1 tmp2 std_* urban_top75 kmean_string kmean_string_group
 label var sample_stringency "Urban counties (top 25%) w. COVID stringency k-means match"
 tab sample_stringency if year == 2020
 
 ** Define and standardize covariates
 ** Note: prop_tax_rate added for non-IRS full sample specifications
+** Standardize against the canonical 2016+ window so the canonical SDID
+** estimates are unchanged when 2012-2015 rows are added to the panel
+** (those rows feed only the in-time placebo via the `*_intime` indicators).
 local all_covariates "population per_capita_income prop_tax_rate"
 foreach v of local all_covariates {
-	egen tmp_v = std(`v')
-	replace `v' = tmp_v
-	drop tmp_v
+	qui summ `v' if year >= 2016
+	replace `v' = (`v' - r(mean)) / r(sd)
 } // END COVAR LOOP
 
 ** Define outcome variables (IRS)
@@ -507,7 +577,13 @@ if ${use_parallel} == 1 {
 			else if "`data'" == "acs_period_2" & "`type'" == "acs1_outstate" local out_txt "acs_outstate_16_24_all"
 			else if "`data'" == "acs_period_2" & "`type'" == "acs2_outstate" local out_txt "acs_outstate_16_24_col"
 
-			foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
+			foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" "sample_narrow" {
+
+				** Narrow has its own 22-county pool that doesn't depend on
+				** ACS county identification, so skip the 389-restricted
+				** IRS variant for narrow.
+				if "`samp'" == "sample_narrow" & "`data'" == "irs_sample_2" continue
+
 				forvalues exl = 0/1 {
 					foreach migr in "net" "in" "out" {
 
@@ -846,21 +922,28 @@ if ${use_parallel} == 1 {
 	** This determines the SDID cost since computation is O(n^2) in counties
 	use "${data}working/sdid_analysis_data.dta", clear
 
-	** Compute all county counts in a single pass (avoid reloading data)
+	** Compute all county counts in a single pass (avoid reloading data).
+	** Narrow skips irs_sample_2 because it doesn't have a 389-restricted
+	** analog — see grid-build loop above.
 	** Note: use numeric index to avoid Stata's 32-char macro name limit
 	local _idx = 0
-	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
+	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" "sample_narrow" {
 		foreach data_v in `data_vars' {
+			if "`samp'" == "sample_narrow" & "`data_v'" == "irs_sample_2" continue
 			local _idx = `_idx' + 1
 			qui count if `samp' == 1 & `data_v' == 1 & year == 2021
 			local nc_`_idx' = r(N)
 		}
 	}
 
-	** Build cost lookup table from stored counts
+	** Build cost lookup table from stored counts.
+	** Five main pools × n_data + narrow × (n_data − 1 if irs_sample_2 in
+	** `data_vars`, else n_data).
 	clear
 	local n_data : word count `data_vars'
-	local n_combos = 5 * `n_data'
+	local narrow_n = `n_data'
+	if strpos(" `data_vars' ", " irs_sample_2 ") > 0 local narrow_n = `n_data' - 1
+	local n_combos = 5 * `n_data' + `narrow_n'
 	qui set obs `n_combos'
 	gen samp_var = ""
 	gen data_var = ""
@@ -869,8 +952,9 @@ if ${use_parallel} == 1 {
 
 	local _idx = 0
 	local row = 0
-	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
+	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" "sample_narrow" {
 		foreach data_v in `data_vars' {
+			if "`samp'" == "sample_narrow" & "`data_v'" == "irs_sample_2" continue
 			local _idx = `_idx' + 1
 			local row = `row' + 1
 			qui replace samp_var = "`samp'" in `row'
@@ -1154,7 +1238,10 @@ else {
 			capture mkdir "${results}sdid/`out_txt'"
 
 			** Loop over samples
-			foreach samp of varlist sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency {
+			foreach samp of varlist sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency sample_narrow {
+
+				** Narrow skips irs_sample_2 — see grid-build loop comment.
+				if "`samp'" == "sample_narrow" & "`data'" == "irs_sample_2" continue
 
 				** Loop over exclusion of 2020
 				forvalues exl = 1(-1)0 {
@@ -1500,6 +1587,7 @@ gen spec_urban95 = sample == "sample_urban95"
 gen spec_covid = sample == "sample_urban75_covid"
 gen spec_demog = sample == "sample_demog"
 gen spec_stringency = sample == "sample_stringency"
+gen spec_narrow = sample == "sample_narrow"
 gen spec_16_22 = period_type == "16-22"
 gen spec_16_24 = period_type == "16-24"
 gen spec_covars = controls == 1
@@ -1628,7 +1716,7 @@ foreach otype in "n1" "n2" "agi" {
 
 		if "`pset'" == "main" {
 
-		** 13 indicator rows for main plot set
+		** 14 indicator rows for main plot set (Narrow inserted after Stringency)
 		local yp1  = `ind_top'
 		local yp2  = `ind_top' - 1
 		local yp3  = `ind_top' - 2
@@ -1642,20 +1730,22 @@ foreach otype in "n1" "n2" "agi" {
 		local yp11 = `ind_top' - 10
 		local yp12 = `ind_top' - 11
 		local yp13 = `ind_top' - 12
+		local yp14 = `ind_top' - 13
 
 		gen y_all        = `yp1'  if spec_all == 1
 		gen y_urban      = `yp2'  if spec_urban95 == 1
 		gen y_covid      = `yp3'  if spec_covid == 1
 		gen y_demog      = `yp4'  if spec_demog == 1
 		gen y_stringency = `yp5'  if spec_stringency == 1
-		gen y_covars     = `yp6'  if spec_covars == 1
-		gen y_excl       = `yp7'  if spec_excl2020 == 1
-		gen y_irs        = `yp8'  if spec_irs == 1
-		gen y_irs_389    = `yp9'  if spec_irs_389 == 1
-		gen y_acs_all    = `yp10' if spec_acs_all == 1
-		gen y_acs_col    = `yp11' if spec_acs_col == 1
-		gen y_16_22      = `yp12' if spec_16_22 == 1
-		gen y_16_24      = `yp13' if spec_16_24 == 1
+		gen y_narrow     = `yp6'  if spec_narrow == 1
+		gen y_covars     = `yp7'  if spec_covars == 1
+		gen y_excl       = `yp8'  if spec_excl2020 == 1
+		gen y_irs        = `yp9'  if spec_irs == 1
+		gen y_irs_389    = `yp10' if spec_irs_389 == 1
+		gen y_acs_all    = `yp11' if spec_acs_all == 1
+		gen y_acs_col    = `yp12' if spec_acs_col == 1
+		gen y_16_22      = `yp13' if spec_16_22 == 1
+		gen y_16_24      = `yp14' if spec_16_24 == 1
 
 		twoway 	(rcap ci_lo_sig_notpref ci_hi_sig_notpref spec_rank, 		///
 					lc("`col_sig_notpref'") lw(vthin)) 						///
@@ -1682,6 +1772,8 @@ foreach otype in "n1" "n2" "agi" {
 				(scatter y_demog spec_rank, 								///
 					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
 				(scatter y_stringency spec_rank, 							///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_narrow spec_rank, 								///
 					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
 				(scatter y_covars spec_rank, 								///
 					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
@@ -1707,14 +1799,15 @@ foreach otype in "n1" "n2" "agi" {
 				   `yp3'  "COVID Match" 									///
 				   `yp4'  "Demographic Match" 								///
 				   `yp5'  "Stringency Match" 								///
-				   `yp6'  "Covariates" 										///
-				   `yp7'  "Excl. 2020" 										///
-				   `yp8'  "IRS (all counties)" 								///
-				   `yp9'  "IRS (ACS counties)" 								///
-				   `yp10' "ACS All" 										///
-				   `yp11' "ACS College" 									///
-				   `yp12' "16-22" 											///
-				   `yp13' "16-24", 											///
+				   `yp6'  "Narrow Pool" 									///
+				   `yp7'  "Covariates" 										///
+				   `yp8'  "Excl. 2020" 										///
+				   `yp9'  "IRS (all counties)" 								///
+				   `yp10' "IRS (ACS counties)" 								///
+				   `yp11' "ACS All" 										///
+				   `yp12' "ACS College" 									///
+				   `yp13' "16-22" 											///
+				   `yp14' "16-24", 											///
 				labsize(vsmall) angle(0) notick nogrid add) 				///
 			legend(order(5 "Sig. (p<0.05)" 6 "Insig." 						///
 						 7 "Sig., Preferred" 8 "Insig., Preferred") 		///
@@ -1730,9 +1823,9 @@ foreach otype in "n1" "n2" "agi" {
 
 		else if "`pset'" == "outstate" {
 
-		** 11 indicator rows for outstate plot set; labels match the
-		** county-level plot (no redundant "(Out-of-State)" suffix since the
-		** figure title already conveys it).
+		** 12 indicator rows for outstate plot set (Narrow inserted after
+		** Stringency); labels match the county-level plot (no redundant
+		** "(Out-of-State)" suffix since the figure title already conveys it).
 		local yp1  = `ind_top'
 		local yp2  = `ind_top' - 1
 		local yp3  = `ind_top' - 2
@@ -1744,18 +1837,20 @@ foreach otype in "n1" "n2" "agi" {
 		local yp9  = `ind_top' - 8
 		local yp10 = `ind_top' - 9
 		local yp11 = `ind_top' - 10
+		local yp12 = `ind_top' - 11
 
 		gen y_all                  = `yp1'  if spec_all == 1
 		gen y_urban                = `yp2'  if spec_urban95 == 1
 		gen y_covid                = `yp3'  if spec_covid == 1
 		gen y_demog                = `yp4'  if spec_demog == 1
 		gen y_stringency           = `yp5'  if spec_stringency == 1
-		gen y_covars               = `yp6'  if spec_covars == 1
-		gen y_excl                 = `yp7'  if spec_excl2020 == 1
-		gen y_irs_outstate         = `yp8'  if spec_irs_outstate == 1
-		gen y_irs_outstate_389     = `yp9'  if spec_irs_outstate_389 == 1
-		gen y_acs_all_outstate     = `yp10' if spec_acs_all_outstate == 1
-		gen y_acs_col_outstate     = `yp11' if spec_acs_col_outstate == 1
+		gen y_narrow               = `yp6'  if spec_narrow == 1
+		gen y_covars               = `yp7'  if spec_covars == 1
+		gen y_excl                 = `yp8'  if spec_excl2020 == 1
+		gen y_irs_outstate         = `yp9'  if spec_irs_outstate == 1
+		gen y_irs_outstate_389     = `yp10' if spec_irs_outstate_389 == 1
+		gen y_acs_all_outstate     = `yp11' if spec_acs_all_outstate == 1
+		gen y_acs_col_outstate     = `yp12' if spec_acs_col_outstate == 1
 
 		twoway 	(rcap ci_lo_sig_notpref ci_hi_sig_notpref spec_rank, 		///
 					lc("`col_sig_notpref'") lw(vthin)) 						///
@@ -1783,6 +1878,8 @@ foreach otype in "n1" "n2" "agi" {
 					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
 				(scatter y_stringency spec_rank, 							///
 					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_narrow spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
 				(scatter y_covars spec_rank, 								///
 					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
 				(scatter y_excl spec_rank, 									///
@@ -1803,12 +1900,13 @@ foreach otype in "n1" "n2" "agi" {
 				   `yp3'  "COVID Match" 									///
 				   `yp4'  "Demographic Match" 								///
 				   `yp5'  "Stringency Match" 								///
-				   `yp6'  "Covariates" 										///
-				   `yp7'  "Excl. 2020" 										///
-				   `yp8'  "IRS (all counties)" 								///
-				   `yp9'  "IRS (ACS counties)" 								///
-				   `yp10' "ACS All" 										///
-				   `yp11' "ACS College", 									///
+				   `yp6'  "Narrow Pool" 									///
+				   `yp7'  "Covariates" 										///
+				   `yp8'  "Excl. 2020" 										///
+				   `yp9'  "IRS (all counties)" 								///
+				   `yp10' "IRS (ACS counties)" 								///
+				   `yp11' "ACS All" 										///
+				   `yp12' "ACS College", 									///
 				labsize(vsmall) angle(0) notick nogrid add) 				///
 			legend(order(5 "Sig. (p<0.05)" 6 "Insig." 						///
 						 7 "Sig., Preferred" 8 "Insig., Preferred") 		///
@@ -1878,15 +1976,16 @@ replace migration = "net" if strpos(outcome, "_net_") > 0
 replace migration = "in"  if strpos(outcome, "_in_") > 0
 replace migration = "out" if strpos(outcome, "_out_") > 0
 
-** 1. Donor pool (5 levels, base = All Counties)
+** 1. Donor pool (6 levels, base = All Counties)
 gen donor_pool = .
 replace donor_pool = 1 if sample == "sample_all"
 replace donor_pool = 2 if sample == "sample_urban95"
 replace donor_pool = 3 if sample == "sample_urban75_covid"
 replace donor_pool = 4 if sample == "sample_demog"
 replace donor_pool = 5 if sample == "sample_stringency"
+replace donor_pool = 6 if sample == "sample_narrow"
 label define donor_pool_lbl 1 "All Counties" 2 "Urban 95%" 			///
-	3 "COVID Match" 4 "Demog. Match" 5 "Stringency"
+	3 "COVID Match" 4 "Demog. Match" 5 "Stringency" 6 "Narrow"
 label values donor_pool donor_pool_lbl
 
 ** 2. Data source (4 levels, base = IRS Full)
