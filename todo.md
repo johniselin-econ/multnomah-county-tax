@@ -1,9 +1,10 @@
 # TODO - Multnomah County Tax
 
-Two active workstreams:
+Three active workstreams:
 
-1. **Paper revision** — Phase 3 tex pass + remaining asset/code items.
-2. **Bootstrap implementation** — V3/V4 reps and CI-rendering polish.
+1. **Paper revision** — DONE; Phase 4 visual review of compiled PDF pending.
+2. **Bootstrap implementation** — V4 (500 reps) publication run is the final release blocker.
+3. **Pipeline hygiene** (added 2026-05-16) — findings from the critical-code-reviewer pipeline pass.
 
 ---
 
@@ -511,9 +512,10 @@ the multi-worker path. See plan §B3.5 for design details.
   over the same parallel path is sufficient evidence that the K=2 parallel
   pipeline works end-to-end.
 
-- [ ] Delete `.legacy` files (`run_bootstrap_parallel.sh.legacy`,
-  `_bootstrap_worker.do.legacy`, `02_bootstrap_combine.do.legacy`) — V3
-  parity confirmed end-to-end, so the bash launcher is no longer needed.
+- [x] Delete `.legacy` files (`run_bootstrap_parallel.sh.legacy`,
+  `_bootstrap_worker.do.legacy`, `02_bootstrap_combine.do.legacy`) — confirmed
+  2026-05-16 these were already removed in a prior session; nothing on disk
+  or in git.
 
 - [x] V3 (N=100 K=2 parallel) — completed 2026-05-02 (manifest:
   `results/bootstrap/bootstrap_draws_manifest.csv`, `reps=100`,
@@ -592,3 +594,141 @@ the multi-worker path. See plan §B3.5 for design details.
 - **Delta-method interim CIs**
   - Not the active plan.
   - Can be revived if bootstrap timing becomes a problem.
+
+---
+
+# Workstream 3: Pipeline hygiene
+
+Source: critical-code-reviewer pass on the full pipeline, 2026-05-16. The
+pipeline is ~23K lines (28 .do + 9 .R); review identified one real bug, a
+handful of duplicated patterns, and one architectural gap (paper-artifact
+tagging). Items below are grouped by priority — Section A is correctness,
+Section B is the largest pending item, the rest are hygiene.
+
+## Section A - Bugs surfaced during review (resolved)
+
+- [x] **`02_tables_figures.do` missing `spec_narrow`** (commit 7a9460a,
+  2026-05-16). Narrow donor pool was added to SDID + descriptives but not
+  to the elasticity / revenue spec-curve renderers, so narrow rows landed
+  as unlabeled points instead of labeled indicator rows. Added the
+  indicator, label, and entries in `indic_county` / `indic_outstate` /
+  `indic_instate`.
+
+- [x] **Duplicate 22-FIPS list** across `02_sdid_analysis.do` and
+  `02_diagnostics.do` (commit 7a9460a, 2026-05-16). Extracted to
+  `resources/narrow_pool_fips.csv` + new `load_narrow_pool` helper in
+  `01a_programs.do`. CSV is now the single source of truth.
+
+- [x] **2012 panel extension covariate-standardization scope** (commit
+  7a9460a, 2026-05-16). The in-time placebo work standardized covariates
+  on the 2016+ subset only. Resolved by dropping the in-time placebo
+  workstream and reverting `year < 2016` cut + original `egen std()`.
+
+## Section B - Paper-artifact registry (largest pending item)
+
+The pipeline copies ~95 artifacts to `${ol_fig}` / `${ol_tab}` when
+`${overleaf} == 1`. The Overleaf paper actually includes ~25 (9 figures
++ 2 tables in the main body, 14 figures in the appendix). ~70 are dead
+weight that get synced but never appear. No way today to ask "is this
+artifact in the paper?" from the code.
+
+- [ ] **B1: Build `resources/paper_manifest.csv`** by parsing
+  `\includegraphics` and `\input` from
+  `~/Dropbox/Apps/Overleaf/Multnomah County/Conway_Iselin_Rork_2026.tex`.
+  Columns: `artifact_basename, paper_label, paper_number, location
+  (main/appendix), source_script`. One row per (artifact, paper_label)
+  pair so multi-panel figures expand cleanly.
+
+- [ ] **B2: Add `project_save_overleaf` helper** to `01a_programs.do`.
+  Gated on `${overleaf} == 1`; with optional `PAPERONLY` flag consults
+  the manifest before copying. Replaces ~40 hand-rolled `if ${overleaf}
+  == 1 { copy ... }` blocks across 9 files.
+
+- [ ] **B3: Write `02_audit_paper_artifacts.do`** that asserts every
+  `\includegraphics` / `\input` basename is in the manifest, every
+  manifest row corresponds to a file on disk, and reports any
+  Overleaf-pushed artifact missing from the manifest. Wire as the last
+  step of `00_multnomah.do`.
+
+## Section C - Dead-output cleanup
+
+Decide per-artifact: include in paper (add to manifest), keep as
+dev-sync (no `paperonly`), or stop generating. Audit candidates:
+
+- [ ] `tables/table2.tex`, `tables/table1.tex` (legacy; replaced by
+  `table1_combined.tex`)
+- [ ] `tables/table_migration_county.tex`,
+  `tables/table_migration_state.tex`
+- [ ] `figures/fig_strip_*_all.png` and `figures/fig_strip_*_state_*.png`
+  (paper uses `_mult` variants only)
+- [ ] `tables/tableA1_{sdid,irs_flow,acs}.tex` — 5 tables tagged for
+  Overleaf, paper inventory lists only 2 tables total. Confirm what
+  Phase-3 tex pass actually wired in.
+- [ ] `figures/fig_es_combined.png`, `figures/fig_es_agepost_*.png` (4)
+- [ ] `tables/tbl_elasticities_*.tex` (6 files)
+- [ ] `tables/tab_sdid_preferred.tex`
+- [ ] Dynamic `tables/tab_sdid_*_*_*.tex` permutations (≥12)
+- [ ] All `02_otherout_sdid.do` outputs (intentional or stop tagging?)
+- [ ] All `02_narrow_sdid.do` outputs (script is now `//`-commented in
+  orchestrator)
+
+## Section D - File splits
+
+Four files exceed 1300 lines. Each is plausibly splittable along
+existing section boundaries; do AFTER the registry lands so output-path
+changes can flow through both at once.
+
+- [ ] **`02_sdid_analysis.do`** (2,180 lines) → estimate / event-study /
+  spec-curve render
+- [ ] **`02_tables_figures.do`** (1,908 lines) → elasticity-tables /
+  elasticity-curves / sdid-overlays
+- [ ] **`02_descriptives.do`** (1,852 lines) → flow-tables / strip-figures
+  / table1
+- [ ] **`02_revenue_microsim.do`** (1,316 lines) → parameters /
+  counterfactuals / tables
+
+## Section E - Hygiene / consistency
+
+- [ ] Unify Overleaf gate comparison: `${overleaf} == 1` everywhere.
+  Currently mixed string vs numeric in `02_tables_figures.do:980`,
+  `02_did_analysis.do`, `02_flow_analysis.do`.
+- [ ] Fix `n_clusters` default drift: `00_stata_config.do:56` defaults
+  to 4, `00_multnomah.do:100` sets 2. Pick one.
+- [ ] Resolve or delete two stale TODOs at top of
+  `02_tables_figures.do:50-53` (revenue annualization check,
+  dashed-line colors).
+- [ ] Extract `project_standalone_init` helper for consistent sourcing
+  of `00_stata_config.do` + `01a_programs.do` + `02_spec_engine.do`.
+  Currently each `02_*` file does this inconsistently.
+- [ ] Move `.log` files out of `code/stata/` into `${logs}`. Add stale
+  ones (`_describe_sdid_results.log`, `02_tables_figures.log`) to
+  `.gitignore` and delete from working tree.
+- [ ] Consolidate `00_post_stata.R`, `00_download_data.R`,
+  `00_multnomah.R` (13-24 lines each) into one `R/00_main.R` per the
+  project's main-script naming convention.
+- [ ] Add `__pllr*` (Stata `parallel` scratch) and `_describe_*.log`
+  patterns to `.gitignore`; clean repo root of accumulated scratch
+  files.
+- [ ] Replace `fig_diagrams.R` Unicode checkmark hack (U+2714 at sz=13)
+  with a font-independent rendering (`geom_segment` ✓ or vector path).
+
+## Section F - Spec-curve consolidation (deferred)
+
+`02_sdid_analysis.do:1500-1940` and `02_tables_figures.do:214-449`
+both render spec curves with overlapping logic. `02_tables_figures.do`
+factored its version into `elast_speccurve_plot`; `02_sdid_analysis.do`
+did not. The recent narrow-pool addition required hand-bumping every
+`yp*` index in both files.
+
+- [ ] Move the SDID spec-curve renderer into `02_spec_engine.do` (or
+  adapt to call `elast_speccurve_plot` with a schema adapter). Defer
+  until after the file splits in Section D — the duplication becomes
+  more visible once both blocks are in their own files.
+
+## Section G - Parity gap (low priority)
+
+- [ ] `02_otherout_sdid.do` builds its own donor pools from raw data
+  (lines 158-231) and iterates a hardcoded 5-pool list (lines 315, 627,
+  640, 818). `sample_narrow` is not extended to non-migration outcomes.
+  Decision needed: extend, or document as intentional and stop tagging
+  these tables for Overleaf.
