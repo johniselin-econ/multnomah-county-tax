@@ -27,6 +27,9 @@ if "${dir}" == "" {
 }
 if "${code}" == "" global code "${dir}/code/stata/"
 do "${code}00_stata_config.do"
+** 01a_programs.do is normally sourced by 00_multnomah.do; source defensively
+** so 02_diagnostics.do can be invoked standalone (needs load_narrow_pool).
+do "${code}01a_programs.do"
 
 capture log close log_diag
 log using "${logs}02_log_diagnostics_${pr_name}_${date}", replace text name(log_diag)
@@ -202,52 +205,8 @@ keep if econ_merge == 3
 drop econ_merge
 
 ** Define the 22-county narrow pool
-gen sample_narrow = 0
-** Multnomah, OR
-replace sample_narrow = 1 if fips == 41051
-** Columbus, OH (Franklin County)
-replace sample_narrow = 1 if fips == 39049
-** Minneapolis, MN (Hennepin County)
-replace sample_narrow = 1 if fips == 27053
-** Philadelphia, PA
-replace sample_narrow = 1 if fips == 42101
-** Austin, TX (Travis County)
-replace sample_narrow = 1 if fips == 48453
-** Orlando, FL (Orange County)
-replace sample_narrow = 1 if fips == 12095
-** Tampa, FL (Hillsborough County)
-replace sample_narrow = 1 if fips == 12057
-** Salt Lake City, UT (Salt Lake County)
-replace sample_narrow = 1 if fips == 49035
-** Detroit, MI (Wayne County)
-replace sample_narrow = 1 if fips == 26163
-** Vancouver, WA (Clark County)
-replace sample_narrow = 1 if fips == 53011
-** Seattle, WA (King County)
-replace sample_narrow = 1 if fips == 53033
-** Baltimore, MD (Baltimore City)
-replace sample_narrow = 1 if fips == 24510
-** Milwaukee, WI
-replace sample_narrow = 1 if fips == 55079
-** St. Louis, MO (St. Louis City)
-replace sample_narrow = 1 if fips == 29510
-** Denver, CO
-replace sample_narrow = 1 if fips == 08031
-** Kansas City, MO (Jackson County)
-replace sample_narrow = 1 if fips == 29095
-** Indianapolis, IN (Marion County)
-replace sample_narrow = 1 if fips == 18097
-** Atlanta, GA (Fulton County)
-replace sample_narrow = 1 if fips == 13121
-** Las Vegas, NV (Clark County)
-replace sample_narrow = 1 if fips == 32003
-** Sacramento, CA
-replace sample_narrow = 1 if fips == 06067
-** San Antonio, TX (Bexar County)
-replace sample_narrow = 1 if fips == 48029
-** Boston, MA (Suffolk County)
-replace sample_narrow = 1 if fips == 25025
-
+** Source of truth: resources/narrow_pool_fips.csv (edit there, not here).
+load_narrow_pool
 keep if sample_narrow == 1
 
 ** Balanced panel

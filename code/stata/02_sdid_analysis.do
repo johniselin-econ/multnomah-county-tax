@@ -106,12 +106,7 @@ rename dollars_* acs2_dollars_*
 
 ** Drop "other counties"
 drop if county_fips == 0
-** Keep 2012-2024. Canonical analysis still uses 2016+ via the `irs_sample_*`
-** and `acs_period_*` indicators defined below; the additional 2012-2015 rows
-** are retained only so 02_intime_placebo.do can build a longer pre-treatment
-** window via the `*_intime` indicators. Canonical SDID estimates are
-** unchanged because covariates are standardized against the 2016+ subsample.
-drop if year < 2012					// Sample: 2012-2024 (IRS/ACS data start 2012)
+drop if year < 2016					// Sample: 2016-2024 (IRS/ACS data start 2012)
 
 ** Merge with Demographic data
 merge m:1 fips using "${data}working/demographics_2020", 	///
@@ -199,12 +194,6 @@ gen irs_sample_2 = inrange(year, 2016, 2022) & merge_acs_1 != 1
 gen acs_period_1 = merge_acs_1 != 1 & inrange(year, 2016, 2022)
 gen acs_period_2 = merge_acs_1 != 1 & inrange(year, 2016, 2024)
 
-** In-time placebo indicators: 2012-2019 window (excluding 2020 happens at
-** estimation time in 02_intime_placebo.do). Used only by the in-time placebo;
-** canonical SDID specs continue to use `irs_sample_*` and `acs_period_*`.
-gen irs_intime = inrange(year, 2012, 2019)
-gen acs_intime = merge_acs_1 != 1 & inrange(year, 2012, 2019)
-
 ** Make sure we have a balanced panel of ACS counties
 gen tmp = merge_acs_1 != 1
 bysort fips: egen ct_tmp = total(tmp)
@@ -214,24 +203,10 @@ replace acs_period_2 = 0 if ct_tmp < `r(max)'
 replace irs_sample_2 = 0 if ct_tmp < `r(max)'
 drop tmp ct_tmp
 
-** Balance the in-time samples on the 2012-2019 window
-gen tmp_intime = inrange(year, 2012, 2019)
-bysort fips: egen ct_intime_irs = total(tmp_intime)
-qui summ ct_intime_irs
-replace irs_intime = 0 if ct_intime_irs < `r(max)'
-
-gen tmp_acs_intime = merge_acs_1 != 1 & inrange(year, 2012, 2019)
-bysort fips: egen ct_intime_acs = total(tmp_acs_intime)
-qui summ ct_intime_acs
-replace acs_intime = 0 if ct_intime_acs < `r(max)'
-drop tmp_intime tmp_acs_intime ct_intime_irs ct_intime_acs
-
 tab year irs_sample_1
 tab year irs_sample_2
 tab year acs_period_1
 tab year acs_period_2
-tab year irs_intime
-tab year acs_intime
 tab state_name acs_period_1
 
 ** Define treated state
@@ -264,30 +239,8 @@ gen urban_top75 = percent_urban >= `p75'
 ** Define sample 6 (narrow): 21 similar cities + Multnomah from Harvard Growth
 ** Lab Metroverse similar-cities tool. Defined BEFORE the state drops so the
 ** narrow-keepers (Sacramento, Seattle, Vancouver) survive the drops below.
-gen sample_narrow = 0
-replace sample_narrow = 1 if fips == 41051   // Multnomah (Portland, OR)
-replace sample_narrow = 1 if fips == 39049   // Franklin (Columbus, OH)
-replace sample_narrow = 1 if fips == 27053   // Hennepin (Minneapolis, MN)
-replace sample_narrow = 1 if fips == 42101   // Philadelphia (Philadelphia, PA)
-replace sample_narrow = 1 if fips == 48453   // Travis (Austin, TX)
-replace sample_narrow = 1 if fips == 12095   // Orange (Orlando, FL)
-replace sample_narrow = 1 if fips == 12057   // Hillsborough (Tampa, FL)
-replace sample_narrow = 1 if fips == 49035   // Salt Lake (Salt Lake City, UT)
-replace sample_narrow = 1 if fips == 26163   // Wayne (Detroit, MI)
-replace sample_narrow = 1 if fips == 53011   // Clark (Vancouver, WA)        [keeper]
-replace sample_narrow = 1 if fips == 53033   // King (Seattle, WA)           [keeper]
-replace sample_narrow = 1 if fips == 24510   // Baltimore City (Baltimore, MD)
-replace sample_narrow = 1 if fips == 55079   // Milwaukee (Milwaukee, WI)
-replace sample_narrow = 1 if fips == 29510   // St. Louis City (St. Louis, MO)
-replace sample_narrow = 1 if fips == 08031   // Denver (Denver, CO)
-replace sample_narrow = 1 if fips == 29095   // Jackson (Kansas City, MO)
-replace sample_narrow = 1 if fips == 18097   // Marion (Indianapolis, IN)
-replace sample_narrow = 1 if fips == 13121   // Fulton (Atlanta, GA)
-replace sample_narrow = 1 if fips == 32003   // Clark (Las Vegas, NV)
-replace sample_narrow = 1 if fips == 06067   // Sacramento (Sacramento, CA)  [keeper]
-replace sample_narrow = 1 if fips == 48029   // Bexar (San Antonio, TX)
-replace sample_narrow = 1 if fips == 25025   // Suffolk (Boston, MA)
-label var sample_narrow "Narrow pool: 21 Metroverse similar cities + Multnomah"
+** Source of truth: resources/narrow_pool_fips.csv (edit there, not here).
+load_narrow_pool
 
 ** Flag narrow-only keeper counties (Sacramento, Seattle, Vancouver) so the
 ** other 5 pools and the k-means clustering steps below can exclude them.
@@ -377,13 +330,11 @@ tab sample_stringency if year == 2020
 
 ** Define and standardize covariates
 ** Note: prop_tax_rate added for non-IRS full sample specifications
-** Standardize against the canonical 2016+ window so the canonical SDID
-** estimates are unchanged when 2012-2015 rows are added to the panel
-** (those rows feed only the in-time placebo via the `*_intime` indicators).
 local all_covariates "population per_capita_income prop_tax_rate"
 foreach v of local all_covariates {
-	qui summ `v' if year >= 2016
-	replace `v' = (`v' - r(mean)) / r(sd)
+	egen tmp_v = std(`v')
+	replace `v' = tmp_v
+	drop tmp_v
 } // END COVAR LOOP
 
 ** Define outcome variables (IRS)

@@ -566,3 +566,37 @@ program define sdid_consolidate_failures
 
     dis as text "sdid_consolidate_failures: wrote `n_rows' row(s) to `outpath'"
 end
+
+
+** Build the narrow donor-pool indicator from resources/narrow_pool_fips.csv.
+** The CSV is the single source of truth for the 22-county Metroverse pool;
+** edit it (not Stata code) to add or drop a county. Requires `fips` in memory.
+capture program drop load_narrow_pool
+program define load_narrow_pool
+    syntax , [PATH(string)]
+
+    if "`path'" == "" local path "${dir}/resources/narrow_pool_fips.csv"
+
+    capture confirm variable fips
+    if _rc {
+        di as error "load_narrow_pool: variable `fips' not in memory"
+        exit 111
+    }
+    capture confirm file "`path'"
+    if _rc {
+        di as error "load_narrow_pool: cannot find `path'"
+        exit 601
+    }
+
+    preserve
+    import delimited using "`path'", clear varnames(1) numericcols(1)
+    levelsof fips, local(narrow_fips) clean
+    restore
+
+    capture drop sample_narrow
+    gen byte sample_narrow = 0
+    foreach f of local narrow_fips {
+        qui replace sample_narrow = 1 if fips == `f'
+    }
+    label var sample_narrow "Narrow pool: 21 Metroverse similar cities + Multnomah"
+end
