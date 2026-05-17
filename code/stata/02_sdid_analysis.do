@@ -2037,13 +2037,14 @@ foreach otype in "n1" "n2" "agi" {
 
 		** Panel 1: donor-pool choices
 		coefplot meta_full, drop(_cons) noomitted 					///
-			keep(2.donor_pool 3.donor_pool 4.donor_pool 5.donor_pool) ///
+			keep(2.donor_pool 3.donor_pool 4.donor_pool 5.donor_pool 6.donor_pool) ///
 			xline(0, lc("`col_zero'") lp(dash)) 					///
 			coeflabels( 											///
 				2.donor_pool = `""Urban" "(Top 5%)""' 				///
 				3.donor_pool = `""COVID" "Match""' 					///
 				4.donor_pool = `""Demographic" "Match""' 			///
 				5.donor_pool = `""Stringency" "Match""' 			///
+				6.donor_pool = `""Narrow" "Pool""' 					///
 			) 														///
 			msymbol(D) mcolor("`col_pool'") 						///
 			ciopts(lcolor("`col_pool'")) 							///
