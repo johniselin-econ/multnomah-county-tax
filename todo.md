@@ -624,6 +624,15 @@ Section B is the largest pending item, the rest are hygiene.
   on the 2016+ subset only. Resolved by dropping the in-time placebo
   workstream and reverting `year < 2016` cut + original `egen std()`.
 
+- [x] **SDID influence coefplot dropped narrow** (commit fee23c0,
+  2026-05-17). Surfaced after the original review during follow-up audit
+  of donor-pool plotting. `02_sdid_analysis.do:2040` `keep(...)` listed
+  only levels 2-5 of `donor_pool`, so narrow's coefficient was estimated
+  (`ib1.donor_pool` included level 6) but silently dropped from rendered
+  figures A3 / A4. Added `6.donor_pool` to `keep()` and a `"Narrow" "Pool"`
+  coeflabel. Influence PDFs regenerated 2026-05-17 14:30-14:35 via a
+  one-off sandbox script (since deleted); Overleaf copies synced.
+
 ## Section B - Paper-artifact registry (largest pending item)
 
 The pipeline copies ~95 artifacts to `${ol_fig}` / `${ol_tab}` when
@@ -632,23 +641,29 @@ The pipeline copies ~95 artifacts to `${ol_fig}` / `${ol_tab}` when
 weight that get synced but never appear. No way today to ask "is this
 artifact in the paper?" from the code.
 
-- [ ] **B1: Build `resources/paper_manifest.csv`** by parsing
-  `\includegraphics` and `\input` from
-  `~/Dropbox/Apps/Overleaf/Multnomah County/Conway_Iselin_Rork_2026.tex`.
-  Columns: `artifact_basename, paper_label, paper_number, location
-  (main/appendix), source_script`. One row per (artifact, paper_label)
-  pair so multi-panel figures expand cleanly.
+- [x] **B1: Build `resources/paper_manifest.csv`** (commit 99655bf,
+  2026-05-16). 95 rows parsed from `Conway_Iselin_Rork_2026.tex`: 2
+  main-body tables + 8 appendix-A tables + 9 main figures (19 subpanels)
+  + 18 appendix-A figures (57 subpanels) + 5 appendix-C figures (12
+  subpanels). Columns: `artifact_basename, artifact_kind, paper_label,
+  paper_number, location, source_script`. One row per
+  (artifact, paper_label) pair so multi-panel figures expand cleanly.
 
 - [ ] **B2: Add `project_save_overleaf` helper** to `01a_programs.do`.
   Gated on `${overleaf} == 1`; with optional `PAPERONLY` flag consults
   the manifest before copying. Replaces ~40 hand-rolled `if ${overleaf}
-  == 1 { copy ... }` blocks across 9 files.
+  == 1 { copy ... }` blocks across 9 files. Held until V4 bootstrap
+  finishes (helper file is sourced by running pipeline).
 
-- [ ] **B3: Write `02_audit_paper_artifacts.do`** that asserts every
-  `\includegraphics` / `\input` basename is in the manifest, every
-  manifest row corresponds to a file on disk, and reports any
-  Overleaf-pushed artifact missing from the manifest. Wire as the last
-  step of `00_multnomah.do`.
+- [x] **B3: Audit script** (commit 99655bf, 2026-05-16). Implemented as
+  `code/R/audit_paper_artifacts.R` rather than the originally-planned
+  Stata `.do` — R has much cleaner `.tex` parsing and gets the same job
+  done in <100 lines. Reconciles manifest ↔ on-disk results/ ↔ live
+  `.tex`; writes three CSVs and exits non-zero on MISSING (build break);
+  soft-warns on DEAD (unregistered artifacts pushed to Overleaf). Run
+  with `Rscript code/R/audit_paper_artifacts.R`. **Still to do:** wire
+  into `00_multnomah.do` as the final step (deferred until V4 finishes,
+  since the orchestrator is the running script).
 
 ## Section C - Dead-output cleanup
 
