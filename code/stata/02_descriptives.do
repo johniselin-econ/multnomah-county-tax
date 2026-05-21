@@ -1627,24 +1627,28 @@ local pool_label_sample_demog          "Demographic match (mean)"
 local pool_label_sample_stringency     "Stringency match (mean)"
 local pool_label_sample_narrow         "Narrow similar-cities pool (mean)"
 
+** Donor-pool conditions exclude Multnomah so the per-pool N counts and
+** means describe donors only (Multnomah is reported separately on its
+** own row).
 local cond_mult                  "multnomah == 1"
-local cond_sample_all            "sample_all == 1"
-local cond_sample_urban95        "sample_urban95 == 1"
-local cond_sample_urban75_covid  "sample_urban75_covid == 1"
-local cond_sample_demog          "sample_demog == 1"
-local cond_sample_stringency     "sample_stringency == 1"
-local cond_sample_narrow         "sample_narrow == 1"
+local cond_sample_all            "sample_all == 1            & multnomah == 0"
+local cond_sample_urban95        "sample_urban95 == 1        & multnomah == 0"
+local cond_sample_urban75_covid  "sample_urban75_covid == 1  & multnomah == 0"
+local cond_sample_demog          "sample_demog == 1          & multnomah == 0"
+local cond_sample_stringency     "sample_stringency == 1     & multnomah == 0"
+local cond_sample_narrow         "sample_narrow == 1         & multnomah == 0"
 
-** Build one matrix per data source (6 rows x 8 cols):
+** Build one matrix per data source (7 rows x 8 cols):
 **   Cols: 1=N, 2=out_pre, 3=out_post, 4=in_pre, 5=in_post, 6=net_pre, 7=net_post, 8=net_chg
 **
-** Three panels: IRS (irs), ACS all-25+ (acs1), ACS College (acs2). Each uses
-** the same five donor-pool definitions. The N-counties column for each panel
-** is computed against the panel's own observable universe -- IRS sees ~3,140
-** counties; ACS only identifies ~389 counties (and not every donor pool
-** member is in that ACS-389 set).
-tempname M_IRS M_ACS1 M_ACS2
-foreach m in `M_IRS' `M_ACS1' `M_ACS2' {
+** Four panels: IRS (irs), IRS restricted to ACS-identified counties
+** (irs_389; same data as IRS but filtered to the SDID irs_sample_2
+** universe), ACS all-25+ (acs1), ACS College (acs2). Each uses the same
+** five donor-pool definitions plus narrow. IRS sees ~3,140 counties;
+** the ACS public-use file identifies ~389 counties, of which ~369
+** satisfy our balanced-panel and state-drop restrictions.
+tempname M_IRS M_IRS_389 M_ACS1 M_ACS2
+foreach m in `M_IRS' `M_IRS_389' `M_ACS1' `M_ACS2' {
     matrix `m' = J(7, 8, .)
     matrix colnames `m' = N out_pre out_post in_pre in_post net_pre net_post net_chg
     matrix rownames `m' = mult all urban95 urban_covid demog stringency narrow
@@ -1662,6 +1666,8 @@ local row = 1
 foreach pool of local pool_list {
     qui count if `cond_`pool'' & has_irs == 1
     matrix `M_IRS'[`row', 1] = r(N)
+    qui count if `cond_`pool'' & has_irs == 1 & irs_sample_2 == 1
+    matrix `M_IRS_389'[`row', 1] = r(N)
     qui count if `cond_`pool'' & has_acs1 == 1
     matrix `M_ACS1'[`row', 1] = r(N)
     qui count if `cond_`pool'' & has_acs2 == 1
@@ -1671,6 +1677,9 @@ foreach pool of local pool_list {
 restore
 
 ** ---- IRS panel: pre = 2018-2019, post = 2021-2022 ----
+** Fills two matrices in one pass: M_IRS (all IRS counties) and M_IRS_389
+** (IRS counties also in the balanced ACS-identified universe via
+** irs_sample_2). Same IRS migration data; different county filter.
 preserve
 keep if inrange(year, 2018, 2022) & year != 2020
 gen byte period_post = inlist(year, 2021, 2022)
@@ -1680,12 +1689,17 @@ foreach pool of local pool_list {
     foreach dir in "out" "in" "net" {
         local col_off = cond("`dir'" == "out", 1, cond("`dir'" == "in", 3, 5))
         foreach per in 0 1 {
-            qui summ agi_`dir'_rate_irs if `cond_`pool'' & period_post == `per'
             local col = `col_off' + 1 + `per'
+
+            qui summ agi_`dir'_rate_irs if `cond_`pool'' & period_post == `per'
             matrix `M_IRS'[`row', `col'] = r(mean)
+
+            qui summ agi_`dir'_rate_irs if `cond_`pool'' & period_post == `per' & irs_sample_2 == 1
+            matrix `M_IRS_389'[`row', `col'] = r(mean)
         }
     }
-    matrix `M_IRS'[`row', 8] = `M_IRS'[`row', 7] - `M_IRS'[`row', 6]
+    matrix `M_IRS'[`row', 8]     = `M_IRS'[`row', 7]     - `M_IRS'[`row', 6]
+    matrix `M_IRS_389'[`row', 8] = `M_IRS_389'[`row', 7] - `M_IRS_389'[`row', 6]
     local ++row
 }
 restore
@@ -1717,13 +1731,14 @@ foreach acs_pair in "M_ACS1 acs1" "M_ACS2 acs2" {
 }
 
 mat list `M_IRS'
+mat list `M_IRS_389'
 mat list `M_ACS1'
 mat list `M_ACS2'
 
-** ---- CSV export for QA (21 rows = 3 panels x 7 pools) ----
+** ---- CSV export for QA (28 rows = 4 panels x 7 pools) ----
 preserve
 clear
-set obs 21
+set obs 28
 gen str10 panel    = ""
 gen str40 pool     = ""
 gen long  N        = .
@@ -1736,7 +1751,7 @@ gen double net_post = .
 gen double net_chg = .
 
 local p_off = 0
-foreach panel_pair in "IRS M_IRS" "ACS M_ACS1" "ACS_College M_ACS2" {
+foreach panel_pair in "IRS M_IRS" "IRS_389 M_IRS_389" "ACS M_ACS1" "ACS_College M_ACS2" {
     local plabel : word 1 of `panel_pair'
     local pmat   : word 2 of `panel_pair'
     forvalues r = 1/7 {
@@ -1791,13 +1806,15 @@ file write `fh' `"\midrule"' _n
 ** lets us double-dereference at use time: ``matname'' resolves first to
 ** "M_IRS", then to the actual tempname.
 local matname_A "M_IRS"
-local matname_B "M_ACS1"
-local matname_C "M_ACS2"
-local hdr_A     "Panel A: IRS (Pre = 2018--2019; Post = 2021--2022)"
-local hdr_B     "Panel B: ACS, all 25+ (Pre = 2018--2019; Post = 2021--2024)"
-local hdr_C     "Panel C: ACS, college-educated (Pre = 2018--2019; Post = 2021--2024)"
+local matname_B "M_IRS_389"
+local matname_C "M_ACS1"
+local matname_D "M_ACS2"
+local hdr_A     "Panel A: IRS, all counties (Pre = 2018--2019; Post = 2021--2022)"
+local hdr_B     "Panel B: IRS, restricted to ACS-identified counties (Pre = 2018--2019; Post = 2021--2022)"
+local hdr_C     "Panel C: ACS, all 25+ (Pre = 2018--2019; Post = 2021--2024)"
+local hdr_D     "Panel D: ACS, college-educated (Pre = 2018--2019; Post = 2021--2024)"
 
-foreach letter in A B C {
+foreach letter in A B C D {
     local matname  "`matname_`letter''"
     local panel_hdr "`hdr_`letter''"
 
@@ -1831,8 +1848,8 @@ file write `fh' `"\end{tabular}"' _n
 file write `fh' `"\begin{tablenotes}[flushleft]"' _n
 file write `fh' `"\setstretch{1}\footnotesize"' _n
 file write `fh' `"\setlength{\itemsep}{1pt}"' _n
-file write `fh' `"\item \textit{Notes:} AGI in-, out-, and net-migration rates as a percentage of each county's base filing population, averaged over the indicated pre and post periods (2020 dropped). Means within each donor pool are simple county-level means (each county weighted equally), matching the SDID donor-pool construction. Counts reflect each panel's observable universe at year~2019. The all-donor-counties pool is the broad SDID benchmark: all U.S.\ counties excluding Alaska, Hawaii, California, Washington, and non-Multnomah Oregon counties. Urban top-5\% restricts to counties in the top 5\% of urban-share. Urban-Covid match restricts to the urban top-25\% k-means cluster matched to Multnomah on Covid case and death trajectories. Demographic match k-means clusters on pre-treatment per-capita income, population, urban share, and age distribution. Stringency match restricts to the urban top-25\% k-means cluster matched on OxCGRT Covid policy stringency duration. The narrow similar-cities pool is a hand-curated set of 20 large U.S.\ metro counties identified via Harvard Growth Lab's Metroverse similar-cities tool; unlike the other pools, it retains Sacramento and Seattle from the otherwise-excluded West Coast states. (Vancouver/Clark, WA was deliberately excluded from the narrow pool to avoid Multnomah commuter-flow spillover.) See Appendix~B for full donor-pool construction details."' _n
-file write `fh' `"\item Source: IRS SOI county-to-county migration flows (Panel~A); ACS microdata, all 25+ subsample (Panel~B); ACS microdata, college-educated subsample (Panel~C)."' _n
+file write `fh' `"\item \textit{Notes:} AGI in-, out-, and net-migration rates as a percentage of each county's base filing population, averaged over the indicated pre and post periods (2020 dropped). Means within each donor pool are simple county-level means over donors only (Multnomah is excluded from the pool means and reported separately), matching the SDID donor-pool construction. N counties is the donor-pool count for the panel's observable universe at year~2019. The all-donor-counties pool is the broad SDID benchmark: all U.S.\ counties excluding Alaska, Hawaii, California, Washington, and non-Multnomah Oregon counties. Urban top-5\% restricts to counties in the top 5\% of urban-share. Urban-Covid match restricts to the urban top-25\% k-means cluster matched to Multnomah on Covid case and death trajectories. Demographic match k-means clusters on pre-treatment per-capita income, population, urban share, and age distribution. Stringency match restricts to the urban top-25\% k-means cluster matched on OxCGRT Covid policy stringency duration. The narrow similar-cities pool is a hand-curated set of 20 large U.S.\ metro counties identified via Harvard Growth Lab's Metroverse similar-cities tool; unlike the other pools, it retains Sacramento and Seattle from the otherwise-excluded West Coast states. (Vancouver/Clark, WA was deliberately excluded from the narrow pool to avoid Multnomah commuter-flow spillover.) Panel~B uses the IRS migration data restricted to the ACS-identified balanced-panel universe (the same county set used by our IRS-389 SDID sensitivity in Section~\ref{sec:sdid_results}). The ACS public-use file identifies about 389 counties of residence; ~369 of these satisfy our balanced-panel and state-drop restrictions and appear in Panels~B--D. See Appendix~B for full donor-pool construction details."' _n
+file write `fh' `"\item Source: IRS SOI county-to-county migration flows (Panels~A and~B); ACS microdata, all 25+ subsample (Panel~C); ACS microdata, college-educated subsample (Panel~D)."' _n
 file write `fh' `"\end{tablenotes}"' _n
 file write `fh' `"\end{threeparttable}"' _n
 file write `fh' `"\end{table}"' _n

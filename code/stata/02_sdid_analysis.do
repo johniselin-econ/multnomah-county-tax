@@ -533,11 +533,6 @@ if ${use_parallel} == 1 {
 
 			foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" "sample_narrow" {
 
-				** Narrow has its own 22-county pool that doesn't depend on
-				** ACS county identification, so skip the 389-restricted
-				** IRS variant for narrow.
-				if "`samp'" == "sample_narrow" & "`data'" == "irs_sample_2" continue
-
 				forvalues exl = 0/1 {
 					foreach migr in "net" "in" "out" {
 
@@ -877,13 +872,10 @@ if ${use_parallel} == 1 {
 	use "${data}working/sdid_analysis_data.dta", clear
 
 	** Compute all county counts in a single pass (avoid reloading data).
-	** Narrow skips irs_sample_2 because it doesn't have a 389-restricted
-	** analog — see grid-build loop above.
 	** Note: use numeric index to avoid Stata's 32-char macro name limit
 	local _idx = 0
 	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" "sample_narrow" {
 		foreach data_v in `data_vars' {
-			if "`samp'" == "sample_narrow" & "`data_v'" == "irs_sample_2" continue
 			local _idx = `_idx' + 1
 			qui count if `samp' == 1 & `data_v' == 1 & year == 2021
 			local nc_`_idx' = r(N)
@@ -891,13 +883,10 @@ if ${use_parallel} == 1 {
 	}
 
 	** Build cost lookup table from stored counts.
-	** Five main pools × n_data + narrow × (n_data − 1 if irs_sample_2 in
-	** `data_vars`, else n_data).
+	** Six donor pools × n_data sample variants.
 	clear
 	local n_data : word count `data_vars'
-	local narrow_n = `n_data'
-	if strpos(" `data_vars' ", " irs_sample_2 ") > 0 local narrow_n = `n_data' - 1
-	local n_combos = 5 * `n_data' + `narrow_n'
+	local n_combos = 6 * `n_data'
 	qui set obs `n_combos'
 	gen samp_var = ""
 	gen data_var = ""
@@ -908,7 +897,6 @@ if ${use_parallel} == 1 {
 	local row = 0
 	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" "sample_narrow" {
 		foreach data_v in `data_vars' {
-			if "`samp'" == "sample_narrow" & "`data_v'" == "irs_sample_2" continue
 			local _idx = `_idx' + 1
 			local row = `row' + 1
 			qui replace samp_var = "`samp'" in `row'
@@ -1193,9 +1181,6 @@ else {
 
 			** Loop over samples
 			foreach samp of varlist sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency sample_narrow {
-
-				** Narrow skips irs_sample_2 — see grid-build loop comment.
-				if "`samp'" == "sample_narrow" & "`data'" == "irs_sample_2" continue
 
 				** Loop over exclusion of 2020
 				forvalues exl = 1(-1)0 {

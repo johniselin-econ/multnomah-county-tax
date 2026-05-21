@@ -106,21 +106,25 @@ local pool_label_sample_demog          "Demographic match"
 local pool_label_sample_stringency     "Stringency match"
 local pool_label_sample_narrow         "Narrow similar-cities pool"
 
+** Donor-pool conditions exclude Multnomah so the per-pool N counts and
+** means describe donors only (Multnomah is reported separately on its
+** own row).
 local cond_mult                  "multnomah == 1"
-local cond_sample_all            "sample_all == 1"
-local cond_sample_urban95        "sample_urban95 == 1"
-local cond_sample_urban75_covid  "sample_urban75_covid == 1"
-local cond_sample_demog          "sample_demog == 1"
-local cond_sample_stringency     "sample_stringency == 1"
-local cond_sample_narrow         "sample_narrow == 1"
+local cond_sample_all            "sample_all == 1            & multnomah == 0"
+local cond_sample_urban95        "sample_urban95 == 1        & multnomah == 0"
+local cond_sample_urban75_covid  "sample_urban75_covid == 1  & multnomah == 0"
+local cond_sample_demog          "sample_demog == 1          & multnomah == 0"
+local cond_sample_stringency     "sample_stringency == 1     & multnomah == 0"
+local cond_sample_narrow         "sample_narrow == 1         & multnomah == 0"
 
-** Build three SDID descriptive matrices: 7 rows × 7 cols (N + 6 rate means).
-** Three panels: IRS, ACS all-25+ (acs1), ACS College (acs2). Each panel's
-** N-counties column counts only counties observable in that data source
-** (mirrors the Table 1 fix: ACS only identifies ~389 counties, so the
-** ACS-panel donor counts are far smaller than the IRS-panel counts).
-tempname M_SDID_IRS M_SDID_ACS1 M_SDID_ACS2
-foreach m in `M_SDID_IRS' `M_SDID_ACS1' `M_SDID_ACS2' {
+** Build four SDID descriptive matrices: 7 rows × 7 cols (N + 6 rate means).
+** Four panels: IRS (all counties), IRS-389 (IRS restricted to the ACS-
+** identified balanced-panel universe via irs_sample_2), ACS all-25+
+** (acs1), ACS College (acs2). The ACS public-use file identifies about
+** 389 counties of residence; ~369 of these satisfy the balanced-panel
+** and state-drop restrictions and appear in the IRS-389 / ACS panels.
+tempname M_SDID_IRS M_SDID_IRS_389 M_SDID_ACS1 M_SDID_ACS2
+foreach m in `M_SDID_IRS' `M_SDID_IRS_389' `M_SDID_ACS1' `M_SDID_ACS2' {
     matrix `m' = J(7, 7, .)
     matrix colnames `m' = N out_cty in_cty net_cty out_st in_st net_st
     matrix rownames `m' = mult all urban95 urban_covid demog stringency narrow
@@ -137,6 +141,8 @@ local row = 1
 foreach pool of local pool_list {
     qui count if `cond_`pool'' & has_irs == 1
     matrix `M_SDID_IRS'[`row', 1] = r(N)
+    qui count if `cond_`pool'' & has_irs == 1 & irs_sample_2 == 1
+    matrix `M_SDID_IRS_389'[`row', 1] = r(N)
     qui count if `cond_`pool'' & has_acs1 == 1
     matrix `M_SDID_ACS1'[`row', 1] = r(N)
     qui count if `cond_`pool'' & has_acs2 == 1
@@ -145,7 +151,9 @@ foreach pool of local pool_list {
 }
 restore
 
-** ---- IRS panel: time-pooled means 2018-2022 (excluding 2020) ----
+** ---- IRS panels (all-counties + ACS-restricted): time-pooled means
+**      2018-2022 (excluding 2020). Fills M_SDID_IRS and M_SDID_IRS_389
+**      in one pass; same IRS data, different county filter.
 preserve
 keep if inrange(year, 2018, 2022) & year != 2020
 local row = 1
@@ -157,6 +165,8 @@ foreach pool of local pool_list {
             local col = `i' + 1
             qui summ agi_`dir'_rate_`scope' if `cond_`pool''
             matrix `M_SDID_IRS'[`row', `col'] = r(mean)
+            qui summ agi_`dir'_rate_`scope' if `cond_`pool'' & irs_sample_2 == 1
+            matrix `M_SDID_IRS_389'[`row', `col'] = r(mean)
         }
     }
     local ++row
@@ -187,6 +197,7 @@ foreach acs_pair in "M_SDID_ACS1 acs1" "M_SDID_ACS2 acs2" {
 }
 
 mat list `M_SDID_IRS'
+mat list `M_SDID_IRS_389'
 mat list `M_SDID_ACS1'
 mat list `M_SDID_ACS2'
 
@@ -217,17 +228,19 @@ file write `fh' `"\cmidrule(lr){3-5} \cmidrule(lr){6-8}"' _n
 file write `fh' `" & counties & Out & In & Net & Out & In & Net \\"' _n
 file write `fh' `"\midrule"' _n
 
-** Three-panel write: A=IRS, B=ACS all-25+, C=ACS college.
+** Four-panel write: A=IRS, B=IRS-389, C=ACS all-25+, D=ACS college.
 ** matname_<letter> stores the local-NAME (not resolved tempname) so that
 ** double-dereference ``matname'' works at use time.
 local matname_A "M_SDID_IRS"
-local matname_B "M_SDID_ACS1"
-local matname_C "M_SDID_ACS2"
-local hdr_A "Panel A: IRS (2018-2022, excl.\ 2020)"
-local hdr_B "Panel B: ACS, all 25+ (2018-2024, excl.\ 2020)"
-local hdr_C "Panel C: ACS, college-educated (2018-2024, excl.\ 2020)"
+local matname_B "M_SDID_IRS_389"
+local matname_C "M_SDID_ACS1"
+local matname_D "M_SDID_ACS2"
+local hdr_A "Panel A: IRS, all counties (2018-2022, excl.\ 2020)"
+local hdr_B "Panel B: IRS, restricted to ACS-identified counties (2018-2022, excl.\ 2020)"
+local hdr_C "Panel C: ACS, all 25+ (2018-2024, excl.\ 2020)"
+local hdr_D "Panel D: ACS, college-educated (2018-2024, excl.\ 2020)"
 
-foreach letter in A B C {
+foreach letter in A B C D {
     local matname  "`matname_`letter''"
     local panel_hdr "`hdr_`letter''"
 
@@ -258,9 +271,9 @@ file write `fh' `"\bottomrule"' _n
 file write `fh' `"\end{tabular}"' _n
 file write `fh' `"\begin{tablenotes}[flushleft]"' _n
 file write `fh' `"\small"' _n
-file write `fh' `"\item \textit{Notes:} Time-pooled means of AGI migration rates (\% of base population) within each comparison group. Each rate is averaged over the in-sample years (2020 excluded). County-level migration counts moves to / from any other county; out-of-state migration restricts to moves crossing the Oregon state line. Means are simple county-level means (each county weighted equally), matching the SDID donor-pool construction. The narrow similar-cities pool retains Sacramento and Seattle as part of the Metroverse comparison group; Vancouver/Clark, WA was excluded to avoid Multnomah commuter-flow spillover."' _n
-file write `fh' `"\item \textit{N counties.} Counts reflect each panel's observable universe at year~2019: IRS covers nearly all U.S.\ counties, while the public-use ACS only identifies about 389 counties of residence. The narrow pool has a fixed list of 21 counties (Multnomah plus 20 similar cities); ACS-panel counts are smaller when some of those counties are not ACS-identified in 2019."' _n
-file write `fh' `"\item Source: IRS SOI county-to-county migration flows (Panel~A); ACS microdata, all 25+ subsample (Panel~B); ACS microdata, college-educated subsample (Panel~C). See Appendix~B for donor-pool construction."' _n
+file write `fh' `"\item \textit{Notes:} Time-pooled means of AGI migration rates (\% of base population) within each comparison group. Each rate is averaged over the in-sample years (2020 excluded). County-level migration counts moves to / from any other county; out-of-state migration restricts to moves crossing the Oregon state line. Means are simple county-level means over donors only (Multnomah is excluded from each donor pool's mean and reported separately), matching the SDID donor-pool construction. The narrow similar-cities pool retains Sacramento and Seattle as part of the Metroverse comparison group; Vancouver/Clark, WA was excluded to avoid Multnomah commuter-flow spillover. Panel~B uses the IRS migration data restricted to the ACS-identified balanced-panel universe (the same county set used by our IRS-389 SDID sensitivity)."' _n
+file write `fh' `"\item \textit{N counties.} Donor-pool counts (excluding Multnomah, which is reported separately) at year~2019. IRS covers nearly all U.S.\ counties; the ACS public-use file identifies about 389 counties of residence, of which ~369 satisfy our balanced-panel and state-drop restrictions and appear in Panels~B--D. The narrow pool has a fixed list of 20 donor counties (plus Multnomah); ACS-restricted panels see 18 of those donors because 2 narrow counties are not in the balanced ACS-identified panel."' _n
+file write `fh' `"\item Source: IRS SOI county-to-county migration flows (Panels~A and~B); ACS microdata, all 25+ subsample (Panel~C); ACS microdata, college-educated subsample (Panel~D). See Appendix~B for donor-pool construction."' _n
 file write `fh' `"\end{tablenotes}"' _n
 file write `fh' `"\end{threeparttable}"' _n
 file write `fh' `"\end{table}"' _n

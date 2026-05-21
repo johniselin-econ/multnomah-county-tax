@@ -89,7 +89,7 @@ if `pkg_missing' {
 ** Bootstrap
 ** ----------------------------------------------------------------
 global run_bootstrap         = 1 		// 1 to (re)run bootstrap; 0 to skip the stage
-global bootstrap_reps        = 500		// 20=smoke, 100=stress, 500=publication
+global bootstrap_reps        = 100		// 20=smoke, 100=stress, 500=publication
 global show_bootstrap_cis    = 1		// 1 to render rcap whiskers on spec curves (requires bootstrap_cis.dta)
 global ci_level              = 95		// 90, 95, or 99 — percentile CI level for bootstrap_cis.dta
 
@@ -104,7 +104,7 @@ global resume                = 0		// 1 to skip bootstrap reps whose draw .dta al
 ** Output mode
 ** ----------------------------------------------------------------
 global event_study_mode      "all"     // "all" | "main" | "none" — which event studies the SDID stage runs
-global overleaf              = 0       // 1 to copy figures/tables to ${oth_path}; auto-set to 1 below if profile.do defines oth_path
+global overleaf              = 1       // 1 to copy figures/tables to ${oth_path}; auto-set to 1 below if profile.do defines oth_path
 
 ** Auto-downgrade use_parallel if the `parallel` ado isn't installed.
 ** User intent of 1 means "use parallel if available", not "fail if missing".
