@@ -1,0 +1,164 @@
+# SLURM runbook — Multnomah pipeline
+
+Three-stage workflow on the McCleary-style cluster:
+
+1. **Stage 1** — R data downloads (network-I/O bound)
+2. **Stage 2** — Stata analysis (parallel SDID + bootstrap)
+3. **Stage 3** — R post-Stata outputs (diagrams + maps)
+
+Stages 1 and 3 are light and can run on the login node or as small SLURM
+jobs. Stage 2 is the heavy lifter and is run interactively in a salloc.
+
+Cluster facts (verified 2026-05-21):
+- R module:     `R/4.4.1-foss-2022b`
+- Stata module: `Stata/19` (MP/8 license)
+- Project root: `/nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax`
+- Curated outputs land in `results/overleaf_export/{figures,tables}/`
+  (driven by `profile.do` → `${oth_path}`)
+
+---
+
+## One-time setup
+
+1. **Install R packages** (one-time per cluster R install):
+
+   ```bash
+   module load R/4.4.1-foss-2022b
+   Rscript -e 'install.packages(c("ipumsr","tidycensus","dplyr","tidyr","readr","stringr","sf","tigris","ggplot2","tidyverse","readxl","here","patchwork","cowplot","grid"), repos="https://cloud.r-project.org")'
+   ```
+
+2. **Install Stata packages** (one-time):
+
+   ```stata
+   ssc install reghdfe, replace
+   ssc install ftools, replace
+   ssc install ppmlhdfe, replace
+   ssc install sdid, replace
+   ssc install sdid_event, replace
+   ssc install estout, replace
+   ssc install coefplot, replace
+   ssc install fre, replace
+   ssc install distinct, replace
+   ssc install blindschemes, replace
+   net install taxsimlocal35, from("https://taxsim.nber.org/stata") replace
+   net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
+   ```
+
+3. **API keys**: `api_codes.txt` exists in repo root (IPUMS + Census keys).
+
+4. **Fake Overleaf staging**: `profile.do` is in place; mirrors curated outputs
+   to `results/overleaf_export/`. Edit `oth_path` in `profile.do` to relocate.
+
+---
+
+## Each pipeline run
+
+### Stage 1 — R downloads
+
+**Option A: SLURM batch job (preferred — clean log, unattended).**
+
+```bash
+cd /nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax
+sbatch stage1.sbatch
+# monitor:
+squeue -u $USER
+tail -f slurm-stage1-*.log
+```
+
+**Option B: login-node (if cached, runs in seconds).**
+
+```bash
+cd /nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax
+module load R/4.4.1-foss-2022b
+./run_stage1.sh
+```
+
+First pass ~30 min (dominated by the IPUMS extract queue). Cached reruns:
+seconds. Hand-off check: `ls data/acs/acs_2024.csv` should now exist.
+
+### Stage 2 — Stata interactive
+
+**Request the allocation:**
+
+```bash
+salloc --partition=day --cpus-per-task=32 --mem-per-cpu=4G --time=08:00:00
+```
+
+(For a 500-rep publication bootstrap, bump to `--cpus-per-task=64
+--mem-per-cpu=2G`; that lifts `n_clusters` from 4 to 8 and roughly halves
+the bootstrap wall time. SDID itself doesn't get faster — still 4 data
+blocks.)
+
+**Inside the allocation:**
+
+```bash
+module load Stata/19
+cd /nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax
+
+# sanity-check: should print 8 for MP/8, and 32 for cpus
+stata-mp -q -b -e 'di c(processors_max)' && tail -2 *.log && rm -f *.log
+nproc
+
+# batch run (log → code/stata/logs/00_log_multnomah_<date>.log)
+stata-mp -b do 00_multnomah.do
+
+# OR interactive
+stata-mp
+# . do 00_multnomah.do
+```
+
+Expected wall time: 3–5 hr at 100-rep bootstrap. Exit with `exit` when
+done — don't sit on idle cores.
+
+### Stage 3 — R post-Stata
+
+```bash
+cd /nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax
+module load R/4.4.1-foss-2022b
+./run_stage3.sh
+```
+
+~1 minute. Renders diagrams + maps, copying paper-ready versions to
+`results/overleaf_export/`.
+
+### Collect artifacts
+
+From your laptop:
+
+```bash
+rsync -av <cluster>:/nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax/results/overleaf_export/ ~/Dropbox/Overleaf-Multnomah/
+```
+
+---
+
+## Pre-flight sanity checks
+
+Before the multi-hour Stata run, inside the salloc:
+
+| Check                                            | Expected         |
+|--------------------------------------------------|------------------|
+| `nproc`                                          | matches `--cpus-per-task` |
+| `stata-mp -q -b -e 'di c(processors_max)'`       | `8` (MP/8 license)         |
+| `cat profile.do`                                 | shows `oth_path` set       |
+| `ls data/acs/acs_2024.csv`                       | exists (Stage 1 ran)       |
+| `ls results/overleaf_export/{figures,tables}`    | both exist                 |
+
+## Sizing rationale (MP/8)
+
+`setup_parallel` in `code/stata/01a_programs.do` reads `nproc` (respects
+SLURM cgroup) and caps `n_clusters = floor(visible_cores / 8)`. Each
+worker then runs Stata/MP at the full 8-core license cap.
+
+- 32 cores → 4 workers × 8 cores. Saturates SDID's 4 data blocks 1:1;
+  100-rep bootstrap = 25 reps/worker (~25 min stage).
+- 64 cores → 8 workers × 8 cores. SDID unchanged; bootstrap halves.
+- <16 cores → forces `n_clusters=2`; leaves 2 of 4 SDID blocks waiting.
+
+## Run-control knobs (`00_multnomah.do` PROJECT GLOBALS panel)
+
+- `run_bootstrap` — `0` to skip the bootstrap stage entirely
+- `bootstrap_reps` — `20` smoke / `100` stress / `500` publication
+- `use_parallel` — `1` if `parallel` ado installed (auto-downgrades if not)
+- `n_clusters` — worker count; auto-capped by `setup_parallel`
+- `resume` — `1` to skip bootstrap reps whose draw .dta already exists
+- `event_study_mode` — `"all"` / `"main"` / `"none"`
