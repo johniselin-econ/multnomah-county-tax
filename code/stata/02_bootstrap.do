@@ -33,9 +33,9 @@ Purpose:        Donor-cluster bootstrap driver for the highlighted SDID
 
                 Only the highlighted specs that feed published tables
                 are bootstrapped: IRS and ACS College (including their
-                out-of-state variants) × {sample_all, sample_stringency}
-                × {net, in, out} with controls=1, exclusion=1. Mirrors
-                project_mark_preferred_main in 00_stata_config.do.
+                out-of-state variants) × {sample_all, sample_stringency,
+                sample_narrow} × {net, in, out} with controls=1, exclusion=1.
+                Mirrors project_mark_preferred_main in 00_stata_config.do.
 
 Called by:      00_multnomah.do (guarded by ${run_bootstrap})
 Requires:       ${data}working/sdid_analysis_data.dta   (02_sdid_analysis.do)
@@ -138,18 +138,18 @@ load_revenue_params
 ** ------------------------------------------------------------------
 ** The bootstrap only covers specs that appear in published tables.
 ** Mirrors project_mark_preferred_main: controls=1, exclusion=1, and
-** sample ∈ {sample_all, sample_stringency} for the four preferred
-** (sample_data, out_type) blocks.
+** sample ∈ {sample_all, sample_stringency, sample_narrow} for the six
+** preferred (sample_data, out_type) blocks.
 **
 ** Saved to ${data}working/bootstrap_spec_grid.dta so run_bootstrap_rep
 ** can `use` it inside each rep — workers in parallel mode run in their
 ** own Stata processes and need a stable on-disk artifact.
 **
 ** Columns:
-**   spec_id     sequential integer, 1..24
+**   spec_id     sequential integer, 1..36
 **   sample_data panel block key (understood by load_spec_panel)
 **   out_type    per-panel outcome suffix
-**   sample      donor-pool indicator (sample_all / sample_stringency)
+**   sample      donor-pool indicator (sample_all / sample_stringency / sample_narrow)
 **   migration   "net" | "in" | "out"
 **   outcome     full outcome variable name (agi_<mig>_rate_<out_type>)
 **   data_type   presentation label consumed by spec_engine programs
@@ -160,7 +160,7 @@ load_revenue_params
 
 preserve
 clear
-set obs 24
+set obs 36
 
 gen int    spec_id     = _n
 gen str40  sample_data = ""
@@ -184,7 +184,7 @@ foreach sd_block in "irs_full_16_22 irs IRS 0" ///
 	local ot `2'
 	local dt = subinstr("`3'", "_", " ", .)
 	local os `4'
-	foreach samp in "sample_all" "sample_stringency" {
+	foreach samp in "sample_all" "sample_stringency" "sample_narrow" {
 		foreach mig in "net" "in" "out" {
 			local ++row
 			qui replace sample_data = "`sd'"  in `row'
@@ -198,7 +198,7 @@ foreach sd_block in "irs_full_16_22 irs IRS 0" ///
 		}
 	}
 }
-assert `row' == 24
+assert `row' == 36
 compress
 save "${data}working/bootstrap_spec_grid.dta", replace
 restore
@@ -207,7 +207,7 @@ restore
 ** SECTION 2: Define per-rep program (run_bootstrap_rep)
 ** ------------------------------------------------------------------
 ** Self-contained: takes one rep number, computes the deterministic
-** seed, caches per-sample_data panels, fits all 24 specs, writes a
+** seed, caches per-sample_data panels, fits all 36 specs, writes a
 ** single per-rep .dta to ${results}bootstrap/temp_draws/.
 **
 ** This program is passed to parallel workers via prog() (parent's
@@ -305,7 +305,7 @@ program define run_bootstrap_rep
 		restore
 	}
 
-	** ---- Fit the 24 specs and post one row each ----
+	** ---- Fit the 36 specs and post one row each ----
 	local n_completed = 0
 	local n_failed    = 0
 	forvalues i = 1/`n_specs' {

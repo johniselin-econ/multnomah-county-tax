@@ -88,8 +88,8 @@ dis "=============================================="
 
 ** Load SDID estimates from stored results (produced by 02_sdid_analysis.do)
 ** Highlighted specs mirror project_mark_preferred_main in 00_stata_config.do:
-**   - IRS (16-22) × {sample_all, sample_stringency} × {domestic, out-of-state}
-**   - ACS College (16-24) × {sample_all, sample_stringency} × {domestic, out-of-state}
+**   - IRS (16-22) × {sample_all, sample_stringency, sample_narrow} × {domestic, out-of-state}
+**   - ACS College (16-24) × {sample_all, sample_stringency, sample_narrow} × {domestic, out-of-state}
 ** All with controls == 1 & exclusion == 1 (excl. 2020)
 capture confirm file "${results}sdid/sdid_results.dta"
 if _rc == 0 {
@@ -100,50 +100,64 @@ if _rc == 0 {
 	use "${results}sdid/sdid_results.dta", clear
 
 	** ---- Highlighted spec lookup ----
-	** Parallel locals define 4 highlighted specs per direction
+	** Parallel locals define 6 highlighted specs per direction
 	** Suffixes for scalar names
 	local suf_1 "irs_all"
 	local suf_2 "irs_string"
-	local suf_3 "acs_col_all"
-	local suf_4 "acs_col_string"
+	local suf_3 "irs_narrow"
+	local suf_4 "acs_col_all"
+	local suf_5 "acs_col_string"
+	local suf_6 "acs_col_narrow"
 
 	** Domestic (type 3) — used for PFA county revenue loss
 	local dom_sdata_1 "irs_full_16_22"
 	local dom_sdata_2 "irs_full_16_22"
-	local dom_sdata_3 "acs_16_24_col"
+	local dom_sdata_3 "irs_full_16_22"
 	local dom_sdata_4 "acs_16_24_col"
+	local dom_sdata_5 "acs_16_24_col"
+	local dom_sdata_6 "acs_16_24_col"
 	local dom_ovar_1  "agi_net_rate_irs"
 	local dom_ovar_2  "agi_net_rate_irs"
-	local dom_ovar_3  "agi_net_rate_acs2"
+	local dom_ovar_3  "agi_net_rate_irs"
 	local dom_ovar_4  "agi_net_rate_acs2"
+	local dom_ovar_5  "agi_net_rate_acs2"
+	local dom_ovar_6  "agi_net_rate_acs2"
 
 	** Out-of-state (type 5) — used for Oregon state revenue loss
 	local out_sdata_1 "irs_outstate_full_16_22"
 	local out_sdata_2 "irs_outstate_full_16_22"
-	local out_sdata_3 "acs_outstate_16_24_col"
+	local out_sdata_3 "irs_outstate_full_16_22"
 	local out_sdata_4 "acs_outstate_16_24_col"
+	local out_sdata_5 "acs_outstate_16_24_col"
+	local out_sdata_6 "acs_outstate_16_24_col"
 	local out_ovar_1  "agi_net_rate_irs_outstate"
 	local out_ovar_2  "agi_net_rate_irs_outstate"
-	local out_ovar_3  "agi_net_rate_acs2_outstate"
+	local out_ovar_3  "agi_net_rate_irs_outstate"
 	local out_ovar_4  "agi_net_rate_acs2_outstate"
+	local out_ovar_5  "agi_net_rate_acs2_outstate"
+	local out_ovar_6  "agi_net_rate_acs2_outstate"
 
 	** Samples (shared across domestic and out-of-state)
 	local samp_1 "sample_all"
 	local samp_2 "sample_stringency"
-	local samp_3 "sample_all"
-	local samp_4 "sample_stringency"
+	local samp_3 "sample_narrow"
+	local samp_4 "sample_all"
+	local samp_5 "sample_stringency"
+	local samp_6 "sample_narrow"
 
 	** Labels for display
 	local lbl_1 "IRS, all counties"
 	local lbl_2 "IRS, stringency match"
-	local lbl_3 "ACS College, all counties"
-	local lbl_4 "ACS College, stringency"
+	local lbl_3 "IRS, narrow pool"
+	local lbl_4 "ACS College, all counties"
+	local lbl_5 "ACS College, stringency"
+	local lbl_6 "ACS College, narrow pool"
 
 	** ---- Domestic highlighted specs ----
 	dis ""
 	dis "  Highlighted SDID estimates — domestic (type 3):"
 	dis "  {hline 60}"
-	forvalues i = 1/4 {
+	forvalues i = 1/6 {
 		qui summ tau if sample_data == "`dom_sdata_`i''" ///
 			& sample == "`samp_`i''" ///
 			& outcome == "`dom_ovar_`i''" ///
@@ -162,7 +176,7 @@ if _rc == 0 {
 	dis ""
 	dis "  Highlighted SDID estimates — out-of-state (type 5):"
 	dis "  {hline 60}"
-	forvalues i = 1/4 {
+	forvalues i = 1/6 {
 		qui summ tau if sample_data == "`out_sdata_`i''" ///
 			& sample == "`samp_`i''" ///
 			& outcome == "`out_ovar_`i''" ///

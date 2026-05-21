@@ -240,7 +240,7 @@ do "${code}02_diagnostics.do"
 ** Reads sdid_analysis_data.dta + irs_county_flow.dta + acs_county_gross_25plus.dta.
 do "${code}02_appendix_descriptives.do"
 
-** SDID with narrow control pool (21 similar cities) is now run inside
+** SDID with narrow control pool (20 similar cities) is now run inside
 ** 02_sdid_analysis.do as a 6th donor pool (`sample_narrow`); the standalone
 ** sidebar script below is retained for reference only.
 // do "${code}02_narrow_sdid.do"

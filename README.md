@@ -142,10 +142,10 @@ The primary analysis uses SDID to estimate the causal effect on migration:
 - **Treatment unit**: Multnomah County, Oregon
 - **Treatment period**: Post-2020
 - **Outcomes**: Migration rates (in, out, net) for returns (n1), exemptions (n2), and AGI
-- **Donor pools**: All counties, urban top 5%, top-25%-urban COVID match, demographic match, and top-25%-urban stringency match
-- **Highlighted SDID specifications**: IRS vs. ACS College, each shown with all-counties and stringency-matched donor pools. Beyond per-spec event-study plots, the pipeline emits **preferred-spec event-study overlays** in `${results}sdid/preferred_overlays/` that combine these specs onto shared axes:
-  - **Donor-pool overlay** (12 figs, 2 lines per fig) — `fig_overlay_donorpool_<sample_data>_<migr>_eventstudy.{pdf,jpg}`. Compares `sample_all` vs `sample_stringency` for each (sample_data × migration).
-  - **Dataset overlay** (6 figs, 4 lines per fig) — `fig_overlay_dataset_{instate,outstate}_<migr>_eventstudy.{pdf,jpg}`. Compares IRS × ACS College × {all, stringency} per (scope × migration). Same color palette (warm = IRS, cool = ACS, saturated = all-counties, lighter = stringency).
+- **Donor pools**: All counties, urban top 5%, top-25%-urban COVID match, demographic match, top-25%-urban stringency match, and a hand-curated narrow Metroverse similar-cities pool (20 large U.S. metro counties + Multnomah; Clark/WA excluded for Multnomah commuter spillover)
+- **Highlighted SDID specifications**: IRS vs. ACS College, each shown with all-counties, stringency-matched, and narrow donor pools. Beyond per-spec event-study plots, the pipeline emits **preferred-spec event-study overlays** in `${results}sdid/preferred_overlays/` that combine these specs onto shared axes:
+  - **Donor-pool overlay** (12 figs, 3 lines per fig) — `fig_overlay_donorpool_<sample_data>_<migr>_eventstudy.{pdf,jpg}`. Compares `sample_all` vs `sample_stringency` vs `sample_narrow` for each (sample_data × migration). Colors: vermillion (all) / sea (stringency) / bluish green (narrow).
+  - **Dataset overlay** (6 figs, 6 lines per fig) — `fig_overlay_dataset_{instate,outstate}_<migr>_eventstudy.{pdf,jpg}`. Compares IRS × ACS College × {all, stringency, narrow} per (scope × migration). Warm-family (IRS): vermillion / orangebrown / reddish purple; cool-family (ACS): sea / sky / bluish green.
 - **Data sources**: IRS county flows (2016–2022), ACS microdata (2016–2024)
 
 ### Difference-in-Differences (DiD)

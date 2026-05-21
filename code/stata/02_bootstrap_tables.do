@@ -166,7 +166,7 @@ dis _newline "Loaded `n_draws' draws across `n_specs' specs and `n_reps' reps."
 **
 ** Stata's egen pctile(), by(spec_id) p(#) computes the same value for
 ** all rows within a spec, so each draw row gets its spec's percentile.
-** That's wasteful for memory (24 specs × 20 reps = 480 rows holding
+** That's wasteful for memory (36 specs × 20 reps = 720 rows holding
 ** redundant per-spec values) but trivial at this scale, and it lets
 ** us collapse with a single duplicates-drop instead of a loop.
 **

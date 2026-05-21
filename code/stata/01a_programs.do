@@ -598,5 +598,5 @@ program define load_narrow_pool
     foreach f of local narrow_fips {
         qui replace sample_narrow = 1 if fips == `f'
     }
-    label var sample_narrow "Narrow pool: 21 Metroverse similar cities + Multnomah"
+    label var sample_narrow "Narrow pool: 20 Metroverse similar cities + Multnomah"
 end

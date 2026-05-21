@@ -236,16 +236,19 @@ qui summ percent_urban if year == 2020, de
 local p75 = r(p75)
 gen urban_top75 = percent_urban >= `p75'
 
-** Define sample 6 (narrow): 21 similar cities + Multnomah from Harvard Growth
+** Define sample 6 (narrow): 20 similar cities + Multnomah from Harvard Growth
 ** Lab Metroverse similar-cities tool. Defined BEFORE the state drops so the
-** narrow-keepers (Sacramento, Seattle, Vancouver) survive the drops below.
+** narrow-keepers (Sacramento, Seattle) survive the drops below. Clark/WA
+** (Vancouver) is intentionally excluded from the narrow pool: PFA-induced
+** commuter and short-range migration between Multnomah and Vancouver spills
+** directly into the donor county and would violate SUTVA.
 ** Source of truth: resources/narrow_pool_fips.csv (edit there, not here).
 load_narrow_pool
 
-** Flag narrow-only keeper counties (Sacramento, Seattle, Vancouver) so the
-** other 5 pools and the k-means clustering steps below can exclude them.
-** Multnomah itself is in narrow but should still appear in every other pool,
-** so the flag is restricted to non-Multnomah CA/WA/OR narrow members.
+** Flag narrow-only keeper counties (Sacramento, Seattle) so the other 5
+** pools and the k-means clustering steps below can exclude them. Multnomah
+** itself is in narrow but should still appear in every other pool, so the
+** flag is restricted to non-Multnomah CA/WA/OR narrow members.
 gen narrow_only = sample_narrow == 1 & multnomah == 0 & ///
     inlist(state_name, "California", "Washington", "Oregon")
 label var narrow_only "County belongs only to narrow pool (CA/WA/OR keeper)"
@@ -623,7 +626,7 @@ if ${use_parallel} == 1 {
 				local run_event = 1
 				if "${event_study_mode}" == "preferred" {
 					local run_event = 0
-					if inlist("`samp_var'", "sample_all", "sample_stringency") & `c' == 1 & `exl' == 1 {
+					if inlist("`samp_var'", "sample_all", "sample_stringency", "sample_narrow") & `c' == 1 & `exl' == 1 {
 						if "`out_txt'" == "irs_full_16_22" | "`out_txt'" == "acs_16_24_col" {
 							local run_event = 1
 						}
@@ -726,7 +729,7 @@ if ${use_parallel} == 1 {
 					gen event_se = (event_ci_hi - event_ci_lo) / (2 * 1.96) ///
 						if !missing(event_ci_lo) & !missing(event_ci_hi)
 					gen outstate = strpos("`outcome'", "_outstate") > 0 | strpos("`outcome'", "_irs5") > 0
-					gen preferred = inlist("`samp_var'", "sample_all", "sample_stringency") ///
+					gen preferred = inlist("`samp_var'", "sample_all", "sample_stringency", "sample_narrow") ///
 						& `c' == 1 & `exl' == 1 ///
 						& inlist("`out_txt'", "irs_full_16_22", "acs_16_24_col", ///
 							"irs_outstate_full_16_22", "acs_outstate_16_24_col")
@@ -1232,7 +1235,7 @@ else {
 								local run_event = 1
 								if "${event_study_mode}" == "preferred" {
 									local run_event = 0
-									if inlist("`samp'", "sample_all", "sample_stringency") & `c' == 1 & `exl' == 1 {
+									if inlist("`samp'", "sample_all", "sample_stringency", "sample_narrow") & `c' == 1 & `exl' == 1 {
 										if "`out_txt'" == "irs_full_16_22" | "`out_txt'" == "acs_16_24_col" {
 											local run_event = 1
 										}
@@ -1322,7 +1325,7 @@ else {
 									gen event_se = (event_ci_hi - event_ci_lo) / (2 * 1.96) ///
 										if !missing(event_ci_lo) & !missing(event_ci_hi)
 									gen outstate = strpos("`out'", "_outstate") > 0 | strpos("`out'", "_irs5") > 0
-									gen preferred = inlist("`samp'", "sample_all", "sample_stringency") ///
+									gen preferred = inlist("`samp'", "sample_all", "sample_stringency", "sample_narrow") ///
 										& `c' == 1 & `exl' == 1 ///
 										& inlist("`out_txt'", "irs_full_16_22", "acs_16_24_col", ///
 											"irs_outstate_full_16_22", "acs_outstate_16_24_col")

@@ -127,10 +127,10 @@ draw_empirical_approach <- function(out_file, with_title = FALSE) {
   tx(65, 128.5, "Synthetic Difference\u2013in\u2013Differences (SDID)",
      sz = 14, face = "bold", col = sd_txt)
   tx(65, 125,
-     "One treated unit (Multnomah) | Donor pools: All, Urban (top 5%), COVID, Demographic, Stringency",
+     "One treated unit (Multnomah) | Donor pools: All, Urban (top 5%), COVID, Demographic, Stringency, Narrow",
       sz = 10, col = desc_col)
   tx(65, 122.5,
-     "Highlighted specs: IRS/ACS College x {All, Stringency} | Covariates | Excl. 2020",
+     "Highlighted specs: IRS/ACS College x {All, Stringency, Narrow} | Covariates | Excl. 2020",
      sz = 9.5, col = desc_col)
 
   ar(48, 119, 42, 115.5)

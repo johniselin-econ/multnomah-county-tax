@@ -6,12 +6,15 @@ Date Update:	February 2026
 Called by: 00_multnomah.do
 
 Purpose: Perform synthetic difference-in-difference estimation using a narrow
-         control pool of 21 similar cities identified via the Harvard Growth
+         control pool of 20 similar cities identified via the Harvard Growth
          Lab's Metroverse tool.
 
 Note: Unlike the main SDID analysis, this file does NOT drop CA/WA/OR counties
-      from the donor pool. Sacramento (CA), Vancouver (WA), and Seattle (WA)
-      are included by design as part of the similar-cities comparison group.
+      from the donor pool. Sacramento (CA) and Seattle (WA) are included by
+      design as part of the similar-cities comparison group. Vancouver (WA),
+      which Metroverse also suggests, is intentionally excluded because the
+      Multnomah--Vancouver commuter / migration link creates SUTVA-violating
+      spillover into the donor county.
 
 Source: https://metroverse.hks.harvard.edu/city/101/similar-cities
 
@@ -155,7 +158,7 @@ label var multnomah "Indicator for Multnomah County, Oregon"
 gen Treated = multnomah == 1 & year > 2020
 label var Treated "Treatment indicator for Multnomah County, Oregon"
 
-** Define narrow sample: 21 similar cities + Multnomah
+** Define narrow sample: 20 similar cities + Multnomah
 ** FIPS codes from Harvard Growth Lab Metroverse similar-cities analysis
 gen sample_narrow = 0
 replace sample_narrow = 1 if fips == 41051		// Multnomah (Portland, OR)
@@ -167,7 +170,6 @@ replace sample_narrow = 1 if fips == 12095		// Orange (Orlando, FL)
 replace sample_narrow = 1 if fips == 12057		// Hillsborough (Tampa, FL)
 replace sample_narrow = 1 if fips == 49035		// Salt Lake (Salt Lake City, UT)
 replace sample_narrow = 1 if fips == 26163		// Wayne (Detroit, MI)
-replace sample_narrow = 1 if fips == 53011		// Clark (Vancouver, WA)
 replace sample_narrow = 1 if fips == 53033		// King (Seattle, WA)
 replace sample_narrow = 1 if fips == 24510		// Baltimore City (Baltimore, MD)
 replace sample_narrow = 1 if fips == 55079		// Milwaukee (Milwaukee, WI)
@@ -180,7 +182,7 @@ replace sample_narrow = 1 if fips == 32003		// Clark (Las Vegas, NV)
 replace sample_narrow = 1 if fips == 06067		// Sacramento (Sacramento, CA)
 replace sample_narrow = 1 if fips == 48029		// Bexar (San Antonio, TX)
 replace sample_narrow = 1 if fips == 25025		// Suffolk (Boston, MA)
-label var sample_narrow "Narrow sample: 21 similar cities + Multnomah"
+label var sample_narrow "Narrow sample: 20 similar cities + Multnomah"
 
 ** Report narrow sample
 tab county_name state_name if sample_narrow == 1 & year == 2020, m
@@ -189,7 +191,8 @@ tab county_name state_name if sample_narrow == 1 & year == 2020, m
 keep if sample_narrow == 1
 
 ** Note: NO state drops. CA, WA, and OR counties are retained by design.
-** Sacramento (CA), Vancouver (WA), and Seattle (WA) are in the donor pool.
+** Sacramento (CA) and Seattle (WA) are in the donor pool. Vancouver/Clark
+** (WA) was deliberately excluded for SUTVA-violating Multnomah spillover.
 
 ** Generate IRS sample
 gen irs_sample_1 = inrange(year, 2016, 2022)
