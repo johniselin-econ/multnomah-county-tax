@@ -213,7 +213,7 @@ end
 ** ------------------------------------------------------------------
 capture program drop elast_speccurve_plot
 program define elast_speccurve_plot
-	syntax , VAR(varname numeric) YTITLE(string asis) FILE(string)        ///
+	syntax , VAR(varname numeric) YTITLE(string) FILE(string)             ///
 		INDICATORS(string)                                                ///
 		[ SCOPE(string)                                                   ///
 		  COLPREF(string) COLNOTPREF(string) COLZERO(string) ]

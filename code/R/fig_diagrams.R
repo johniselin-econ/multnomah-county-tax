@@ -123,18 +123,21 @@ draw_empirical_approach <- function(out_file, with_title = FALSE) {
   ar(65, 134, 65, 131)
 
   # --- SDID BOX ---
-  bx(65, 125, 88, 12, NA, sd_bdr, r = unit(4, "mm"))
-  tx(65, 128.5, "Synthetic Difference\u2013in\u2013Differences (SDID)",
+  bx(65, 124, 88, 14, NA, sd_bdr, r = unit(4, "mm"))
+  tx(65, 129, "Synthetic Difference\u2013in\u2013Differences (SDID)",
      sz = 14, face = "bold", col = sd_txt)
-  tx(65, 125,
-     "One treated unit (Multnomah) | Donor pools: All, Urban (top 5%), COVID, Demographic, Stringency, Narrow",
-      sz = 10, col = desc_col)
-  tx(65, 122.5,
+  tx(65, 125.5,
+     "One treated unit (Multnomah County)",
+     sz = 10, col = desc_col)
+  tx(65, 123,
+     "Donor pools: All, Urban (top 5%), COVID, Demographic, Stringency, Narrow",
+     sz = 10, col = desc_col)
+  tx(65, 120.5,
      "Highlighted specs: IRS/ACS College x {All, Stringency, Narrow} | Covariates | Excl. 2020",
      sz = 9.5, col = desc_col)
 
-  ar(48, 119, 42, 115.5)
-  ar(82, 119, 88, 115.5)
+  ar(48, 117, 42, 115.5)
+  ar(82, 117, 88, 115.5)
 
   # --- OUTPUT BOXES (widened + slightly taller so labels breathe) ---
   bx(42, 112, 32, 8.5, NA, ob_bdr, lwd = 1)
@@ -200,10 +203,10 @@ draw_empirical_approach <- function(out_file, with_title = FALSE) {
   ar(119, 68.5, 123, 65)
 
   # --- PPML SUB-SUB-BOXES (widened + slightly taller) ---
-  bx(39, 61.5, 22, 8.5, NA, irs_ob, lwd = 1)
+  bx(39, 61.5, 18, 8.5, NA, irs_ob, lwd = 1)
   tx(39, 61.5, "Event Studies", sz = 11, face = "bold", col = ob_txt)
 
-  bx(59, 61.5, 22, 8.5, NA, irs_ob, lwd = 1)
+  bx(59, 61.5, 18, 8.5, NA, irs_ob, lwd = 1)
   tx(59, 61.5, "Placebo Tests", sz = 11, face = "bold", col = ob_txt)
 
   # --- DiD SUB-SUB-BOXES (widened + slightly taller) ---

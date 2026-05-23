@@ -89,7 +89,7 @@ if `pkg_missing' {
 ** Bootstrap
 ** ----------------------------------------------------------------
 global run_bootstrap         = 1 		// 1 to (re)run bootstrap; 0 to skip the stage
-global bootstrap_reps        = 100		// 20=smoke, 100=stress, 500=publication
+global bootstrap_reps        = 500		// 20=smoke, 100=stress, 500=publication
 global show_bootstrap_cis    = 1		// 1 to render rcap whiskers on spec curves (requires bootstrap_cis.dta)
 global ci_level              = 95		// 90, 95, or 99 — percentile CI level for bootstrap_cis.dta
 
