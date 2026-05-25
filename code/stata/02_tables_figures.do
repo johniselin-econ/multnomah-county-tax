@@ -177,6 +177,107 @@ program define elast_inout_panel
 end
 
 ** ------------------------------------------------------------------
+** elast_main_net_panel — shared row-body for the PFA-only / SHS-inclusive
+** main net-migration tables (sections (a) and (d) of the §1 builder).
+**
+** Pre-conditions: working dataset has data_type / sample / tau_str /
+** se_str / beta_str / beta_se_str / stock_common_str columns built by
+** the caller, plus tau_ci_str pre-baked when show_bootstrap_cis == 1.
+**
+** BETACIVAR / STOCKCIVAR: variable names of the bootstrap-CI strings
+** for β and the Common stock elasticity. Differ between PFA-only and
+** SHS variants — see Stata syntax-parser limitation noted above.
+** ------------------------------------------------------------------
+capture program drop elast_main_net_panel
+program define elast_main_net_panel
+	syntax, HANDLE(string) [BETACIVAR(name) STOCKCIVAR(name)]
+
+	if "`betacivar'"  == "" local betacivar  flow_semi_ci_str
+	if "`stockcivar'" == "" local stockcivar stock_total_common_ci_str
+
+	local N = _N
+	local prev_dt ""
+
+	forvalues i = 1/`N' {
+		local dt = data_type[`i']
+		local smp = subinstr(sample[`i'], "sample_", "", .)
+		local smp = proper("`smp'")
+		local t_val = tau_str[`i']
+		local se_val = se_str[`i']
+		local b = beta_str[`i']
+		local b_se = beta_se_str[`i']
+		local stock = stock_common_str[`i']
+		if "`stock'" == "" local stock "--"
+
+		if "`prev_dt'" != "" & "`prev_dt'" != "`dt'" {
+			file write `handle' "\addlinespace" _n
+		}
+		local prev_dt "`dt'"
+
+		file write `handle' "`dt' & `smp' & `t_val' & `b' & `stock' \\" _n
+		if ${show_bootstrap_cis} == 1 {
+			local tau_ci   = tau_ci_str[`i']
+			local beta_ci  = `betacivar'[`i']
+			local stock_ci = `stockcivar'[`i']
+			file write `handle' " & & `tau_ci' & `beta_ci' & `stock_ci' \\" _n
+		}
+		else {
+			file write `handle' " & & `se_val' & `b_se' & \\" _n
+		}
+	}
+end
+
+** ------------------------------------------------------------------
+** elast_stock_compare_panel — shared row-body for the stock-compare
+** tables (sections (b) and (e)). Differences between PFA and SHS
+** variants are the CI variable names.
+** ------------------------------------------------------------------
+capture program drop elast_stock_compare_panel
+program define elast_stock_compare_panel
+	syntax, HANDLE(string) [BETACIVAR(name) STOCKCOMCIVAR(name) ///
+		STOCKFULLCIVAR(name) STOCKANNCIVAR(name)]
+
+	if "`betacivar'"      == "" local betacivar      flow_semi_ci_str
+	if "`stockcomcivar'"  == "" local stockcomcivar  stock_total_common_ci_str
+	if "`stockfullcivar'" == "" local stockfullcivar stock_total_full_ci_str
+	if "`stockanncivar'"  == "" local stockanncivar  stock_total_ann_ci_str
+
+	local N = _N
+	local prev_dt ""
+
+	forvalues i = 1/`N' {
+		local dt = data_type[`i']
+		local smp = sample_label[`i']
+		local t_val = tau_str[`i']
+		local dln = dln_ntr_str[`i']
+		local b = beta_str[`i']
+		local sc = stock_common_str[`i']
+		local sf = stock_full_str[`i']
+		local sa = stock_ann_str[`i']
+
+		if "`sc'" == "" local sc "--"
+		if "`sf'" == "" local sf "--"
+		if "`sa'" == "" local sa "--"
+
+		if "`prev_dt'" != "" & "`prev_dt'" != "`dt'" {
+			file write `handle' "\addlinespace" _n
+		}
+		local prev_dt "`dt'"
+
+		file write `handle' "`dt' & `smp' & `t_val' & `dln' & `b' & `sc' & `sf' & `sa' \\" _n
+		if ${show_bootstrap_cis} == 1 {
+			** dln_ntr is a fixed denominator (no CI) — blank that column.
+			local tau_ci = tau_ci_str[`i']
+			local beta_ci = `betacivar'[`i']
+			local sc_ci = `stockcomcivar'[`i']
+			local sf_ci = `stockfullcivar'[`i']
+			local sa_ci = `stockanncivar'[`i']
+			file write `handle' " & & `tau_ci' & & `beta_ci' & `sc_ci' & `sf_ci' & `sa_ci' \\" _n
+		}
+	}
+end
+
+** ------------------------------------------------------------------
 ** elast_speccurve_plot
 **
 ** Specification-curve plot for derived elasticities and revenue losses.
@@ -479,36 +580,8 @@ file write `fh' "Data & Sample & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ & Stock 
 file write `fh' "\midrule" _n
 
 sort data_type sample
-local N = _N
-local prev_dt ""
-
-forvalues i = 1/`N' {
-	local dt = data_type[`i']
-	local smp = subinstr(sample[`i'], "sample_", "", .)
-	local smp = proper("`smp'")
-	local t_val = tau_str[`i']
-	local se_val = se_str[`i']
-	local b = beta_str[`i']
-	local b_se = beta_se_str[`i']
-	local stock = stock_common_str[`i']
-	if "`stock'" == "" local stock "--"
-
-	if "`prev_dt'" != "" & "`prev_dt'" != "`dt'" {
-		file write `fh' "\addlinespace" _n
-	}
-	local prev_dt "`dt'"
-
-	file write `fh' "`dt' & `smp' & `t_val' & `b' & `stock' \\" _n
-	if ${show_bootstrap_cis} == 1 {
-		local tau_ci   = tau_ci_str[`i']
-		local beta_ci  = flow_semi_ci_str[`i']
-		local stock_ci = stock_total_common_ci_str[`i']
-		file write `fh' " & & `tau_ci' & `beta_ci' & `stock_ci' \\" _n
-	}
-	else {
-		file write `fh' " & & `se_val' & `b_se' & \\" _n
-	}
-}
+elast_main_net_panel, handle(`fh') ///
+	betacivar(flow_semi_ci_str) stockcivar(stock_total_common_ci_str)
 
 elast_tex_notes_open, handle(`fh')
 file write `fh' "PFA-only sensitivity counterpart to Table~\ref{tab:elasticities}. " _n
@@ -556,39 +629,11 @@ file write `fh2' "\cmidrule(lr){6-8}" _n
 file write `fh2' "\midrule" _n
 
 sort data_type sample
-local N = _N
-local prev_dt ""
-
-forvalues i = 1/`N' {
-	local dt = data_type[`i']
-	local smp = sample_label[`i']
-	local t_val = tau_str[`i']
-	local dln = dln_ntr_str[`i']
-	local b = beta_str[`i']
-	local sc = stock_common_str[`i']
-	local sf = stock_full_str[`i']
-	local sa = stock_ann_str[`i']
-
-	if "`sc'" == "" local sc "--"
-	if "`sf'" == "" local sf "--"
-	if "`sa'" == "" local sa "--"
-
-	if "`prev_dt'" != "" & "`prev_dt'" != "`dt'" {
-		file write `fh2' "\addlinespace" _n
-	}
-	local prev_dt "`dt'"
-
-	file write `fh2' "`dt' & `smp' & `t_val' & `dln' & `b' & `sc' & `sf' & `sa' \\" _n
-	if ${show_bootstrap_cis} == 1 {
-		** dln_ntr is a fixed denominator (no CI) — blank that column.
-		local tau_ci   = tau_ci_str[`i']
-		local beta_ci  = flow_semi_ci_str[`i']
-		local sc_ci    = stock_total_common_ci_str[`i']
-		local sf_ci    = stock_total_full_ci_str[`i']
-		local sa_ci    = stock_total_ann_ci_str[`i']
-		file write `fh2' " & & `tau_ci' & & `beta_ci' & `sc_ci' & `sf_ci' & `sa_ci' \\" _n
-	}
-}
+elast_stock_compare_panel, handle(`fh2') ///
+	betacivar(flow_semi_ci_str) ///
+	stockcomcivar(stock_total_common_ci_str) ///
+	stockfullcivar(stock_total_full_ci_str) ///
+	stockanncivar(stock_total_ann_ci_str)
 
 elast_tex_notes_open, handle(`fh2')
 file write `fh2' "$\hat{\tau}$ is the SDID coefficient on the AGI net-migration rate, reported in percentage points. " _n
@@ -684,37 +729,8 @@ file write `fh_shs' "Data & Sample & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ & St
 file write `fh_shs' "\midrule" _n
 
 sort data_type sample
-local N = _N
-local prev_dt ""
-
-forvalues i = 1/`N' {
-	local dt = data_type[`i']
-	local smp = subinstr(sample[`i'], "sample_", "", .)
-	local smp = proper("`smp'")
-	local t_val = tau_str[`i']
-	local se_val = se_str[`i']
-	local b = beta_str[`i']
-	local b_se = beta_se_str[`i']
-	local stock = stock_common_str[`i']
-	if "`stock'" == "" local stock "--"
-
-	if "`prev_dt'" != "" & "`prev_dt'" != "`dt'" {
-		file write `fh_shs' "\addlinespace" _n
-	}
-	local prev_dt "`dt'"
-
-	file write `fh_shs' "`dt' & `smp' & `t_val' & `b' & `stock' \\" _n
-	if ${show_bootstrap_cis} == 1 {
-		** SHS variant: beta + stock columns use _shs CI variables.
-		local tau_ci   = tau_ci_str[`i']
-		local beta_ci  = flow_semi_shs_ci_str[`i']
-		local stock_ci = stock_total_common_shs_ci_str[`i']
-		file write `fh_shs' " & & `tau_ci' & `beta_ci' & `stock_ci' \\" _n
-	}
-	else {
-		file write `fh_shs' " & & `se_val' & `b_se' & \\" _n
-	}
-}
+elast_main_net_panel, handle(`fh_shs') ///
+	betacivar(flow_semi_shs_ci_str) stockcivar(stock_total_common_shs_ci_str)
 
 elast_tex_notes_open, handle(`fh_shs')
 file write `fh_shs' "$\hat{\tau}$ is the SDID coefficient on the AGI net migration rate (percentage points). " _n
@@ -764,40 +780,11 @@ file write `fh2_shs' "\cmidrule(lr){6-8}" _n
 file write `fh2_shs' "\midrule" _n
 
 sort data_type sample
-local N = _N
-local prev_dt ""
-
-forvalues i = 1/`N' {
-	local dt = data_type[`i']
-	local smp = sample_label[`i']
-	local t_val = tau_str[`i']
-	local dln = dln_ntr_str[`i']
-	local b = beta_str[`i']
-	local sc = stock_common_str[`i']
-	local sf = stock_full_str[`i']
-	local sa = stock_ann_str[`i']
-
-	if "`sc'" == "" local sc "--"
-	if "`sf'" == "" local sf "--"
-	if "`sa'" == "" local sa "--"
-
-	if "`prev_dt'" != "" & "`prev_dt'" != "`dt'" {
-		file write `fh2_shs' "\addlinespace" _n
-	}
-	local prev_dt "`dt'"
-
-	file write `fh2_shs' "`dt' & `smp' & `t_val' & `dln' & `b' & `sc' & `sf' & `sa' \\" _n
-	if ${show_bootstrap_cis} == 1 {
-		** SHS variant: beta + stock columns use _shs CI variables.
-		** dln_ntr is a fixed denominator (no CI) — blank that column.
-		local tau_ci   = tau_ci_str[`i']
-		local beta_ci  = flow_semi_shs_ci_str[`i']
-		local sc_ci    = stock_total_common_shs_ci_str[`i']
-		local sf_ci    = stock_total_full_shs_ci_str[`i']
-		local sa_ci    = stock_total_ann_shs_ci_str[`i']
-		file write `fh2_shs' " & & `tau_ci' & & `beta_ci' & `sc_ci' & `sf_ci' & `sa_ci' \\" _n
-	}
-}
+elast_stock_compare_panel, handle(`fh2_shs') ///
+	betacivar(flow_semi_shs_ci_str) ///
+	stockcomcivar(stock_total_common_shs_ci_str) ///
+	stockfullcivar(stock_total_full_shs_ci_str) ///
+	stockanncivar(stock_total_ann_shs_ci_str)
 
 elast_tex_notes_open, handle(`fh2_shs')
 file write `fh2_shs' "SHS-inclusive version of Table~\ref{tab:elasticities_stock_compare}. " _n
