@@ -441,7 +441,15 @@ foreach sample in "acs" "all" {
 
 		** Create temp directory (clean first to avoid residual files from failed runs)
 		capture mkdir "${results}flows"
-		capture shell rmdir "${results}flows/temp_results" /s /q
+		** Use OS-appropriate recursive remove. `rmdir /s /q` (Windows CMD)
+		** silently fails on Linux/macOS — leaving stale result_*.dta files
+		** that the file-glob aggregator below would merge into the new run.
+		if "`c(os)'" == "Windows" {
+			capture shell rmdir "${results}flows/temp_results" /s /q
+		}
+		else {
+			capture shell rm -rf "${results}flows/temp_results"
+		}
 		capture mkdir "${results}flows/temp_results"
 
 		** Initialize parallel workers. Routing through setup_parallel applies
@@ -491,8 +499,13 @@ foreach sample in "acs" "all" {
 		** Save county flow coefficients
 		save "${data}working/county_flow_coefficients`file_suffix'`debug_txt'.dta", replace
 
-		** Clean up temp directory
-		shell rmdir "${results}flows/temp_results" /s /q
+		** Clean up temp directory (OS-aware)
+		if "`c(os)'" == "Windows" {
+			shell rmdir "${results}flows/temp_results" /s /q
+		}
+		else {
+			shell rm -rf "${results}flows/temp_results"
+		}
 
 	}
 	else {
@@ -649,12 +662,29 @@ foreach sample in "acs" "all" {
 		summ pctile_`x'_in if multnomah == 1, meanonly
 		local multnomah_pctile_in = r(mean)
 
+		** Build xline options conditionally. If Multnomah's regression failed,
+		** the local is missing and `xline(., ...)` is silently dropped by twoway
+		** — producing a histogram with no reference line and no warning.
+		local xline_out ""
+		local xline_in  ""
+		if !missing(`multnomah_`x'_out') {
+			local xline_out xline(`multnomah_`x'_out', lcolor("`col_mult'") lwidth(thick) lpattern(solid))
+		}
+		else {
+			dis as error "WARNING: Multnomah's `x'_out is missing — fig_hist_out_`x' rendered without reference line."
+		}
+		if !missing(`multnomah_`x'_in') {
+			local xline_in xline(`multnomah_`x'_in', lcolor("`col_mult'") lwidth(thick) lpattern(solid))
+		}
+		else {
+			dis as error "WARNING: Multnomah's `x'_in is missing — fig_hist_in_`x' rendered without reference line."
+		}
 
 		** Plot 1: Out-migration coefficient distribution with Multnomah
 		histogram `x'_out if !missing(`x'_out), 								///
 			bin(50) 														///
 			fcolor("`col_out'"%50) lcolor("`col_out'") 						///
-			xline(`multnomah_`x'_out', lcolor("`col_mult'") lwidth(thick) lpattern(solid)) ///
+			`xline_out' 													///
 			xtitle("Out-migration `txt' (County x Post)") 			///
 			ytitle("Frequency") 											///
 			graphregion(color(white))
@@ -669,7 +699,7 @@ foreach sample in "acs" "all" {
 		histogram `x'_in if !missing(`x'_in), 									///
 			bin(50) 														///
 			fcolor("`col_in'"%50) lcolor("`col_in'") 						///
-			xline(`multnomah_`x'_in', lcolor("`col_mult'") lwidth(thick) lpattern(solid)) ///
+			`xline_in' 														///
 			xtitle("In-migration `txt' (County x Post)") 				///
 			ytitle("Frequency") 											///
 			graphregion(color(white))
@@ -738,21 +768,46 @@ foreach sample in "acs" "all" {
 	** Count counties with more extreme coefficients than Multnomah
 	** For out-migration: larger (more positive) is "worse"
 	** For in-migration: smaller (more negative) is "worse"
-	qui count if b_out > `m_b_out' & !missing(b_out)
-	local n_larger_out = r(N)
-	qui count if b_out > `m_b_out' & !missing(b_out) & p_out < 0.05
-	local n_larger_out_sig = r(N)
+	**
+	** Guard: in Stata's missing-largest ordering, `x > .` is FALSE for every
+	** non-missing x. Without this check, a missing `m_b_out` (e.g. Multnomah's
+	** regression failed to converge) would silently yield n_larger_out = 0,
+	** falsely implying Multnomah is more extreme than every other county.
+	if missing(`m_b_out') {
+		dis as error "WARNING: Multnomah's m_b_out is missing — out-migration extremity counts set to missing."
+		local n_larger_out = .
+		local n_larger_out_sig = .
+	}
+	else {
+		qui count if b_out > `m_b_out' & !missing(b_out)
+		local n_larger_out = r(N)
+		qui count if b_out > `m_b_out' & !missing(b_out) & p_out < 0.05
+		local n_larger_out_sig = r(N)
+	}
 
-	qui count if b_in < `m_b_in' & !missing(b_in)
-	local n_smaller_in = r(N)
-	qui count if b_in < `m_b_in' & !missing(b_in) & p_in < 0.05
-	local n_smaller_in_sig = r(N)
+	if missing(`m_b_in') {
+		dis as error "WARNING: Multnomah's m_b_in is missing — in-migration extremity counts set to missing."
+		local n_smaller_in = .
+		local n_smaller_in_sig = .
+	}
+	else {
+		qui count if b_in < `m_b_in' & !missing(b_in)
+		local n_smaller_in = r(N)
+		qui count if b_in < `m_b_in' & !missing(b_in) & p_in < 0.05
+		local n_smaller_in_sig = r(N)
+	}
 
 	** Counties with both more out AND less in (worse on both dimensions)
-	qui count if b_out > `m_b_out' & b_in < `m_b_in' & !missing(b_out) & !missing(b_in)
-	local n_worse_both = r(N)
-	qui count if b_out > `m_b_out' & b_in < `m_b_in' & !missing(b_out) & !missing(b_in) & p_out < 0.05 & p_in < 0.05
-	local n_worse_both_sig = r(N)
+	if missing(`m_b_out') | missing(`m_b_in') {
+		local n_worse_both = .
+		local n_worse_both_sig = .
+	}
+	else {
+		qui count if b_out > `m_b_out' & b_in < `m_b_in' & !missing(b_out) & !missing(b_in)
+		local n_worse_both = r(N)
+		qui count if b_out > `m_b_out' & b_in < `m_b_in' & !missing(b_out) & !missing(b_in) & p_out < 0.05 & p_in < 0.05
+		local n_worse_both_sig = r(N)
+	}
 
 	** Distribution statistics for out-migration
 	summ b_out, detail

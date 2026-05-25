@@ -723,7 +723,7 @@ if ${use_parallel} == 1 {
 					gen event_ci_hi = res4
 					gen event_se = (event_ci_hi - event_ci_lo) / (2 * 1.96) ///
 						if !missing(event_ci_lo) & !missing(event_ci_hi)
-					gen outstate = strpos("`outcome'", "_outstate") > 0 | strpos("`outcome'", "_irs5") > 0
+					gen outstate = strpos("`outcome'", "_outstate") > 0
 					gen preferred = inlist("`samp_var'", "sample_all", "sample_stringency", "sample_narrow") ///
 						& `c' == 1 & `exl' == 1 ///
 						& inlist("`out_txt'", "irs_full_16_22", "acs_16_24_col", ///
@@ -1309,7 +1309,7 @@ else {
 									gen event_ci_hi = res4
 									gen event_se = (event_ci_hi - event_ci_lo) / (2 * 1.96) ///
 										if !missing(event_ci_lo) & !missing(event_ci_hi)
-									gen outstate = strpos("`out'", "_outstate") > 0 | strpos("`out'", "_irs5") > 0
+									gen outstate = strpos("`out'", "_outstate") > 0
 									gen preferred = inlist("`samp'", "sample_all", "sample_stringency", "sample_narrow") ///
 										& `c' == 1 & `exl' == 1 ///
 										& inlist("`out_txt'", "irs_full_16_22", "acs_16_24_col", ///

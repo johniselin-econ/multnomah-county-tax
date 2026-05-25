@@ -160,17 +160,7 @@ project_export_run_manifest
 ** STAGE 1: DATA CLEANING
 ** ============================================================================
 ** Calls 01a_programs through 01h_auxiliary; see 01_clean_data.do for details.
-** Stage 1 runs under its own sbatch (stage1.sbatch / run_stage1.sh) so the
-** orchestrator skips it here. The guard below makes a missing-artifact
-** failure actionable instead of crashing mid-Stage-2 with an opaque rc=601.
-*do "${code}01_clean_data.do"
-
-capture confirm file "${data}working/acs_county_gross_25plus.dta"
-if _rc != 0 {
-	dis as error "Stage 1 artifacts missing (${data}working/acs_county_gross_25plus.dta not found)."
-	dis as error "Run Stage 1 first: sbatch stage1.sbatch  (or  do \${code}01_clean_data.do)"
-	exit 601
-}
+do "${code}01_clean_data.do"
 
 
 ** ============================================================================

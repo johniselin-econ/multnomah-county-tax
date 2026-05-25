@@ -152,10 +152,11 @@ restore
 merge 1:1 sample_data sample outcome controls exclusion using `outstate_src', ///
 	keep(master match) nogenerate
 
-** Fallback for any spec not in event_results (formula matches
-** 02_sdid_analysis.do:762 so definitions cannot drift).
-replace outstate = (regexm(outcome, "_outstate") | regexm(outcome, "_irs5")) ///
-	if missing(outstate)
+** Fallback for any spec not in event_results (formula matches the
+** outstate-flag definition in 02_sdid_analysis.do so definitions cannot
+** drift). The historical `_irs5` disjunct was retired — no outcome
+** variable in the codebase uses that suffix.
+replace outstate = regexm(outcome, "_outstate") if missing(outstate)
 assert !missing(outstate)
 
 ********************************************************************************
