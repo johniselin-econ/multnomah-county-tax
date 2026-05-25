@@ -444,17 +444,7 @@ foreach sample in "acs" "all" {
 		capture shell rmdir "${results}flows/temp_results" /s /q
 		capture mkdir "${results}flows/temp_results"
 
-		** Initialize and run parallel
-		** For the "all" sample, halve the worker count: each ppmlhdfe with
-		** ~2,849 flow_id clusters has multi-GB transient memory, so 6 workers
-		** can OOM the machine and silently kill children (seen 2026-04-18).
-		local n_clusters_this = ${n_clusters}
-		if "`sample'" == "all" {
-			local n_clusters_this = max(1, floor(${n_clusters} / 2))
-			dis as text "Note: reducing workers from ${n_clusters} to `n_clusters_this' " ///
-				"for 'all' sample to avoid OOM"
-		}
-		parallel initialize `n_clusters_this', force
+		parallel initialize ${n_clusters}, force
 
 		dis "Starting parallel flow estimation for `n_fips' counties at $S_TIME..."
 		timer clear 2
@@ -659,6 +649,10 @@ foreach sample in "acs" "all" {
 
 		graph export "${results}flows/fig_hist_out_`x'`file_suffix'`debug_txt'.png", replace
 
+		if ${overleaf} == 1 & "`file_suffix'" == "" & "`debug_txt'" == "" {
+			graph export "${ol_fig}fig_hist_out_`x'.png", replace
+		}
+
 		** Plot 2: In-migration coefficient distribution with Multnomah
 		histogram `x'_in if !missing(`x'_in), 									///
 			bin(50) 														///
@@ -669,6 +663,10 @@ foreach sample in "acs" "all" {
 			graphregion(color(white))
 
 		graph export "${results}flows/fig_hist_in_`x'`file_suffix'`debug_txt'.png", replace
+
+		if ${overleaf} == 1 & "`file_suffix'" == "" & "`debug_txt'" == "" {
+			graph export "${ol_fig}fig_hist_in_`x'.png", replace
+		}
 
 		** Plot 3: Combined scatter of out vs in coefficients
 		twoway 	(scatter `x'_in `x'_out if multnomah == 0, 						///

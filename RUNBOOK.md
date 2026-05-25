@@ -11,7 +11,7 @@ jobs. Stage 2 is the heavy lifter and is run interactively in a salloc.
 
 Cluster facts (verified 2026-05-21):
 - R module:     `R/4.4.1-foss-2022b`
-- Stata module: `Stata/19` (MP/8 license)
+- Stata module: `Stata/19` (MP/16 license — `c(processors_max)=16`)
 - Project root: `/nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax`
 - Curated outputs land in `results/overleaf_export/{figures,tables}/`
   (driven by `profile.do` → `${oth_path}`)
@@ -81,13 +81,14 @@ seconds. Hand-off check: `ls data/acs/acs_2024.csv` should now exist.
 **Request the allocation:**
 
 ```bash
-salloc --partition=day --cpus-per-task=32 --mem-per-cpu=4G --time=08:00:00
+salloc --partition=day --cpus-per-task=64 --mem-per-cpu=2G --time=08:00:00
 ```
 
-(For a 500-rep publication bootstrap, bump to `--cpus-per-task=64
---mem-per-cpu=2G`; that lifts `n_clusters` from 4 to 8 and roughly halves
-the bootstrap wall time. SDID itself doesn't get faster — still 4 data
-blocks.)
+64 cpus gives `n_clusters=4` (floor(64/16)=4), saturating SDID's 4 data
+blocks 1:1. For a 500-rep publication bootstrap you can bump to
+`--cpus-per-task=128 --mem-per-cpu=1G` to get `n_clusters=8` and roughly
+halve the bootstrap wall time. SDID itself doesn't get faster — still 4
+data blocks.
 
 **Inside the allocation:**
 
@@ -95,7 +96,7 @@ blocks.)
 module load Stata/19
 cd /nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax
 
-# sanity-check: should print 8 for MP/8, and 32 for cpus
+# sanity-check: should print 16 for MP/16, and match --cpus-per-task for nproc
 stata-mp -q -b -e 'di c(processors_max)' && tail -2 *.log && rm -f *.log
 nproc
 
@@ -138,21 +139,22 @@ Before the multi-hour Stata run, inside the salloc:
 | Check                                            | Expected         |
 |--------------------------------------------------|------------------|
 | `nproc`                                          | matches `--cpus-per-task` |
-| `stata-mp -q -b -e 'di c(processors_max)'`       | `8` (MP/8 license)         |
+| `stata-mp -q -b -e 'di c(processors_max)'`       | `16` (MP/16 license)       |
 | `cat profile.do`                                 | shows `oth_path` set       |
 | `ls data/acs/acs_2024.csv`                       | exists (Stage 1 ran)       |
 | `ls results/overleaf_export/{figures,tables}`    | both exist                 |
 
-## Sizing rationale (MP/8)
+## Sizing rationale (MP/16)
 
 `setup_parallel` in `code/stata/01a_programs.do` reads `nproc` (respects
-SLURM cgroup) and caps `n_clusters = floor(visible_cores / 8)`. Each
-worker then runs Stata/MP at the full 8-core license cap.
+SLURM cgroup) and caps `n_clusters = floor(visible_cores / 16)`. Each
+worker then runs Stata/MP at the full 16-core license cap.
 
-- 32 cores → 4 workers × 8 cores. Saturates SDID's 4 data blocks 1:1;
-  100-rep bootstrap = 25 reps/worker (~25 min stage).
-- 64 cores → 8 workers × 8 cores. SDID unchanged; bootstrap halves.
-- <16 cores → forces `n_clusters=2`; leaves 2 of 4 SDID blocks waiting.
+- 64 cores → 4 workers × 16 cores. Saturates SDID's 4 data blocks 1:1;
+  100-rep bootstrap = 25 reps/worker.
+- 128 cores → 8 workers × 16 cores. SDID unchanged; bootstrap halves.
+- 32 cores → forces `n_clusters=2`; leaves 2 of 4 SDID blocks waiting.
+- <16 cores → forces `n_clusters=1` (no parallelism).
 
 ## Run-control knobs (`00_multnomah.do` PROJECT GLOBALS panel)
 

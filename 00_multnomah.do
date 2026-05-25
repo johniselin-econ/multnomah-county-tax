@@ -97,7 +97,7 @@ global ci_level              = 95		// 90, 95, or 99 — percentile CI level for 
 ** Parallel execution
 ** ----------------------------------------------------------------
 global use_parallel          = 1		// 1 to use Vega `parallel` ado; auto-downgrades to 0 if package missing
-global n_clusters            = 2		// worker count; setup_parallel caps to floor(physical_cores / processors_max)
+global n_clusters            = 4		// worker count; setup_parallel caps to floor(physical_cores / processors_max)
 global resume                = 0		// 1 to skip bootstrap reps whose draw .dta already exists
 
 ** ----------------------------------------------------------------
@@ -160,7 +160,7 @@ project_export_run_manifest
 ** STAGE 1: DATA CLEANING
 ** ============================================================================
 ** Calls 01a_programs through 01h_auxiliary; see 01_clean_data.do for details.
-do "${code}01_clean_data.do"
+*do "${code}01_clean_data.do"
 
 
 ** ============================================================================

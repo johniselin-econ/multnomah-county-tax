@@ -1401,11 +1401,12 @@ dis "=============================================="
 
 ** Indicator templates — see elast_speccurve_plot header for the dictionary.
 ** Row order matches the SDID spec-curve labelling at 02_sdid_analysis.do.
-** Two templates: county-level migration (13 rows, includes both time
-** windows) and out-of-state migration (11 rows; outstate specs run at a
-** single time window, matching the SDID convention).
+** Both templates carry the same row count (14): the only difference is
+** that the outstate variant uses the *_outstate data_type indicators.
+** ACS outstate runs at both 16-22 and 16-24 windows, so spec_16_22 /
+** spec_16_24 belong in both templates.
 local indic_county   `"spec_all spec_urban95 spec_covid spec_demog spec_stringency spec_narrow spec_covars spec_excl2020 spec_irs spec_irs_389 spec_acs_all spec_acs_col spec_16_22 spec_16_24"'
-local indic_outstate `"spec_all spec_urban95 spec_covid spec_demog spec_stringency spec_narrow spec_covars spec_excl2020 spec_irs_outstate spec_irs_outstate_389 spec_acs_all_outstate spec_acs_col_outstate"'
+local indic_outstate `"spec_all spec_urban95 spec_covid spec_demog spec_stringency spec_narrow spec_covars spec_excl2020 spec_irs_outstate spec_irs_outstate_389 spec_acs_all_outstate spec_acs_col_outstate spec_16_22 spec_16_24"'
 
 ** ---- β spec curves (PFA + SHS) for each migration direction ----
 foreach migr in "net" "in" "out" {
@@ -1609,8 +1610,10 @@ dis "=============================================="
 ** Indicator templates for revenue spec curves. PFA loss is defined only
 ** for outstate==0 (net-domestic); the indicator template drops the
 ** outstate data_type rows. State loss is the mirror — outstate==1 only.
-local indic_instate  `"spec_irs spec_acs_all spec_acs_col spec_all spec_stringency spec_urban95 spec_demog spec_covid spec_narrow spec_16_22 spec_16_24 spec_covars spec_excl2020"'
-local indic_outstate `"spec_irs_outstate spec_acs_all_outstate spec_acs_col_outstate spec_all spec_stringency spec_urban95 spec_demog spec_covid spec_narrow spec_16_22 spec_16_24 spec_covars spec_excl2020"'
+** IRS (389) variants are included so the corresponding dots in the upper
+** panel are tied to a labelled row in the indicator panel.
+local indic_instate  `"spec_irs spec_irs_389 spec_acs_all spec_acs_col spec_all spec_stringency spec_urban95 spec_demog spec_covid spec_narrow spec_16_22 spec_16_24 spec_covars spec_excl2020"'
+local indic_outstate `"spec_irs_outstate spec_irs_outstate_389 spec_acs_all_outstate spec_acs_col_outstate spec_all spec_stringency spec_urban95 spec_demog spec_covid spec_narrow spec_16_22 spec_16_24 spec_covars spec_excl2020"'
 
 ** PFA: net-domestic specs, pfa_loss column
 preserve

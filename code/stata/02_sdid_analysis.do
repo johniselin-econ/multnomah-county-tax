@@ -1762,9 +1762,12 @@ foreach otype in "n1" "n2" "agi" {
 
 		else if "`pset'" == "outstate" {
 
-		** 12 indicator rows for outstate plot set (Narrow inserted after
-		** Stringency); labels match the county-level plot (no redundant
-		** "(Out-of-State)" suffix since the figure title already conveys it).
+		** 14 indicator rows for outstate plot set (Narrow inserted after
+		** Stringency, 16-22 / 16-24 appended after ACS College); labels
+		** match the county-level plot (no redundant "(Out-of-State)" suffix
+		** since the figure title already conveys it). ACS outstate runs at
+		** both 16-22 and 16-24 windows, so the two period rows must appear
+		** here just like in the county-level plot.
 		local yp1  = `ind_top'
 		local yp2  = `ind_top' - 1
 		local yp3  = `ind_top' - 2
@@ -1777,6 +1780,8 @@ foreach otype in "n1" "n2" "agi" {
 		local yp10 = `ind_top' - 9
 		local yp11 = `ind_top' - 10
 		local yp12 = `ind_top' - 11
+		local yp13 = `ind_top' - 12
+		local yp14 = `ind_top' - 13
 
 		gen y_all                  = `yp1'  if spec_all == 1
 		gen y_urban                = `yp2'  if spec_urban95 == 1
@@ -1790,6 +1795,8 @@ foreach otype in "n1" "n2" "agi" {
 		gen y_irs_outstate_389     = `yp10' if spec_irs_outstate_389 == 1
 		gen y_acs_all_outstate     = `yp11' if spec_acs_all_outstate == 1
 		gen y_acs_col_outstate     = `yp12' if spec_acs_col_outstate == 1
+		gen y_16_22                = `yp13' if spec_16_22 == 1
+		gen y_16_24                = `yp14' if spec_16_24 == 1
 
 		twoway 	(rcap ci_lo_sig_notpref ci_hi_sig_notpref spec_rank, 		///
 					lc("`col_sig_notpref'") lw(vthin)) 						///
@@ -1830,6 +1837,10 @@ foreach otype in "n1" "n2" "agi" {
 				(scatter y_acs_all_outstate spec_rank, 						///
 					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
 				(scatter y_acs_col_outstate spec_rank, 						///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_16_22 spec_rank, 								///
+					mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
+				(scatter y_16_24 spec_rank, 								///
 					mc("`col_sig_notpref'") ms(O) msize(vsmall)), 			///
 			yline(`sep_y', lc(gs12) lp(solid) lw(vthin)) 					///
 			yline(0, lc("`col_zero'") lp(dash)) 							///
@@ -1845,7 +1856,9 @@ foreach otype in "n1" "n2" "agi" {
 				   `yp9'  "IRS (all counties)" 								///
 				   `yp10' "IRS (ACS counties)" 								///
 				   `yp11' "ACS All" 										///
-				   `yp12' "ACS College", 									///
+				   `yp12' "ACS College" 									///
+				   `yp13' "16-22" 											///
+				   `yp14' "16-24", 											///
 				labsize(vsmall) angle(0) notick nogrid add) 				///
 			legend(order(5 "Sig. (p<0.05)" 6 "Insig." 						///
 						 7 "Sig., Preferred" 8 "Insig., Preferred") 		///

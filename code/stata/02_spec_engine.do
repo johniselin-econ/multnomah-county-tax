@@ -717,9 +717,12 @@ end
 **     PRE_MEAN     Pre-treatment mean of the migration rate, in pp
 **                  (used by flow elasticity denominator)
 **     MIGRATION    "net" | "in" | "out"
-**     DATA_TYPE    "IRS" | "IRS (Out-of-State)" | "ACS All" |
-**                  "ACS All (Out-of-State)" | "ACS College" |
-**                  "ACS College (Out-of-State)"
+**     DATA_TYPE    "IRS" | "IRS (Out-of-State)" |
+**                  "IRS (389)" | "IRS (389, Out-of-State)" |
+**                  "ACS All" | "ACS All (Out-of-State)" |
+**                  "ACS College" | "ACS College (Out-of-State)"
+**                  IRS (389) variants flow through the same path as IRS
+**                  (no scaling); only "ACS College" branches.
 **
 ** Optional args:
 **     EVENT_TAUS       Name of a 2-column matrix (row per post year);

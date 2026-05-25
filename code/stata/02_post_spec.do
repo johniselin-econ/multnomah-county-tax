@@ -159,11 +159,12 @@ replace outstate = (regexm(outcome, "_outstate") | regexm(outcome, "_irs5")) ///
 assert !missing(outstate)
 
 ********************************************************************************
-** SECTION 3: Filters — drop IRS (389), keep only AGI
+** SECTION 3: Filter to AGI outcomes
 ********************************************************************************
+** IRS (389) rows are retained: the spec engine treats them identically to
+** IRS (no scaling branch) and the elasticity / revenue spec curves expose
+** a dedicated "IRS (ACS counties)" indicator row that depends on them.
 
-drop if inlist(data_type, "IRS (389)", "IRS (389, Out-of-State)")
-drop if strpos(sample_data, "irs_389") > 0
 keep if outcome_type == "agi"
 
 dis "AGI specifications after filters: " _N
