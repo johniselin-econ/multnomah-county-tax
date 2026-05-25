@@ -444,7 +444,19 @@ foreach sample in "acs" "all" {
 		capture shell rmdir "${results}flows/temp_results" /s /q
 		capture mkdir "${results}flows/temp_results"
 
-		parallel initialize ${n_clusters}, force
+		** Initialize parallel workers. Routing through setup_parallel applies
+		** the physical-core / processors_max cap so non-cluster runs respect
+		** the available cores. For sample == "all" we halve first because each
+		** ppmlhdfe with ~2,849 flow_id clusters has multi-GB transient memory
+		** and 6 workers OOM-killed children on 2026-04-18.
+		local orig_n_clusters = ${n_clusters}
+		if "`sample'" == "all" {
+			global n_clusters = max(1, floor(`orig_n_clusters' / 2))
+			dis as text "Note: reducing workers from `orig_n_clusters' to ${n_clusters} " ///
+				"for 'all' sample to avoid OOM"
+		}
+		setup_parallel
+		global n_clusters = `orig_n_clusters'
 
 		dis "Starting parallel flow estimation for `n_fips' counties at $S_TIME..."
 		timer clear 2
