@@ -11,18 +11,11 @@
 ******************************************************************************/
 
 ** Load shared project defaults and helper programs
-local cwd = subinstr("`c(pwd)'", "\", "/", .)
-local suffix "/code/stata"
-if "${dir}" == "" {
-    if length("`cwd'") >= length("`suffix'") & ///
-        substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
-        global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
-    }
-    else {
-        global dir "`cwd'"
-    }
+if "${code}" == "" {
+    local _cwd = subinstr("`c(pwd)'", "\", "/", .)
+    if regexm("`_cwd'", "(.*)/code/stata$") global code "`_cwd'/"
+    else global code "`_cwd'/code/stata/"
 }
-if "${code}" == "" global code "${dir}/code/stata/"
 do "${code}00_stata_config.do"
 
 capture log close log_diag_supp

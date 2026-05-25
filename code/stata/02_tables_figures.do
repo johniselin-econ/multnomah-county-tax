@@ -57,18 +57,11 @@ For more information, contact john.iselin@yale.edu
 ** ------------------------------------------------------------------
 ** Bootstrap project paths
 ** ------------------------------------------------------------------
-local cwd = subinstr("`c(pwd)'", "\", "/", .)
-local suffix "/code/stata"
-if "${dir}" == "" {
-	if length("`cwd'") >= length("`suffix'") & ///
-		substr("`cwd'", length("`cwd'") - length("`suffix'") + 1, .) == "`suffix'" {
-		global dir = substr("`cwd'", 1, length("`cwd'") - length("`suffix'"))
-	}
-	else {
-		global dir "`cwd'"
-	}
+if "${code}" == "" {
+	local _cwd = subinstr("`c(pwd)'", "\", "/", .)
+	if regexm("`_cwd'", "(.*)/code/stata$") global code "`_cwd'/"
+	else global code "`_cwd'/code/stata/"
 }
-if "${code}" == "" global code "${dir}/code/stata/"
 do "${code}00_stata_config.do"
 ** 01a_programs.do is normally sourced by 00_multnomah.do; source defensively
 ** so 02_tables_figures.do can run standalone during development.
