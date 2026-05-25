@@ -684,8 +684,8 @@ foreach sample in "acs" "all" {
 
 		graph export "${results}flows/fig_hist_out_`x'`file_suffix'`debug_txt'.png", replace
 
-		if ${overleaf} == 1 & "`file_suffix'" == "" & "`debug_txt'" == "" {
-			graph export "${ol_fig}fig_hist_out_`x'.png", replace
+		if ${overleaf} == 1 & "`debug_txt'" == "" {
+			graph export "${ol_fig}fig_hist_out_`x'`file_suffix'.png", replace
 		}
 
 		** Plot 2: In-migration coefficient distribution with Multnomah
@@ -699,8 +699,8 @@ foreach sample in "acs" "all" {
 
 		graph export "${results}flows/fig_hist_in_`x'`file_suffix'`debug_txt'.png", replace
 
-		if ${overleaf} == 1 & "`file_suffix'" == "" & "`debug_txt'" == "" {
-			graph export "${ol_fig}fig_hist_in_`x'.png", replace
+		if ${overleaf} == 1 & "`debug_txt'" == "" {
+			graph export "${ol_fig}fig_hist_in_`x'`file_suffix'.png", replace
 		}
 
 		** Plot 3: Combined scatter of out vs in coefficients

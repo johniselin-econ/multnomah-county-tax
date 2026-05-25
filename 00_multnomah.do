@@ -126,6 +126,15 @@ if "${oth_path}" != "" {
     global ol_tab "${oth_path}tables/"
     global overleaf = 1
 }
+else if ${overleaf} == 1 {
+    ** Guard: overleaf=1 from the RUN-CONTROL FLAGS panel but profile.do
+    ** didn't define ${oth_path}, so ${ol_fig} / ${ol_tab} are empty. Every
+    ** downstream `graph export "${ol_fig}foo.png"` would silently land in
+    ** the current working directory. Downgrade to 0 with a visible warning.
+    dis as error "WARNING: overleaf=1 but oth_path unset (profile.do missing or " ///
+        "doesn't define oth_path). Disabling overleaf sync for this run."
+    global overleaf = 0
+}
 
 ** Create output directories
 foreach d in "" "tables" "figures" "sdid" "flows" "did" "individual" {
