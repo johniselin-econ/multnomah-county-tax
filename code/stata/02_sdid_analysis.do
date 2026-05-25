@@ -38,6 +38,9 @@ if "${dir}" == "" {
 }
 if "${code}" == "" global code "${dir}/code/stata/"
 do "${code}00_stata_config.do"
+** 01a_programs.do is normally sourced by 00_multnomah.do; source defensively
+** so standalone invocation also has project_parse_outcome_components.
+do "${code}01a_programs.do"
 do "${code}02_spec_engine.do"
 
 ** Start log file
@@ -1494,51 +1497,9 @@ capture mkdir "${results}sdid/spec_curves"
 ** Load treatment effects
 use "${results}sdid/sdid_results.dta", clear
 
-** Parse outcome variable names to extract components
-gen outcome_type = ""
-replace outcome_type = "n1" if strpos(outcome, "n1_") > 0
-replace outcome_type = "n2" if strpos(outcome, "n2_") > 0
-replace outcome_type = "agi" if strpos(outcome, "agi_") > 0
-
-gen migration = ""
-replace migration = "net" if strpos(outcome, "_net_") > 0
-replace migration = "in" if strpos(outcome, "_in_") > 0
-replace migration = "out" if strpos(outcome, "_out_") > 0
-
-gen data_type = ""
-replace data_type = "IRS" if strpos(outcome, "_irs") > 0 & strpos(outcome, "_irs_outstate") == 0
-replace data_type = "IRS (Out-of-State)" if strpos(outcome, "_irs_outstate") > 0
-replace data_type = "IRS (389)" if strpos(sample_data, "irs_389") > 0 & strpos(outcome, "_irs_outstate") == 0
-replace data_type = "IRS (389, Out-of-State)" if strpos(sample_data, "irs_outstate_389") > 0 & strpos(outcome, "_irs_outstate") > 0
-replace data_type = "ACS All (Out-of-State)" if strpos(outcome, "_acs1_outstate") > 0
-replace data_type = "ACS College (Out-of-State)" if strpos(outcome, "_acs2_outstate") > 0
-replace data_type = "ACS All" if strpos(outcome, "_acs1") > 0 & strpos(outcome, "_acs1_outstate") == 0
-replace data_type = "ACS College" if strpos(outcome, "_acs2") > 0 & strpos(outcome, "_acs2_outstate") == 0
-
-gen period_type = ""
-replace period_type = "16-22" if strpos(outcome, "_irs") > 0
-replace period_type = "16-22" if strpos(sample_data, "16_22") > 0
-replace period_type = "16-24" if strpos(sample_data, "16_24") > 0
-
-** Create specification indicators for bottom panel
-gen spec_all = sample == "sample_all"
-gen spec_urban95 = sample == "sample_urban95"
-gen spec_covid = sample == "sample_urban75_covid"
-gen spec_demog = sample == "sample_demog"
-gen spec_stringency = sample == "sample_stringency"
-gen spec_narrow = sample == "sample_narrow"
-gen spec_16_22 = period_type == "16-22"
-gen spec_16_24 = period_type == "16-24"
-gen spec_covars = controls == 1
-gen spec_excl2020 = exclusion == 1
-gen spec_irs = data_type == "IRS"
-gen spec_irs_outstate = data_type == "IRS (Out-of-State)"
-gen spec_irs_389 = data_type == "IRS (389)"
-gen spec_irs_outstate_389 = data_type == "IRS (389, Out-of-State)"
-gen spec_acs_all = data_type == "ACS All"
-gen spec_acs_col = data_type == "ACS College"
-gen spec_acs_all_outstate = data_type == "ACS All (Out-of-State)"
-gen spec_acs_col_outstate = data_type == "ACS College (Out-of-State)"
+** Parse outcome / sample_data into spec metadata + spec_* indicator
+** family via the shared helper (01a_programs.do).
+project_parse_outcome_components, indicators
 
 ** Calculate statistical significance (p < 0.05)
 replace significant = pval < 0.05 if missing(significant)

@@ -600,3 +600,105 @@ program define load_narrow_pool
     }
     label var sample_narrow "Narrow pool: 20 Metroverse similar cities + Multnomah"
 end
+
+
+** ------------------------------------------------------------------
+** project_parse_outcome_components
+**
+** Single source of truth for parsing an SDID-style results dataset's
+** `outcome` + `sample_data` columns into the canonical spec-metadata
+** columns. Previously open-coded in four places (02_post_spec.do,
+** 02_sdid_analysis.do — main + influence section, 02_narrow_sdid.do),
+** producing latent drift hazards (the regex bug at 02_post_spec.do:118
+** that misclassified outstate IRS-389 rows survived because the parsing
+** wasn't unified with the strpos pattern at 02_sdid_analysis.do:1512).
+**
+** Generates:
+**   outcome_type   "n1" | "n2" | "agi"
+**   migration      "net" | "in" | "out"
+**   data_type      one of: IRS, IRS (Out-of-State), IRS (389),
+**                  IRS (389, Out-of-State), ACS All, ACS All (Out-of-State),
+**                  ACS College, ACS College (Out-of-State)
+**   period_type    "16-22" | "16-24"  (narrow's "full" sample_data also → 16-22)
+**   outstate       0 | 1
+**
+** With option INDICATORS: also generates the spec_* indicator family used
+** by spec-curve indicator panels (spec_all / urban95 / covid / demog /
+** stringency / narrow / covars / excl2020 / irs / irs_389 / irs_outstate /
+** irs_outstate_389 / acs_all / acs_all_outstate / acs_col / acs_col_outstate
+** / 16_22 / 16_24).
+**
+** All generated variables are `capture drop`-ped first, so the helper is
+** idempotent and safe to call after manual replaces.
+** ------------------------------------------------------------------
+capture program drop project_parse_outcome_components
+program define project_parse_outcome_components
+    syntax [, INDICATORS]
+
+    foreach v in outcome_type migration data_type period_type outstate {
+        capture drop `v'
+    }
+
+    ** outcome family
+    gen str8 outcome_type = ""
+    replace outcome_type = "n1"  if regexm(outcome, "^n1_")
+    replace outcome_type = "n2"  if regexm(outcome, "^n2_")
+    replace outcome_type = "agi" if regexm(outcome, "^agi_")
+
+    ** migration direction
+    gen str4 migration = ""
+    replace migration = "net" if regexm(outcome, "_net_")
+    replace migration = "in"  if regexm(outcome, "_in_")
+    replace migration = "out" if regexm(outcome, "_out_")
+
+    ** data source label. Order matters: the unrestricted-IRS branch fires
+    ** first, then sample_data-keyed IRS (389) variants override it.
+    gen str40 data_type = ""
+    replace data_type = "IRS" if regexm(outcome, "_irs(_|$)") & !regexm(outcome, "_irs_outstate")
+    replace data_type = "IRS (Out-of-State)" if regexm(outcome, "_irs_outstate")
+    replace data_type = "IRS (389)" if regexm(sample_data, "irs_389") & !regexm(outcome, "_irs_outstate")
+    replace data_type = "IRS (389, Out-of-State)" if regexm(sample_data, "irs_outstate_389") & regexm(outcome, "_irs_outstate")
+    replace data_type = "ACS All (Out-of-State)" if regexm(outcome, "_acs1_outstate")
+    replace data_type = "ACS College (Out-of-State)" if regexm(outcome, "_acs2_outstate")
+    replace data_type = "ACS All" if regexm(outcome, "_acs1(_|$)") & !regexm(outcome, "_acs1_outstate")
+    replace data_type = "ACS College" if regexm(outcome, "_acs2(_|$)") & !regexm(outcome, "_acs2_outstate")
+
+    ** period type. IRS data is always 16-22 (no later vintage in the
+    ** SOI). Narrow's sample_data uses "full" instead of "16_22" for the
+    ** unrestricted IRS panel; treat both as 16-22.
+    gen str5 period_type = ""
+    replace period_type = "16-22" if regexm(outcome, "_irs(_|$)")
+    replace period_type = "16-22" if regexm(sample_data, "16_22") | regexm(sample_data, "full")
+    replace period_type = "16-24" if regexm(sample_data, "16_24")
+
+    ** outstate flag — outcome-based with sample_data fallback.
+    gen byte outstate = regexm(outcome, "_outstate") | regexm(sample_data, "outstate")
+
+    if "`indicators'" != "" {
+        foreach s in spec_all spec_urban95 spec_covid spec_demog            ///
+                     spec_stringency spec_narrow spec_covars spec_excl2020  ///
+                     spec_irs spec_irs_389 spec_irs_outstate                ///
+                     spec_irs_outstate_389 spec_acs_all spec_acs_all_outstate ///
+                     spec_acs_col spec_acs_col_outstate spec_16_22 spec_16_24 {
+            capture drop `s'
+        }
+        gen byte spec_all              = sample == "sample_all"
+        gen byte spec_urban95          = sample == "sample_urban95"
+        gen byte spec_covid            = sample == "sample_urban75_covid"
+        gen byte spec_demog            = sample == "sample_demog"
+        gen byte spec_stringency       = sample == "sample_stringency"
+        gen byte spec_narrow           = sample == "sample_narrow"
+        gen byte spec_covars           = controls == 1
+        gen byte spec_excl2020         = exclusion == 1
+        gen byte spec_irs              = data_type == "IRS"
+        gen byte spec_irs_389          = data_type == "IRS (389)"
+        gen byte spec_irs_outstate     = data_type == "IRS (Out-of-State)"
+        gen byte spec_irs_outstate_389 = data_type == "IRS (389, Out-of-State)"
+        gen byte spec_acs_all          = data_type == "ACS All"
+        gen byte spec_acs_all_outstate = data_type == "ACS All (Out-of-State)"
+        gen byte spec_acs_col          = data_type == "ACS College"
+        gen byte spec_acs_col_outstate = data_type == "ACS College (Out-of-State)"
+        gen byte spec_16_22            = period_type == "16-22"
+        gen byte spec_16_24            = period_type == "16-24"
+    }
+end

@@ -99,33 +99,15 @@ use "${results}sdid/sdid_results.dta", clear
 
 dis "Total specifications loaded: " _N
 
-** Parse outcome components via anchored regex. Same pattern used in the
-** pre-restructure 02_elasticities.do §1 so spec_results.dta parsing
-** matches row-for-row.
-gen outcome_type = ""
-replace outcome_type = regexs(1) if regexm(outcome, "^(n1|n2|agi)_")
-
-gen migration = ""
-replace migration = regexs(1) if regexm(outcome, "^[a-z0-9]+_(net|in|out)_rate_")
+** Parse outcome / sample_data into the canonical spec-metadata columns.
+** Centralized in 01a_programs.do (project_parse_outcome_components) so
+** the four ad-hoc parsing blocks that used to live in this file +
+** 02_sdid_analysis.do + 02_narrow_sdid.do share one implementation.
+project_parse_outcome_components
 
 assert inlist(outcome_type, "n1", "n2", "agi")
 assert inlist(migration, "net", "in", "out")
-
-gen data_type = ""
-replace data_type = "IRS" if regexm(outcome, "_irs(_|$)") & !regexm(outcome, "_irs_outstate")
-replace data_type = "IRS (Out-of-State)" if regexm(outcome, "_irs_outstate")
-replace data_type = "IRS (389)" if regexm(sample_data, "irs_389") & !regexm(outcome, "_irs_outstate")
-replace data_type = "IRS (389, Out-of-State)" if regexm(sample_data, "irs_outstate_389") & regexm(outcome, "_irs_outstate")
-replace data_type = "ACS All (Out-of-State)" if regexm(outcome, "_acs1_outstate")
-replace data_type = "ACS College (Out-of-State)" if regexm(outcome, "_acs2_outstate")
-replace data_type = "ACS All" if regexm(outcome, "_acs1(_|$)") & !regexm(outcome, "_acs1_outstate")
-replace data_type = "ACS College" if regexm(outcome, "_acs2(_|$)") & !regexm(outcome, "_acs2_outstate")
 assert data_type != ""
-
-gen period_type = ""
-replace period_type = "16-22" if regexm(outcome, "_irs(_|$)")
-replace period_type = "16-22" if regexm(sample_data, "16_22")
-replace period_type = "16-24" if regexm(sample_data, "16_24")
 
 ********************************************************************************
 ** SECTION 2: Attach outstate flag + event-study data
@@ -140,23 +122,32 @@ use "${results}sdid/sdid_event_results.dta", clear
 save `event_src'
 restore
 
-** Canonical outstate flag: event_results.dta carries it on every row.
+** Optional cross-check against event_results.dta. The helper already set
+** outstate from outcome/sample_data; this merge is retained as an audit
+** trail (and to surface any drift between event_results' outstate flag
+** and this file's parser). With nogenerate, Stata's default behavior
+** keeps the master (helper-generated) value on matched rows — so the
+** merge is effectively read-only here.
 tempfile outstate_src
 preserve
 use `event_src', clear
 bysort sample_data sample outcome controls exclusion: keep if _n == 1
 keep sample_data sample outcome controls exclusion outstate
+rename outstate outstate_evt
 save `outstate_src'
 restore
 
 merge 1:1 sample_data sample outcome controls exclusion using `outstate_src', ///
 	keep(master match) nogenerate
+capture confirm variable outstate_evt
+if _rc == 0 {
+	qui count if !missing(outstate_evt) & outstate != outstate_evt
+	if r(N) > 0 {
+		dis as error "WARNING: outstate disagrees with event_results on " r(N) " rows."
+	}
+	drop outstate_evt
+}
 
-** Fallback for any spec not in event_results (formula matches the
-** outstate-flag definition in 02_sdid_analysis.do so definitions cannot
-** drift). The historical `_irs5` disjunct was retired — no outcome
-** variable in the codebase uses that suffix.
-replace outstate = regexm(outcome, "_outstate") if missing(outstate)
 assert !missing(outstate)
 
 ********************************************************************************

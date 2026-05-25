@@ -275,25 +275,12 @@ program define elast_speccurve_plot
 	local row_step = 0.07 * `data_range'
 	local ind_top  = `sep_y' - `row_step'
 
-	** spec_* dummies (mirrors SDID; includes both 389-restricted variants).
-	gen byte spec_all              = sample == "sample_all"
-	gen byte spec_stringency       = sample == "sample_stringency"
-	gen byte spec_urban95          = sample == "sample_urban95"
-	gen byte spec_demog            = sample == "sample_demog"
-	gen byte spec_covid            = sample == "sample_urban75_covid"
-	gen byte spec_narrow           = sample == "sample_narrow"
-	gen byte spec_covars           = controls == 1
-	gen byte spec_excl2020         = exclusion == 1
-	gen byte spec_irs              = data_type == "IRS"
-	gen byte spec_irs_389          = data_type == "IRS (389)"
-	gen byte spec_irs_outstate     = data_type == "IRS (Out-of-State)"
-	gen byte spec_irs_outstate_389 = data_type == "IRS (389, Out-of-State)"
-	gen byte spec_acs_all          = data_type == "ACS All"
-	gen byte spec_acs_all_outstate = data_type == "ACS All (Out-of-State)"
-	gen byte spec_acs_col          = data_type == "ACS College"
-	gen byte spec_acs_col_outstate = data_type == "ACS College (Out-of-State)"
-	gen byte spec_16_22            = period_type == "16-22"
-	gen byte spec_16_24            = period_type == "16-24"
+	** spec_* dummies via shared helper (also re-derives data_type /
+	** period_type / outstate from outcome+sample_data — those columns
+	** already exist on spec_results.dta but the helper's capture-drop
+	** makes regeneration idempotent and ensures parser parity with the
+	** upstream populator in 02_post_spec.do).
+	project_parse_outcome_components, indicators
 
 	** Labels — matched to SDID spec-curve convention. Outstate-suffixed
 	** entries drop the "(Out-of-State)" wording since the figure title

@@ -43,6 +43,9 @@ if "${dir}" == "" {
 }
 if "${code}" == "" global code "${dir}/code/stata/"
 do "${code}00_stata_config.do"
+** 01a_programs.do is normally sourced by 00_multnomah.do; source defensively
+** so standalone invocation also has project_parse_outcome_components.
+do "${code}01a_programs.do"
 
 ** Start log file
 capture log close log_02_narrow
@@ -572,34 +575,10 @@ Preferred specifications are defined below.
 ** Load treatment effects
 use "${results}sdid/narrow/narrow_sdid_results.dta", clear
 
-** Parse outcome variable names to extract components
-gen outcome_type = ""
-replace outcome_type = "n1" if strpos(outcome, "n1_") > 0
-replace outcome_type = "n2" if strpos(outcome, "n2_") > 0
-replace outcome_type = "agi" if strpos(outcome, "agi_") > 0
-
-gen migration = ""
-replace migration = "net" if strpos(outcome, "_net_") > 0
-replace migration = "in" if strpos(outcome, "_in_") > 0
-replace migration = "out" if strpos(outcome, "_out_") > 0
-
-gen data_type = ""
-replace data_type = "IRS" if strpos(outcome, "_irs") > 0
-replace data_type = "ACS All" if strpos(outcome, "_acs1") > 0
-replace data_type = "ACS College" if strpos(outcome, "_acs2") > 0
-
-gen period_type = ""
-replace period_type = "16-22" if strpos(sample_data, "full") > 0 | strpos(sample_data, "16_22") > 0
-replace period_type = "16-24" if strpos(sample_data, "16_24") > 0
-
-** Create specification indicators for bottom panel
-gen spec_covars = controls == 1
-gen spec_excl2020 = exclusion == 1
-gen spec_irs = data_type == "IRS"
-gen spec_acs_all = data_type == "ACS All"
-gen spec_acs_col = data_type == "ACS College"
-gen spec_16_22 = period_type == "16-22"
-gen spec_16_24 = period_type == "16-24"
+** Parse outcome / sample_data into spec metadata + spec_* indicator
+** family via the shared helper (01a_programs.do). Narrow data has no
+** IRS-389 or outstate variants — those branches just stay empty here.
+project_parse_outcome_components, indicators
 
 ** Calculate statistical significance (p < 0.05)
 replace significant = pval < 0.05 if missing(significant)
