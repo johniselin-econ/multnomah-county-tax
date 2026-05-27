@@ -178,9 +178,13 @@ else {
 		dis "`lab`k'': `nc' counties (`nc_don' donors + Multnomah), `nobs' county-years"
 	}
 
-	** Narrow pool (20 similar cities + Multnomah), ACS-restricted variant
+	** Narrow pool (20 similar cities + Multnomah), ACS-restricted variant.
+	** County count, obs, and years all keyed on acs_period_2 so this single row
+	** describes one sample (the ACS-balanced 2016-2024 narrow pool); previously
+	** the county count used in_irs2 (the 2016-2022 IRS-ACS window), which did not
+	** match the acs_period_2 obs/year counts in the same row.
 	preserve
-		keep if (sample_narrow == 1) & in_irs2 == 1
+		keep if (sample_narrow == 1) & in_acs2 == 1
 		diag_distinct fips
 		local nc = r(nd)
 		qui count if acs_period_2 == 1 & sample_narrow == 1

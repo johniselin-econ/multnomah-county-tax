@@ -291,6 +291,12 @@ if ${use_parallel} == 1 {
 ** ==========================================================================
 foreach excl2020 in 1 0 {
 
+	** Clear stored estimates from the previous version. The estimate names are
+	** version-invariant (e.g. agi_all_with), so without this the defensive
+	** all_present guard below could pass on a stale estimate left over from the
+	** prior pass and write a table mixing this version's and the prior version's fits.
+	estimates clear
+
 	if `excl2020' == 1 {
 		local v_suffix ""
 		local v_label  "excl. 2020 (primary)"
@@ -1116,11 +1122,11 @@ foreach sample in "acs" "all" {
 	** Export to Excel
 	** First iteration: create new file; subsequent: add sheet
 	if "`sample'" == "all" {
-		export excel using "${results}flows/flow_analysis_stats`debug_txt'.xlsx", ///
+		export excel using "${results}flows/flow_analysis_stats`debug_txt'`v_suffix'.xlsx", ///
 			sheet("`sample'") sheetreplace firstrow(variables)
 	}
 	else {
-		export excel using "${results}flows/flow_analysis_stats`debug_txt'.xlsx", ///
+		export excel using "${results}flows/flow_analysis_stats`debug_txt'`v_suffix'.xlsx", ///
 			sheet("`sample'") sheetmodify firstrow(variables)
 	}
 
@@ -1155,7 +1161,7 @@ foreach sample in "acs" "all" {
 		keep fips state_name county_name b_out se_out t_out p_out pctile_b_out pctile_t_out
 
 		** Export
-		export excel using "${results}flows/flow_analysis_stats`debug_txt'.xlsx", ///
+		export excel using "${results}flows/flow_analysis_stats`debug_txt'`v_suffix'.xlsx", ///
 			sheet("larger_out_`sample'") sheetmodify firstrow(variables)
 
 		dis "Exported `=_N' counties with larger out-migration coef to sheet: larger_out_`sample'"
@@ -1175,7 +1181,7 @@ foreach sample in "acs" "all" {
 		keep fips state_name county_name b_in se_in t_in p_in pctile_b_in pctile_t_in
 
 		** Export
-		export excel using "${results}flows/flow_analysis_stats`debug_txt'.xlsx", ///
+		export excel using "${results}flows/flow_analysis_stats`debug_txt'`v_suffix'.xlsx", ///
 			sheet("smaller_in_`sample'") sheetmodify firstrow(variables)
 
 		dis "Exported `=_N' counties with smaller in-migration coef to sheet: smaller_in_`sample'"
@@ -1197,7 +1203,7 @@ foreach sample in "acs" "all" {
 			b_in se_in t_in p_in pctile_b_in pctile_t_in
 
 		** Export
-		export excel using "${results}flows/flow_analysis_stats`debug_txt'.xlsx", ///
+		export excel using "${results}flows/flow_analysis_stats`debug_txt'`v_suffix'.xlsx", ///
 			sheet("worse_both_`sample'") sheetmodify firstrow(variables)
 
 		dis "Exported `=_N' counties worse on both dimensions to sheet: worse_both_`sample'"
@@ -1217,7 +1223,7 @@ foreach sample in "acs" "all" {
 		keep fips state_name county_name b_out se_out t_out p_out pctile_b_out pctile_t_out
 
 		** Export
-		export excel using "${results}flows/flow_analysis_stats`debug_txt'.xlsx", ///
+		export excel using "${results}flows/flow_analysis_stats`debug_txt'`v_suffix'.xlsx", ///
 			sheet("larger_t_out_`sample'") sheetmodify firstrow(variables)
 
 		dis "Exported `=_N' counties with larger out-migration t-stat to sheet: larger_t_out_`sample'"
@@ -1237,7 +1243,7 @@ foreach sample in "acs" "all" {
 		keep fips state_name county_name b_in se_in t_in p_in pctile_b_in pctile_t_in
 
 		** Export
-		export excel using "${results}flows/flow_analysis_stats`debug_txt'.xlsx", ///
+		export excel using "${results}flows/flow_analysis_stats`debug_txt'`v_suffix'.xlsx", ///
 			sheet("smaller_t_in_`sample'") sheetmodify firstrow(variables)
 
 		dis "Exported `=_N' counties with smaller in-migration t-stat to sheet: smaller_t_in_`sample'"
@@ -1335,9 +1341,9 @@ foreach sample in "acs" "all" {
 
 		** Plot 1: Out-migration (with and without covariates)
 		twoway 	(rcap out_ci_lo_wc out_ci_hi_wc year_out, lc("`col_out'")) 		///
-				(connected out_coef_wc year_out, mc("`col_out'") lc("`col_out'") ms(O)) ///
+				(connected out_coef_wc year_out, mc("`col_out'") lc("`col_out'") ms(O) cmissing(n)) ///
 				(rcap out_ci_lo_nc out_ci_hi_nc year_in, lc("`col_in'")) 		///
-				(connected out_coef_nc year_in, mc("`col_in'") lc("`col_in'") ms(T)), ///
+				(connected out_coef_nc year_in, mc("`col_in'") lc("`col_in'") ms(T) cmissing(n)), ///
 			yline(0, lc(gs10) lp(dash)) 										///
 			xline(2020.5, lc(black) lp(solid))									///
 			xlabel(2016(1)2022) 												///
@@ -1351,9 +1357,9 @@ foreach sample in "acs" "all" {
 
 		** Plot 2: In-migration (with and without covariates)
 		twoway 	(rcap in_ci_lo_wc in_ci_hi_wc year_out, lc("`col_out'")) 		///
-				(connected in_coef_wc year_out, mc("`col_out'") lc("`col_out'") ms(O)) ///
+				(connected in_coef_wc year_out, mc("`col_out'") lc("`col_out'") ms(O) cmissing(n)) ///
 				(rcap in_ci_lo_nc in_ci_hi_nc year_in, lc("`col_in'")) 		///
-				(connected in_coef_nc year_in, mc("`col_in'") lc("`col_in'") ms(T)), ///
+				(connected in_coef_nc year_in, mc("`col_in'") lc("`col_in'") ms(T) cmissing(n)), ///
 			yline(0, lc(gs10) lp(dash)) 										///
 			xline(2020.5, lc(black) lp(solid))									///
 			xlabel(2016(1)2022) 												///
@@ -1367,9 +1373,9 @@ foreach sample in "acs" "all" {
 
 		** Plot 3: Both flows (with covariates only, as in original)
 		twoway 	(rcap out_ci_lo_wc out_ci_hi_wc year_out, lc("`col_out'")) 		///
-				(connected out_coef_wc year_out, mc("`col_out'") lc("`col_out'") ms(O)) ///
+				(connected out_coef_wc year_out, mc("`col_out'") lc("`col_out'") ms(O) cmissing(n)) ///
 				(rcap in_ci_lo_wc in_ci_hi_wc year_in, lc("`col_in'")) 		///
-				(connected in_coef_wc year_in, mc("`col_in'") lc("`col_in'") ms(T)), ///
+				(connected in_coef_wc year_in, mc("`col_in'") lc("`col_in'") ms(T) cmissing(n)), ///
 			yline(0, lc(gs10) lp(dash)) 										///
 			xline(2020.5, lc(black) lp(solid))									///
 			xlabel(2016(1)2022) 												///
