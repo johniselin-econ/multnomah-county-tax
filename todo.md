@@ -58,8 +58,8 @@ Plan file: `quality_reports/plans/2026-05-06_paper-revision-todos.md`
 * [DONE — new `02_appendix_descriptives.do`, 2026-05-07] *(Item 11)* Re-think Table A1: one table per method (SDID, IRS county-to-county flow, ACS individual data).
   → Three method-specific tables synced to Overleaf:
     - `tableA1_sdid.tex`: 2 panels × 6 rows × 7 cols, time-pooled means by donor pool.
-    - `tableA1_irs_flow.tex`: 2 panels (All / ACS-restricted) × 2 rows × 5 cols. Median n1 replaces "share with 0 movers" (IRS suppresses low-count flows).
-    - `tableA1_acs.tex`: 2 panels (out / in samples) × 2 rows × 5 cols.
+    - `tableA2_irs_flow.tex`: 2 panels (All / ACS-restricted) × 2 rows × 6 cols (adds unique-county count). Median n1 replaces "share with 0 movers" (IRS suppresses low-count flows).
+    - `tableA3_acs.tex`: 2 panels (out / in samples) × 2 rows × 5 cols.
   → Old `tableA1_variables.tex` remains on disk; Phase 3 tex pass swaps `\input` lines to point at the three new files.
 
 * [DONE — Phase 3 tex pass, 2026-05-10] *(Item 12)* Drop Table A2. Old `\input{tables/diagnostics_obs_counts}` is no longer in `Conway_Iselin_Rork_2026.tex`.
@@ -111,7 +111,7 @@ These changes happened in the same session as the Phase 3 tex pass but address
 issues that surfaced after the original 22-item audit was framed. Recorded
 here so a future reader doesn't re-investigate.
 
-* [DONE] **Table A2 column labels rewritten** (`tables/tableA1_irs_flow.tex`,
+* [DONE] **Table A2 column labels rewritten** (`tables/tableA2_irs_flow.tex`,
   upstream `code/stata/02_appendix_descriptives.do:396-397`).
   - Header now reads: "Number of county-flows / Median count of returns /
     Mean count of returns / Mean count of exemptions / Mean AGI (USD

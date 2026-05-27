@@ -21,8 +21,8 @@ fig_es_age_in_migration_48.png,figure,fig:did_events,8,main,02_did_analysis.do
 fig_speccurve_revenue_pfa.pdf,figure,fig:revenue_dist,9,main,02_tables_figures.do
 fig_speccurve_revenue_oregon.pdf,figure,fig:revenue_dist,9,main,02_tables_figures.do
 tableA1_sdid.tex,table,tab:tableA1_sdid,A1,appendix_A,02_appendix_descriptives.do
-tableA1_irs_flow.tex,table,tab:tableA1_irs_flow,A2,appendix_A,02_appendix_descriptives.do
-tableA1_acs.tex,table,tab:tableA1_acs,A3,appendix_A,02_appendix_descriptives.do
+tableA2_irs_flow.tex,table,tab:tableA2_irs_flow,A2,appendix_A,02_appendix_descriptives.do
+tableA3_acs.tex,table,tab:tableA3_acs,A3,appendix_A,02_appendix_descriptives.do
 tbl_elasticities_inout_shs.tex,table,tab:elasticities_inout_shs,A4,appendix_A,02_tables_figures.do
 tbl_elasticities.tex,table,tab:elasticities,A5,appendix_A,02_tables_figures.do
 tbl_elasticities_inout.tex,table,tab:elasticities_inout,A6,appendix_A,02_tables_figures.do

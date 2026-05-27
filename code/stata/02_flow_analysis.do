@@ -75,7 +75,13 @@ use "${data}working/acs_county_gross_25plus", clear
 ** Keep required variables
 keep year fips
 
-** Keep only always-observed fips (13 ACS years: 2012-2024)
+** Restrict to the analysis window BEFORE balancing. The ACS file starts in
+** 2012, but the SDID/DiD samples use 2016-2024; balance the flow county set
+** over that same 9-year window (not all 13 ACS years) so the flow ACS sample
+** mirrors the SDID's balanced ACS panel.
+keep if inrange(year, 2016, 2024)
+
+** Keep only always-observed fips (balanced over 2016-2024, 9 ACS years)
 bysort fips: gen ct = _N
 tab ct
 qui summ ct
@@ -174,14 +180,17 @@ gen post = year > 2020
 gen in_multnomah_post = in_multnomah * post
 gen out_multnomah_post = out_multnomah * post
 
-** Create interactions manually (base year = 2020)
+** Create interactions manually (base year = 2019, matching the SDID/DiD and
+** the figure axis labels, which read "relative to 2019").
 forvalues y = 2016/2022 {
 	gen x_out_`y' = out_multnomah * (year == `y')
 	gen x_in_`y' = in_multnomah * (year == `y')
 }
 
-** Drop base year (2020)
-drop x_out_2020 x_in_2020
+** Drop base year (2019). x_*_2020 is retained: it is an estimable coefficient
+** in the incl-2020 version, and in the excl-2020 version (where 2020 obs are
+** dropped) ppmlhdfe omits it automatically since it is identically zero.
+drop x_out_2019 x_in_2019
 
 ** Save main analysis dataset to tempfile
 tempfile main_data
@@ -273,18 +282,52 @@ if ${use_parallel} == 1 {
 ** property tax rate controls (prop_rate_mean_o and prop_rate_mean_d)
 ********************************************************************************
 
+** ==========================================================================
+** VERSION LOOP: run the full flow estimation twice, mirroring the SDID.
+**   excl2020 == 1 -> PRIMARY (2020 dropped). Writes the paper's main outputs
+**                    (no version suffix), e.g. fig_multnomah_both_agi.png.
+**   excl2020 == 0 -> ROBUSTNESS (2020 kept). Writes "_incl2020"-suffixed copies.
+** Base year is 2019 in both (set in the data-prep block above).
+** ==========================================================================
+foreach excl2020 in 1 0 {
+
+	if `excl2020' == 1 {
+		local v_suffix ""
+		local v_label  "excl. 2020 (primary)"
+	}
+	else {
+		local v_suffix "_incl2020"
+		local v_label  "incl. 2020 (robustness)"
+	}
+
+	dis ""
+	dis "########################################################################"
+	dis "FLOW ESTIMATION VERSION: `v_label'"
+	dis "########################################################################"
+
+	** Build the version-specific analysis dataset from the FULL main_data
+	** tempfile (it must NOT read the possibly-already-trimmed
+	** flow_analysis_data.dta). Both the sequential loads below and the parallel
+	** workers read flow_analysis_data.dta, so the 2020 drop is applied here,
+	** once, and is seen by every downstream step.
+	use `main_data', clear
+	if `excl2020' == 1 drop if year == 2020
+	compress
+	save "${data}working/flow_analysis_data.dta", replace
+
 foreach sample in "acs" "all" {
 
-	** Set sample-specific parameters
+	** Set sample-specific parameters. file_suffix embeds the version tag so all
+	** downstream output paths (figures, dtas, csvs) are versioned automatically.
 	if "`sample'" == "all" {
 		local sample_cond ""
 		local covars "unemp_* pop_* per_capita_income_*"
-		local file_suffix ""
+		local file_suffix "`v_suffix'"
 	}
 	else if "`sample'" == "acs" {
 		local sample_cond "& acs_flow == 1"
 		local covars "unemp_* pop_* per_capita_income_* prop_rate_mean_o prop_rate_mean_d"
-		local file_suffix "_acs"
+		local file_suffix "_acs`v_suffix'"
 	}
 	
 	if `debug' == 1 local debug_txt "_debug"
@@ -303,7 +346,7 @@ foreach sample in "acs" "all" {
 	********************************************************************************
 
 	** Load main data
-	use `main_data', clear
+	use "${data}working/flow_analysis_data.dta", clear
 
 	** Loop over outcome variables
 	foreach outcome in n1 n2 agi {
@@ -395,7 +438,7 @@ foreach sample in "acs" "all" {
 		levelsof fips, local(fips_list)
 
 		** Reload main data
-		use `main_data', clear
+		use "${data}working/flow_analysis_data.dta", clear
 	}
 
 	local n_fips : word count `fips_list'
@@ -1208,7 +1251,7 @@ foreach sample in "acs" "all" {
 	********************************************************************************
 
 	** Load main data for event study regressions
-	use `main_data', clear
+	use "${data}working/flow_analysis_data.dta", clear
 
 	** Loop over outcome variables
 	foreach outcome in n1 n2 agi {
@@ -1251,8 +1294,11 @@ foreach sample in "acs" "all" {
 		gen in_ci_lo_nc = .
 		gen in_ci_hi_nc = .
 
-		** Fill in coefficients (2020 = base year = 0)
-		foreach y in 2016 2017 2018 2019 2021 2022 {
+		** Fill in event-study coefficients (2019 = base year = 0). The primary
+		** (excl-2020) version has no 2020 estimate; the incl-2020 version does.
+		local es_years 2016 2017 2018 2021 2022
+		if `excl2020' == 0 local es_years 2016 2017 2018 2020 2021 2022
+		foreach y in `es_years' {
 
 			** With covariates
 			estimates restore `outcome'_es_with_covars
@@ -1275,12 +1321,12 @@ foreach sample in "acs" "all" {
 			replace in_ci_hi_nc = _b[x_in_`y'] + 1.96 * _se[x_in_`y'] if year == `y'
 		}
 
-		** Base year (2020) = 0
+		** Base year (2019) = 0
 		foreach v in out_coef_wc out_ci_lo_wc out_ci_hi_wc 			///
 					 in_coef_wc in_ci_lo_wc in_ci_hi_wc 			///
 					 out_coef_nc out_ci_lo_nc out_ci_hi_nc 			///
 					 in_coef_nc in_ci_lo_nc in_ci_hi_nc {
-			replace `v' = 0 if year == 2020
+			replace `v' = 0 if year == 2019
 		}
 
 		** Offset years slightly for visibility
@@ -1340,7 +1386,7 @@ foreach sample in "acs" "all" {
 		}
 
 		** Reload main data for next outcome
-		use `main_data', clear
+		use "${data}working/flow_analysis_data.dta", clear
 
 	} // END OUTCOME LOOP
 
@@ -1371,7 +1417,7 @@ if `all_present' == 1 {
 	** esttab the four AGI specs into one 4-column table.
 	** Coefficients of interest: 1.out_multnomah_post and 1.in_multnomah_post.
 	esttab agi_all_no agi_all_with agi_acs_no agi_acs_with ///
-		using "${results}flows/tab_flow_regression.tex", replace ///
+		using "${results}flows/tab_flow_regression`v_suffix'.tex", replace ///
 		keep(1.out_multnomah_post 1.in_multnomah_post) ///
 		coeflabels(1.out_multnomah_post "Multnomah origin $\times$ Post" ///
 		           1.in_multnomah_post  "Multnomah destination $\times$ Post") ///
@@ -1382,17 +1428,19 @@ if `all_present' == 1 {
 		nonotes booktabs label fragment ///
 		prehead("\begin{tabular}{l*{4}{w{c}{2.5cm}}}" "\toprule") ///
 		postfoot("\bottomrule" "\end{tabular}")
-	dis "Wrote: ${results}flows/tab_flow_regression.tex"
+	dis "Wrote: ${results}flows/tab_flow_regression`v_suffix'.tex"
 
 	if "${overleaf}" == "1" {
-		copy "${results}flows/tab_flow_regression.tex" ///
-			"${ol_tab}tab_flow_regression.tex", replace
-		dis "Synced: ${ol_tab}tab_flow_regression.tex"
+		copy "${results}flows/tab_flow_regression`v_suffix'.tex" ///
+			"${ol_tab}tab_flow_regression`v_suffix'.tex", replace
+		dis "Synced: ${ol_tab}tab_flow_regression`v_suffix'.tex"
 	}
 }
 else {
 	dis as error "Skipping flow-regression appendix table: not all 4 AGI estimates are stored."
 }
+
+} // END VERSION LOOP (excl2020 = 1 [primary], then 0 [robustness])
 
 
 ** Clean up parallel data file
