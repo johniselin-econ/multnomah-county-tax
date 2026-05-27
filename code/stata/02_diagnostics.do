@@ -237,21 +237,13 @@ tempfile acs_id
 save `acs_id'
 
 ** acs_balanced: counties present in the ACS panel in EVERY analysis year
-** (2016-2024). This is the 389-county set and is equivalent to the SDID's
-** acs_period_2 membership (matched to ACS in all years), which is what defines
-** the ACS estimation sample -- so the funnel mirrors the estimation's
-** 2016-2024 balance rather than the IRS window.
-use "${data}working/acs_county_gross_25plus", clear
-keep year fips
-keep if inrange(year, 2016, 2024)
-bysort fips: gen _ct = _N
-qui summ _ct
-keep if _ct == r(max)
-keep fips
-duplicates drop
-gen byte acs_balanced = 1
+** (2016-2024) = the 389-county set, equivalent to the SDID's acs_period_2
+** membership (matched to ACS in all years), which is what defines the ACS
+** estimation sample -- so the funnel mirrors the estimation's 2016-2024 balance
+** rather than the IRS window. Built via the shared helper (01a_programs.do) so
+** it stays identical to the flow estimation and appendix descriptives.
 tempfile acs_bal
-save `acs_bal'
+build_acs_balanced_set, saving(`acs_bal') flag(acs_balanced)
 
 ** Step 1: IRS county-to-county file, analysis years, drop "other counties"
 use "${data}working/irs_county_gross", clear
@@ -346,17 +338,11 @@ if _rc == 0 {
 **            with origin/destination county counts, WITH and WITHOUT 2020.
 ********************************************************************************
 
-** ACS county set: balanced over 2016-2024 (matches corrected flow script)
-use "${data}working/acs_county_gross_25plus", clear
-keep year fips
-keep if inrange(year, 2016, 2024)
-bysort fips: gen ct = _N
-qui summ ct
-keep if ct == r(max)
-keep fips
-duplicates drop
+** ACS county set: balanced over 2016-2024, via the shared helper
+** (01a_programs.do) -- the same set the flow estimation and appendix
+** descriptives use.
 tempfile flow_acs_fips
-save `flow_acs_fips'
+build_acs_balanced_set, saving(`flow_acs_fips')
 
 ** IRS flows, analysis window, drop AK/HI both endpoints
 use "${data}working/irs_county_flow", clear

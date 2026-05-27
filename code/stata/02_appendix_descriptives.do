@@ -47,6 +47,9 @@ if "${code}" == "" {
     else global code "`_cwd'/code/stata/"
 }
 do "${code}00_stata_config.do"
+** 01a_programs.do is normally sourced by 00_multnomah.do; source defensively
+** so build_acs_balanced_set is available when run standalone.
+do "${code}01a_programs.do"
 
 if "${ol_tab}" == "" {
     capture do "${dir}/profile.do"
@@ -299,17 +302,10 @@ dis "--- Table A1.B: IRS Flow descriptives ---"
 preserve
 capture confirm file "${data}working/acs_county_gross_25plus.dta"
 if _rc == 0 {
-    use "${data}working/acs_county_gross_25plus.dta", clear
-    keep year fips
-    keep if inrange(year, 2016, 2024)
-    bysort fips: gen _ct = _N
-    qui summ _ct
-    keep if _ct == r(max)
-    keep fips
-    gen byte acs_county = 1
-    duplicates drop fips, force
+    ** Shared single-source-of-truth builder (01a_programs.do); leaves the set
+    ** in memory so the count below works, and saves it to the tempfile.
     tempfile acs_counties
-    save `acs_counties'
+    build_acs_balanced_set, saving(`acs_counties') flag(acs_county)
     local have_acs = 1
     qui count
     dis "ACS balanced county set (2016-2024): " r(N) " counties"

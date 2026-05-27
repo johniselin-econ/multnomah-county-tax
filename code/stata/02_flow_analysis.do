@@ -48,6 +48,9 @@ if "${code}" == "" {
     else global code "`_cwd'/code/stata/"
 }
 do "${code}00_stata_config.do"
+** 01a_programs.do is normally sourced by 00_multnomah.do; source defensively
+** so build_acs_balanced_set / setup_parallel are available when run standalone.
+do "${code}01a_programs.do"
 
 
 ** Start log file
@@ -69,33 +72,14 @@ local reps = 100
 local debug = 0
 local debug_n = 20  // Number of random counties to sample in debug mode (plus Multnomah)
 
-** Load ACS data to get the set of counties
-use "${data}working/acs_county_gross_25plus", clear
-
-** Keep required variables
-keep year fips
-
-** Restrict to the analysis window BEFORE balancing. The ACS file starts in
-** 2012, but the SDID/DiD samples use 2016-2024; balance the flow county set
-** over that same 9-year window (not all 13 ACS years) so the flow ACS sample
-** mirrors the SDID's balanced ACS panel.
-keep if inrange(year, 2016, 2024)
-
-** Keep only always-observed fips (balanced over 2016-2024, 9 ACS years)
-bysort fips: gen ct = _N
-tab ct
-qui summ ct
-keep if ct == `r(max)'
-
-** Keep fips
-keep fips
-
-** Drop duplicates
-duplicates drop
-
-** Save to tempfile
+** Build the balanced ACS county set: counties observed in the ACS 25+ panel in
+** every analysis year 2016-2024 (~389 counties). The ACS file starts in 2012,
+** but the SDID/DiD samples use 2016-2024, so the flow county set is balanced
+** over that same window. Single source of truth lives in 01a_programs.do
+** (build_acs_balanced_set) so this set can't drift from the diagnostics audit
+** or the appendix flow descriptives.
 tempfile acs_fips
-save `acs_fips'
+build_acs_balanced_set, saving(`acs_fips')
 clear
 
 ** Load IRS Data

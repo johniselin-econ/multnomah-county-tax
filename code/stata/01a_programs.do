@@ -702,3 +702,52 @@ program define project_parse_outcome_components
         gen byte spec_16_24            = period_type == "16-24"
     }
 end
+
+
+** ------------------------------------------------------------------
+** build_acs_balanced_set
+**
+** Single source of truth for the "balanced ACS county set": counties observed
+** in the ACS 25+ gross-migration panel in EVERY analysis year 2016-2024 (the
+** ~389-county set). This is the county restriction the SDID ACS specification
+** (acs_period_2) and the PPML flow specification use, so the flow estimation
+** (02_flow_analysis.do), the appendix flow descriptives (Table A2,
+** 02_appendix_descriptives.do), and the diagnostics audit (02_diagnostics.do)
+** all draw the set from here rather than re-deriving it. It was previously
+** open-coded in four places that had begun to drift (`_ct` vs `ct`, `qui summ`
+** vs `tab ct`); centralizing it guarantees the audit can't diverge from the
+** estimation sample over a counting detail.
+**
+** Builds the set in memory (one row per balanced fips) AND writes it to the
+** path passed in saving(). The data in memory is REPLACED, so call this inside
+** a preserve, or immediately before reloading the working file.
+**
+** Options:
+**   saving(string)  REQUIRED. Destination path/tempfile for the fips set.
+**   flag(name)      Optional. Adds `gen byte <name> = 1` so the set can be
+**                   tagged after a merge (e.g. flag(acs_county)).
+**   source(string)  Input panel. Default ${data}working/acs_county_gross_25plus.
+** ------------------------------------------------------------------
+capture program drop build_acs_balanced_set
+program define build_acs_balanced_set
+    syntax , SAVing(string) [ FLAG(name) SOURce(string) ]
+
+    if "`source'" == "" local source "${data}working/acs_county_gross_25plus"
+
+    capture confirm file "`source'.dta"
+    if _rc {
+        di as error "build_acs_balanced_set: cannot find `source'.dta"
+        exit 601
+    }
+
+    use "`source'", clear
+    keep year fips
+    keep if inrange(year, 2016, 2024)        // ACS analysis window (SDID/DiD)
+    bysort fips: gen _ct = _N
+    qui summ _ct
+    keep if _ct == r(max)                      // present every year = balanced
+    keep fips
+    duplicates drop
+    if "`flag'" != "" gen byte `flag' = 1
+    qui save "`saving'", replace
+end
