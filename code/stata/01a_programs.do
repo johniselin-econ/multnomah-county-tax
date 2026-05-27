@@ -607,8 +607,8 @@ end
 **
 ** Single source of truth for parsing an SDID-style results dataset's
 ** `outcome` + `sample_data` columns into the canonical spec-metadata
-** columns. Previously open-coded in four places (02_post_spec.do,
-** 02_sdid_analysis.do — main + influence section, 02_narrow_sdid.do),
+** columns. Previously open-coded in several places (02_post_spec.do,
+** 02_sdid_analysis.do — main + influence section),
 ** producing latent drift hazards (the regex bug at 02_post_spec.do:118
 ** that misclassified outstate IRS-389 rows survived because the parsing
 ** wasn't unified with the strpos pattern at 02_sdid_analysis.do:1512).

@@ -94,8 +94,8 @@ dis "Total specifications loaded: " _N
 
 ** Parse outcome / sample_data into the canonical spec-metadata columns.
 ** Centralized in 01a_programs.do (project_parse_outcome_components) so
-** the four ad-hoc parsing blocks that used to live in this file +
-** 02_sdid_analysis.do + 02_narrow_sdid.do share one implementation.
+** the ad-hoc parsing blocks that used to live in this file +
+** 02_sdid_analysis.do share one implementation.
 project_parse_outcome_components
 
 assert inlist(outcome_type, "n1", "n2", "agi")

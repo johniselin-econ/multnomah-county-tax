@@ -51,8 +51,7 @@ multnomah-county-tax/
 │       ├── 01f_irs_migration.do   #   IRS county + state migration
 │       ├── 01g_irs_agi.do         #   IRS county AGI by bracket
 │       ├── 01h_auxiliary.do       #   DOL childcare + property tax
-│       ├── 02_sdid_analysis.do    #   Synthetic DiD estimation
-│       ├── 02_narrow_sdid.do      #   Narrow SDID (similar-cities pool)
+│       ├── 02_sdid_analysis.do    #   Synthetic DiD estimation (incl. narrow pool)
 │       ├── 02_otherout_sdid.do    #   SDID on non-migration outcomes
 │       ├── 02_did_analysis.do     #   DiD + event study (ACS)
 │       ├── 02_flow_analysis.do    #   PPML flow models (IRS)
