@@ -22,16 +22,21 @@ capture log close log_diag_supp
 log using "${logs}02_log_diagnostics_supp_${pr_name}_${date}", replace text name(log_diag_supp)
 project_set_seed, context("02_diagnostics_supp.do") offset(120)
 
-** Initialize results dataset
+** Initialize results dataset. Schema mirrors 02_diagnostics.do so the two
+** diagnostics fragments share a column layout. Other-Outcome SDID is
+** county-level, so n_orig / n_dest stay missing (printed as "--"), exactly like
+** the SDID rows in the main table.
 clear
 tempfile results
-gen str40 approach = ""
-gen str40 sample = ""
+gen str44 approach    = ""
+gen str44 sample      = ""
 gen str40 data_source = ""
-gen str20 unit = ""
-gen long N_units = .
-gen int N_years = .
-gen long N_obs = .
+gen str16 unit        = ""
+gen long  n_counties  = .
+gen long  n_orig      = .
+gen long  n_dest      = .
+gen int   n_years     = .
+gen long  n_obs       = .
 save `results'
 
 
@@ -89,13 +94,15 @@ foreach out in "ln_n1" "ln_agi" "ln_total_inc" "ln_wage" {
 
     clear
     set obs 1
-    gen str40 approach = "Other-Outcome SDID"
-    gen str40 sample = "`lbl'"
+    gen str44 approach    = "Other-Outcome SDID"
+    gen str44 sample      = "`lbl'"
     gen str40 data_source = "IRS (county-level)"
-    gen str20 unit = "county-year"
-    gen long N_units = `n_units'
-    gen int N_years = `n_years'
-    gen long N_obs = `n_obs'
+    gen str16 unit        = "county-year"
+    gen long  n_counties  = `n_units'
+    gen long  n_orig      = .
+    gen long  n_dest      = .
+    gen int   n_years     = `n_years'
+    gen long  n_obs       = `n_obs'
     append using `results'
     save `results', replace
     restore
@@ -114,11 +121,13 @@ use `results', clear
 ** Drop empty seed row
 drop if approach == ""
 
-** Sort
+** Order to match the main diagnostics table, then sort
+order approach sample data_source unit n_counties n_orig n_dest n_years n_obs
 sort approach sample data_source
 
 ** Display
-list, sep(0) noobs
+dis _n "==== Supplemental county-count / observation audit ===="
+list approach n_counties n_orig n_dest n_years n_obs, sep(0) noobs
 
 ** Ensure output directory exists
 capture mkdir "${results}"
@@ -135,24 +144,27 @@ export excel using "${results}tables/diagnostics_obs_counts_supp.xlsx", ///
 tempname fh
 file open `fh' using "${results}tables/diagnostics_obs_counts_supp.tex", write replace
 
-file write `fh' "\begin{tabular}{llllrrr}" _n
+file write `fh' "\begin{tabular}{lllrrrrr}" _n
 file write `fh' "\toprule" _n
-file write `fh' "Approach & Sample & Data & Unit & Units & Periods & Obs. \\" _n
+file write `fh' "Approach & Sample & Data & Counties & Origin & Dest. & Years & Obs. \\" _n
 file write `fh' "\midrule" _n
 
 local N = _N
 forvalues i = 1/`N' {
 
-    local a = approach[`i']
-    local s = sample[`i']
-    local d = data_source[`i']
-    local u = unit[`i']
-    local nu = N_units[`i']
-    local ny = N_years[`i']
-    local no = N_obs[`i']
-
-    file write `fh' "`a' & `s' & `d' & `u' & "
-    file write `fh' %12.0fc (`nu') " & " %4.0f (`ny') " & " %12.0fc (`no') " \\" _n
+    local a  = approach[`i']
+    local s  = sample[`i']
+    local d  = data_source[`i']
+    local nc = n_counties[`i']
+    local no = n_orig[`i']
+    local nd = n_dest[`i']
+    local ny = n_years[`i']
+    local no_obs = n_obs[`i']
+    local nc_t = cond(missing(`nc'), "--", strofreal(`nc', "%9.0fc"))
+    local no_t = cond(missing(`no'), "--", strofreal(`no', "%9.0fc"))
+    local nd_t = cond(missing(`nd'), "--", strofreal(`nd', "%9.0fc"))
+    file write `fh' "`a' & `s' & `d' & `nc_t' & `no_t' & `nd_t' & "
+    file write `fh' %4.0f (`ny') " & " %12.0fc (`no_obs') " \\" _n
 }
 
 file write `fh' "\bottomrule" _n

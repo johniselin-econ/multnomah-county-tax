@@ -7,9 +7,14 @@
 *                - SDID   : counted directly from sdid_analysis_data.dta, so the
 *                           audit cannot drift from the estimation (matches
 *                           Table 1 / Appendix Table A1, which load the same file).
-*                - Flows  : mirrors 02_flow_analysis.do (ACS set balanced
-*                           2016-2024, AK/HI dropped, both endpoints in ACS),
-*                           reported with AND without 2020.
+*                - Flows  : same SAMPLE RESTRICTIONS as 02_flow_analysis.do
+*                           (ACS set balanced 2016-2024, AK/HI dropped, both
+*                           endpoints in ACS), reported with AND without 2020.
+*                           NOTE: counts the OBSERVED flow sample. n_obs is
+*                           observed flow-years; it is NOT the PPML estimation
+*                           N, which adds tsfill,full zero-rows, restricts to
+*                           movers, and inner-joins covariates. The county
+*                           counts are unaffected by those steps.
 *                - DiD    : mirrors 02_did_analysis.do (ACS individuals 25+,
 *                           2016-2024 excl. 2020, AK/HI + neg-income + qmigplc1
 *                           dropped).
@@ -236,14 +241,30 @@ gen byte acs_identified = 1
 tempfile acs_id
 save `acs_id'
 
-** acs_balanced: counties present in the ACS panel in EVERY analysis year
-** (2016-2024) = the 389-county set, equivalent to the SDID's acs_period_2
-** membership (matched to ACS in all years), which is what defines the ACS
-** estimation sample -- so the funnel mirrors the estimation's 2016-2024 balance
-** rather than the IRS window. Built via the shared helper (01a_programs.do) so
-** it stays identical to the flow estimation and appendix descriptives.
+** acs_balanced: the county set the SDID estimation calls acs_period_2. The
+** estimation (02_sdid_analysis.do:190-200) sets acs_period_2 by counting, per
+** county, the years matched to the ACS 25+ panel AMONG the rows that survive the
+** BEA merge, then keeping counties matched in every such year (ct == max). A
+** county's 2023-2024 ACS rows therefore only count if it ALSO has BEA coverage
+** those years, so a county balanced in the RAW ACS panel but missing 2023-2024
+** BEA is NOT in acs_period_2. Reproduce that ACS-and-BEA-every-year rule here
+** (demographics is time-invariant -> applied at Step 3; the covid/proptax/age
+** merges keep non-matches, so they do not gate the panel) so the funnel endpoint
+** reconciles with the estimation by construction, rather than approximating it
+** with the raw-ACS balance (build_acs_balanced_set, used for the flow sample).
+** If BEA covers every ACS county-year this is identical to the raw-ACS balance.
+use "${data}working/acs_county_gross_25plus", clear
+keep year fips
+keep if inrange(year, 2016, 2024)
+merge 1:1 year fips using "${data}working/bea_economics", keep(match) gen(_mbea)
+bysort fips: gen _ny = _N
+qui summ _ny
+keep if _ny == r(max)              // ACS-and-BEA-matched every year = balanced
+keep fips
+duplicates drop
+gen byte acs_balanced = 1
 tempfile acs_bal
-build_acs_balanced_set, saving(`acs_bal') flag(acs_balanced)
+save `acs_bal'
 
 ** Step 1: IRS county-to-county file, analysis years, drop "other counties"
 use "${data}working/irs_county_gross", clear
@@ -288,13 +309,15 @@ diag_distinct fips
 funnel_post, step(5) label("+ non-zero base, IRS-balanced (2016-2022)") ///
 	ncty(`r(nd)') funnelfile(`funnel')
 
-** Step 6: + ACS-balanced (in the ACS panel every year 2016-2024 = the 389 set,
-**         equivalent to acs_period_2 membership in the estimation).
+** Step 6: + ACS-balanced = acs_period_2. acs_bal (built above) reproduces the
+**         estimation's rule: ACS-25+ AND BEA-matched in every analysis year
+**         2016-2024, so the 2023-2024 ACS rows are gated by BEA coverage exactly
+**         as in 02_sdid_analysis.do. This is the SDID ACS estimation county set.
 merge m:1 fips using `acs_bal', keep(master match) gen(_mbal)
 keep if _mbal == 3
 drop _mbal acs_balanced
 diag_distinct fips
-funnel_post, step(6) label("+ ACS-balanced panel (2016-2024)") ///
+funnel_post, step(6) label("+ ACS-balanced panel (acs_period_2, 2016-2024)") ///
 	ncty(`r(nd)') funnelfile(`funnel')
 
 ** Step 7: + state drops (AK, HI, CA, WA, non-Multnomah OR). Dropping ALL of
@@ -323,8 +346,10 @@ if _rc == 0 {
 	dis "Funnel endpoint = `funnel_final' counties; estimation file = `truth'."
 	if `funnel_final' != `truth' {
 		dis as error "NOTE: funnel reconstruction (`funnel_final') differs from the"
-		dis as error "      estimation file (`truth'). The from-file count is authoritative;"
-		dis as error "      the funnel replication needs a small adjustment to match exactly."
+		dis as error "      estimation file (`truth'). The from-file count is authoritative."
+		dis as error "      The reconstruction now applies the estimation's ACS+BEA balance"
+		dis as error "      rule, so any residual gap is a county in acs_period_2 but absent"
+		dis as error "      from irs_county_gross (ACS-only) -- check before trusting Step 6."
 	}
 	else {
 		dis "Funnel reconstruction matches the estimation file exactly."
@@ -333,9 +358,16 @@ if _rc == 0 {
 
 
 ********************************************************************************
-** SECTION 3: Flow analysis -- mirrors 02_flow_analysis.do (corrected:
-**            ACS set balanced 2016-2024; AK/HI dropped). Reported overall and
-**            with origin/destination county counts, WITH and WITHOUT 2020.
+** SECTION 3: Flow analysis -- applies the same SAMPLE RESTRICTIONS as
+**            02_flow_analysis.do (ACS set balanced 2016-2024; AK/HI dropped).
+**            Reported overall and with origin/destination county counts, WITH
+**            and WITHOUT 2020.
+**            n_obs here is the count of OBSERVED flow-years (the reported IRS
+**            rows). It deliberately does NOT reproduce the PPML estimation N:
+**            the estimation xtset/tsfill,full zero-fills every county-pair-year,
+**            keeps only movers (fips_o != fips_d), and inner-joins ids/bls/bea
+**            coverage -- none of which changes the distinct-county counts that
+**            are this audit's purpose.
 ********************************************************************************
 
 ** ACS county set: balanced over 2016-2024, via the shared helper
