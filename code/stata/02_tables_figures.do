@@ -1634,6 +1634,198 @@ if "${overleaf}" == "1" {
 }
 
 ********************************************************************************
+** SECTION 4B: Revenue-decomposition appendix table (six preferred specs)
+********************************************************************************
+** Writes ${results}revenue/tbl_revenue_decomposition.tex — a 9-column tabular
+** fragment with two stacked panels (A: PFA, B: Oregon, Multnomah-resident
+** scope). One row per preferred spec; each row walks from the SDID coefficient
+** tau through to the implied $M revenue loss using the intermediates
+** populated in spec_results.dta by 02_post_spec.do (returned from
+** compute_spec_revenue in 02_spec_engine.do).
+**
+** The arithmetic identity (R_m / dynamic) * actual / 1e6 == implied is
+** preserved by construction. The table writer only formats and prints; no
+** new arithmetic happens here.
+
+dis ""
+dis "=============================================="
+dis "Section 4B: Revenue-decomposition appendix table"
+dis "=============================================="
+
+** Re-load spec_results.dta in case the section above restored from a
+** different preserve scope. Cheap on this dataset size.
+use "${results}elasticities/spec_results.dta", clear
+
+** Build the six-row preferred ordering. Panel A pulls from net-domestic
+** preferred rows (have pfa_loss); Panel B from net-outstate preferred rows
+** (have state_loss). Spec labels match the body of the paper.
+tempname M_PFA M_STATE
+matrix `M_PFA'   = J(6, 9, .)
+matrix `M_STATE' = J(6, 9, .)
+matrix colnames `M_PFA'   = tau scale X Rm baseline dynamic ratio actual implied
+matrix colnames `M_STATE' = tau scale X Rm baseline dynamic ratio actual implied
+
+local r 0
+foreach spec in `"IRS sample_all"' `"IRS sample_stringency"' `"IRS sample_narrow"' ///
+		`"ACS College sample_all"' `"ACS College sample_stringency"' `"ACS College sample_narrow"' {
+
+	local ++r
+	local dtype : word 1 of `spec'
+	** word 2 of an "ACS College sample_X" entry is "College"; the sample
+	** name is then word 3. For IRS it's straight (dtype=IRS, samp=word 2).
+	if "`dtype'" == "ACS" {
+		local dtype "ACS College"
+		local samp : word 3 of `spec'
+	}
+	else {
+		local samp : word 2 of `spec'
+	}
+
+	** Panel A — domestic net spec
+	qui count if data_type == "`dtype'" & sample == "`samp'" ///
+		& migration == "net" & outstate == 0 & preferred == 1 ///
+		& controls == 1 & exclusion == 1
+	if r(N) == 1 {
+		qui summ tau          if data_type == "`dtype'" & sample == "`samp'" & migration == "net" & outstate == 0 & preferred == 1
+		matrix `M_PFA'[`r', 1] = r(mean)
+		qui summ scale        if data_type == "`dtype'" & sample == "`samp'" & migration == "net" & outstate == 0 & preferred == 1
+		matrix `M_PFA'[`r', 2] = r(mean)
+		qui summ X_pfa        if data_type == "`dtype'" & sample == "`samp'" & migration == "net" & outstate == 0 & preferred == 1
+		matrix `M_PFA'[`r', 3] = r(mean)
+		qui summ R_m_pfa      if data_type == "`dtype'" & sample == "`samp'" & migration == "net" & outstate == 0 & preferred == 1
+		matrix `M_PFA'[`r', 4] = r(mean)
+		qui summ baseline_pfa if data_type == "`dtype'" & sample == "`samp'" & migration == "net" & outstate == 0 & preferred == 1
+		matrix `M_PFA'[`r', 5] = r(mean)
+		qui summ dynamic_pfa  if data_type == "`dtype'" & sample == "`samp'" & migration == "net" & outstate == 0 & preferred == 1
+		matrix `M_PFA'[`r', 6] = r(mean)
+		qui summ ratio_pfa    if data_type == "`dtype'" & sample == "`samp'" & migration == "net" & outstate == 0 & preferred == 1
+		matrix `M_PFA'[`r', 7] = r(mean)
+		qui summ actual_pfa   if data_type == "`dtype'" & sample == "`samp'" & migration == "net" & outstate == 0 & preferred == 1
+		matrix `M_PFA'[`r', 8] = r(mean)
+		qui summ pfa_loss     if data_type == "`dtype'" & sample == "`samp'" & migration == "net" & outstate == 0 & preferred == 1
+		matrix `M_PFA'[`r', 9] = r(mean)
+	}
+
+	** Panel B — outstate net spec (matched data_type)
+	local dtype_out = cond("`dtype'" == "IRS", "IRS (Out-of-State)", "ACS College (Out-of-State)")
+	qui count if data_type == "`dtype_out'" & sample == "`samp'" ///
+		& migration == "net" & outstate == 1 & preferred == 1 ///
+		& controls == 1 & exclusion == 1
+	if r(N) == 1 {
+		qui summ tau            if data_type == "`dtype_out'" & sample == "`samp'" & migration == "net" & outstate == 1 & preferred == 1
+		matrix `M_STATE'[`r', 1] = r(mean)
+		qui summ scale          if data_type == "`dtype_out'" & sample == "`samp'" & migration == "net" & outstate == 1 & preferred == 1
+		matrix `M_STATE'[`r', 2] = r(mean)
+		qui summ X_state        if data_type == "`dtype_out'" & sample == "`samp'" & migration == "net" & outstate == 1 & preferred == 1
+		matrix `M_STATE'[`r', 3] = r(mean)
+		qui summ R_m_state      if data_type == "`dtype_out'" & sample == "`samp'" & migration == "net" & outstate == 1 & preferred == 1
+		matrix `M_STATE'[`r', 4] = r(mean)
+		qui summ baseline_state if data_type == "`dtype_out'" & sample == "`samp'" & migration == "net" & outstate == 1 & preferred == 1
+		matrix `M_STATE'[`r', 5] = r(mean)
+		qui summ dynamic_state  if data_type == "`dtype_out'" & sample == "`samp'" & migration == "net" & outstate == 1 & preferred == 1
+		matrix `M_STATE'[`r', 6] = r(mean)
+		qui summ ratio_state    if data_type == "`dtype_out'" & sample == "`samp'" & migration == "net" & outstate == 1 & preferred == 1
+		matrix `M_STATE'[`r', 7] = r(mean)
+		qui summ actual_state   if data_type == "`dtype_out'" & sample == "`samp'" & migration == "net" & outstate == 1 & preferred == 1
+		matrix `M_STATE'[`r', 8] = r(mean)
+		qui summ state_loss     if data_type == "`dtype_out'" & sample == "`samp'" & migration == "net" & outstate == 1 & preferred == 1
+		matrix `M_STATE'[`r', 9] = r(mean)
+	}
+}
+
+** Defensive: warn if any row is fully missing (preferred spec didn't compute).
+forvalues r = 1/6 {
+	if missing(`M_PFA'[`r', 9]) {
+		dis as error "WARNING: Panel A row `r' has missing implied PFA loss — preferred spec not found in spec_results.dta."
+	}
+	if missing(`M_STATE'[`r', 9]) {
+		dis as error "WARNING: Panel B row `r' has missing implied Oregon loss — preferred spec not found in spec_results.dta."
+	}
+}
+
+** Spec labels used in the tabular's first column (must match the row order
+** of the spec foreach loop above).
+local spec_labels `" "IRS, all counties" "IRS, stringency match" "IRS, narrow similar-cities" "ACS college (2016--24), all counties" "ACS college (2016--24), stringency match" "ACS college (2016--24), narrow similar-cities" "'
+
+** Build the tabular fragment. Columns: spec | tau | scale | X | R_m |
+** baseline | dynamic | ratio | actual | implied. tau is in pp; X is
+** rescaled to $ billions; R_m / baseline / dynamic / actual / implied are
+** in $ millions; ratio is in percent.
+local tex_path "${results}revenue/tbl_revenue_decomposition.tex"
+tempname fh
+file open `fh' using "`tex_path'", write replace text
+
+file write `fh' "\begin{tabular}{l*{9}{c}}" _n
+file write `fh' "\toprule" _n
+file write `fh' " & \$\hat\tau\$ & Scale & \$X\$ & \$R_m\$ & Baseline & Dynamic & \$R_m/\$dyn & Actual & Implied \\\\" _n
+file write `fh' "Spec & (pp) & & (\\\$B) & (\\\$M) & (\\\$M) & (\\\$M) & (\%) & (\\\$M) & (\\\$M) \\\\" _n
+file write `fh' "\midrule" _n
+file write `fh' "\multicolumn{10}{l}{\textit{Panel A: PFA (Multnomah)}} \\\\" _n
+
+forvalues r = 1/6 {
+	local lbl : word `r' of `spec_labels'
+	local tau_v   = `M_PFA'[`r', 1]
+	local scale_v = `M_PFA'[`r', 2]
+	local X_v     = `M_PFA'[`r', 3] / 1e9
+	local Rm_v    = `M_PFA'[`r', 4] / 1e6
+	local base_v  = `M_PFA'[`r', 5] / 1e6
+	local dyn_v   = `M_PFA'[`r', 6] / 1e6
+	local rat_v   = `M_PFA'[`r', 7] * 100
+	local act_v   = `M_PFA'[`r', 8] / 1e6
+	local imp_v   = `M_PFA'[`r', 9]
+	file write `fh' "`lbl'"                                    ///
+		" & " %5.2f (`tau_v')                                  ///
+		" & " %4.2f (`scale_v')                                ///
+		" & " %5.2f (`X_v')                                    ///
+		" & " %6.1f (`Rm_v')                                   ///
+		" & " %6.1f (`base_v')                                 ///
+		" & " %6.1f (`dyn_v')                                  ///
+		" & " %5.1f (`rat_v')                                  ///
+		" & " %6.1f (`act_v')                                  ///
+		" & " %6.1f (`imp_v')                                  ///
+		" \\\\" _n
+}
+
+file write `fh' "\midrule" _n
+file write `fh' "\multicolumn{10}{l}{\textit{Panel B: Oregon (Multnomah-resident share)}} \\\\" _n
+
+forvalues r = 1/6 {
+	local lbl : word `r' of `spec_labels'
+	local tau_v   = `M_STATE'[`r', 1]
+	local scale_v = `M_STATE'[`r', 2]
+	local X_v     = `M_STATE'[`r', 3] / 1e9
+	local Rm_v    = `M_STATE'[`r', 4] / 1e6
+	local base_v  = `M_STATE'[`r', 5] / 1e6
+	local dyn_v   = `M_STATE'[`r', 6] / 1e6
+	local rat_v   = `M_STATE'[`r', 7] * 100
+	local act_v   = `M_STATE'[`r', 8] / 1e6
+	local imp_v   = `M_STATE'[`r', 9]
+	file write `fh' "`lbl'"                                    ///
+		" & " %5.2f (`tau_v')                                  ///
+		" & " %4.2f (`scale_v')                                ///
+		" & " %5.2f (`X_v')                                    ///
+		" & " %6.1f (`Rm_v')                                   ///
+		" & " %6.1f (`base_v')                                 ///
+		" & " %6.1f (`dyn_v')                                  ///
+		" & " %5.1f (`rat_v')                                  ///
+		" & " %6.1f (`act_v')                                  ///
+		" & " %6.1f (`imp_v')                                  ///
+		" \\\\" _n
+}
+
+file write `fh' "\bottomrule" _n
+file write `fh' "\end{tabular}" _n
+file close `fh'
+
+dis "Wrote: `tex_path'"
+
+** Overleaf sync (matches the tab_flow_regression pattern).
+if "${overleaf}" == "1" {
+	copy "`tex_path'" "${ol_tab}tbl_revenue_decomposition.tex", replace
+	dis "Synced: ${ol_tab}tbl_revenue_decomposition.tex"
+}
+
+********************************************************************************
 ** SECTION 5: Preferred-spec event-study overlays
 ********************************************************************************
 ** Reads sdid_event_results.dta (preferred==1 rows) and writes 18 overlay

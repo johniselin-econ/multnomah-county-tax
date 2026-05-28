@@ -211,7 +211,9 @@ foreach v in beta_kleven beta_se_kleven beta_kleven_shs beta_se_kleven_shs ///
 		stock_elast_imp_common stock_elast_imp_full stock_elast_imp_ann     ///
 		stock_elast_total_common_shs stock_elast_total_full_shs stock_elast_total_ann_shs ///
 		stock_elast_imp_common_shs stock_elast_imp_full_shs stock_elast_imp_ann_shs ///
-		pfa_loss state_loss {
+		pfa_loss state_loss ///
+		X_pfa R_m_pfa dynamic_pfa ratio_pfa baseline_pfa actual_pfa ///
+		X_state R_m_state dynamic_state ratio_state baseline_state actual_state {
 	gen double `v' = .
 }
 
@@ -296,6 +298,22 @@ qui {
 		replace pfa_loss   = r(pfa_loss)   in `i'
 		replace state_loss = r(state_loss) in `i'
 
+		** Revenue-decomposition intermediates (populated only for net specs in
+		** the matching outstate branch; missing otherwise). Used by the
+		** appendix table tbl_revenue_decomposition.tex.
+		replace X_pfa          = r(X_pfa)          in `i'
+		replace R_m_pfa        = r(R_m_pfa)        in `i'
+		replace dynamic_pfa    = r(dynamic_pfa)    in `i'
+		replace ratio_pfa      = r(ratio_pfa)      in `i'
+		replace baseline_pfa   = r(baseline_pfa)   in `i'
+		replace actual_pfa     = r(actual_pfa)     in `i'
+		replace X_state        = r(X_state)        in `i'
+		replace R_m_state      = r(R_m_state)      in `i'
+		replace dynamic_state  = r(dynamic_state)  in `i'
+		replace ratio_state    = r(ratio_state)    in `i'
+		replace baseline_state = r(baseline_state) in `i'
+		replace actual_state   = r(actual_state)   in `i'
+
 		matrix drop `etau'
 	}
 }
@@ -369,6 +387,22 @@ capture label var stock_elast_imp_ann_shs      "Annualized stock elasticity +SHS
 
 label var pfa_loss   "Implied PFA revenue loss ($M; net-domestic specs only)"
 label var state_loss "Implied Oregon revenue loss from Multnomah out-migration ($M; net-outstate specs only)"
+
+** Revenue-decomposition intermediates (populated for net specs in their
+** applicable outstate branch; otherwise missing). Used to build the
+** appendix walk-through table tbl_revenue_decomposition.tex.
+label var X_pfa          "AGI moving, PFA branch ($; effect_scaled x total_agi_2022)"
+label var R_m_pfa        "Static PFA loss R_m ($; avg_mt_rate x X_pfa)"
+label var dynamic_pfa    "PFA dynamic baseline ($; baseline_pfa - R_m_pfa)"
+label var ratio_pfa      "R_m / dynamic ratio, PFA branch (decimal)"
+label var baseline_pfa   "Baseline PFA revenue, simulated ($; constant across specs)"
+label var actual_pfa     "Actual PFA revenue ($; constant across specs)"
+label var X_state        "AGI moving, Oregon branch ($; effect_scaled x total_agi_2022)"
+label var R_m_state      "Static Oregon loss R_m ($; avg_state_rate x X_state)"
+label var dynamic_state  "Oregon dynamic baseline ($; baseline_state - R_m_state)"
+label var ratio_state    "R_m / dynamic ratio, Oregon branch (decimal)"
+label var baseline_state "Baseline Oregon revenue, Multnomah scope ($; constant)"
+label var actual_state   "Actual Oregon revenue, Multnomah scope ($; constant)"
 
 ********************************************************************************
 ** SECTION 8: Save

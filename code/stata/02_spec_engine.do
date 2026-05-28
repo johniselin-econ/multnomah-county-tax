@@ -383,13 +383,22 @@ program define load_spec_panel, rclass
 		local data_var "acs_period_2"
 		local out_type "acs2_outstate"
 	}
+	else if "`sampledata'" == "otherout" {
+		local data_var ""             // no IRS/ACS sub-block gate; donor pool is the only filter
+		local out_type "otherout"
+		if `"`datafile'"' == "" local data_file "${data}working/otherout_sdid_data.dta"
+	}
 	else {
 		dis as error "load_spec_panel: unsupported sample_data `sampledata'"
 		exit 198
 	}
 
 	local covariates "population per_capita_income"
-	if "`data_var'" != "irs_sample_1" local covariates "`covariates' prop_tax_rate"
+	** prop_tax_rate is a migration-panel covariate; the otherout panel does not
+	** carry it and uses population + per-capita income only.
+	if "`out_type'" != "otherout" & "`data_var'" != "irs_sample_1" {
+		local covariates "`covariates' prop_tax_rate"
+	}
 
 	** Manifest check applies only to the canonical .dta artifact. Bootstrap
 	** callers pass Stata tempfiles (.tmp), where subinstr leaves the path
@@ -401,13 +410,17 @@ program define load_spec_panel, rclass
 	}
 
 	use "`data_file'", clear
-	capture confirm variable `data_var'
-	if _rc != 0 {
-		dis as error "load_spec_panel: `data_var' not found in `data_file'"
-		exit 111
+	** Migration blocks gate on a sub-block indicator (irs_sample_*/acs_period_*);
+	** the otherout block has no such gate (data_var empty) -- the donor pool is
+	** the only sample filter, applied later in fit_spec_sdid.
+	if "`data_var'" != "" {
+		capture confirm variable `data_var'
+		if _rc != 0 {
+			dis as error "load_spec_panel: `data_var' not found in `data_file'"
+			exit 111
+		}
+		keep if `data_var' == 1
 	}
-
-	keep if `data_var' == 1
 	sort fips year
 	isid fips year
 
@@ -1003,12 +1016,37 @@ program define compute_spec_revenue, rclass
 	return scalar effect_scaled = `effect_scaled'
 	return scalar scale      = `scale'
 
+	** Intermediates for the revenue-decomposition appendix table
+	** (tbl_revenue_decomposition.tex). Returned `.` when not applicable so
+	** the downstream collapse-into-columns step in 02_post_spec.do can post
+	** a missing without a special case. The constants (baseline_*, actual_*)
+	** are returned per-call so the table writer doesn't have to re-read
+	** revenue_parameters.dta.
+	return scalar X_pfa        = .
+	return scalar R_m_pfa      = .
+	return scalar dynamic_pfa  = .
+	return scalar ratio_pfa    = .
+	return scalar baseline_pfa = .
+	return scalar actual_pfa   = .
+	return scalar X_state        = .
+	return scalar R_m_state      = .
+	return scalar dynamic_state  = .
+	return scalar ratio_state    = .
+	return scalar baseline_state = .
+	return scalar actual_state   = .
+
 	** PFA revenue loss: defined for domestic (outstate == 0) net migration
 	if "`migration'" == "net" & `outstate' == 0 {
 		local X       = `effect_scaled' * total_agi_2022
 		local R_m     = avg_mt_rate * `X'
 		local dynamic = baseline_pfa_revenue - `R_m'
+		return scalar X_pfa        = `X'
+		return scalar R_m_pfa      = `R_m'
+		return scalar dynamic_pfa  = `dynamic'
+		return scalar baseline_pfa = baseline_pfa_revenue
+		return scalar actual_pfa   = ${actual_pfa_revenue}
 		if `dynamic' > 0 {
+			return scalar ratio_pfa = `R_m' / `dynamic'
 			return scalar pfa_loss = (`R_m' / `dynamic') * ${actual_pfa_revenue} / 1e6
 		}
 	}
@@ -1018,7 +1056,13 @@ program define compute_spec_revenue, rclass
 		local X       = `effect_scaled' * total_agi_2022
 		local R_m     = avg_state_rate * `X'
 		local dynamic = baseline_state_revenue - `R_m'
+		return scalar X_state        = `X'
+		return scalar R_m_state      = `R_m'
+		return scalar dynamic_state  = `dynamic'
+		return scalar baseline_state = baseline_state_revenue
+		return scalar actual_state   = ${actual_oregon_revenue}
 		if `dynamic' > 0 {
+			return scalar ratio_state = `R_m' / `dynamic'
 			return scalar state_loss = (`R_m' / `dynamic') * ${actual_oregon_revenue} / 1e6
 		}
 	}
