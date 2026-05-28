@@ -42,6 +42,11 @@ if "${code}" == "" {
 	else global code "`_cwd'/code/stata/"
 }
 do "${code}00_stata_config.do"
+** 01a_programs.do (project_set_seed, sdid_log_failure) and 02_spec_engine.do
+** (fit_spec_sdid, load_spec_panel) are normally sourced earlier by the
+** orchestrator; source them defensively so this script also runs standalone.
+do "${code}01a_programs.do"
+do "${code}02_spec_engine.do"
 
 
 ** Start log file
@@ -813,31 +818,15 @@ else {
 		** Loop over exclusion of 2020
 		forvalues exl = 1(-1)0 {
 
-			** Define sample
-			gen sample = `samp' == 1
-			if `exl' == 1 replace sample = 0 if year == 2020
-
-			** Clear stored values
-			eststo clear
-
-			** Loop over outcome variables
+			** Sample, exclusion, and covariates are all handled inside the
+			** engine (fit_spec_sdid -> load_spec_panel), so no in-memory `sample`
+			** var or eststo scaffolding is needed here.
 			foreach out of local outcomes {
-
-				** Store label
-				local label : variable label `out'
 
 				** Loop over inclusion of covariates
 				forvalues c = 0/1 {
 
-					** Covariates
-					if `c' == 0 local covars ""
-					else if `c' == 1 local covars "covariates(`covariates')"
-
-					** Covariates for sdid_event
-					if `c' == 0 local covars_event ""
-					else if `c' == 1 local covars_event "covariates(`covariates')"
-
-					** File Name
+					** Figure base path for the engine's point-estimate SDID graph
 					if `exl' == 0 local path "${results}sdid/otherout/fig_otherout_`out'_`c'_`samp'_"
 					if `exl' == 1 local path "${results}sdid/otherout/fig_otherout_`out'_`c'_`samp'_excl2020_"
 
@@ -851,97 +840,61 @@ else {
 						}
 					}
 
-					** Run SDID
-					capture noisily {
-						eststo sdid_`out'_`c': sdid `out' fips year Treated	///
-							if sample == 1,				///
-							vce(placebo) 				///
-							`covars'					///
-							reps(`reps')				///
-							graph graph_export("`path'", .pdf)
-					}
+					** Estimate one SDID spec via the shared engine (point estimate
+					** + event study). Behavior-preserving: identical
+					** `sdid ... vce(placebo)` to the former inline call, so
+					** tau/se/pre_mean/n_counties match by construction.
+					capture noisily fit_spec_sdid, sampledata("otherout") ///
+						sample(`samp') outcome(`out') controls(`c') exclusion(`exl') ///
+						eventstudy(1) reps(`reps') ///
+						datafile("${data}working/otherout_sdid_data.dta") ///
+						graphbase("`path'")
 
 					if _rc != 0 {
 						local _failed_rc = _rc
-						dis "SDID failed for `out' c=`c' exl=`exl' samp=`samp'. Skipping."
+						dis "fit_spec_sdid failed for `out' c=`c' exl=`exl' samp=`samp'. Skipping."
 						sdid_log_failure, rc(`_failed_rc') script("02_otherout_sdid") ///
 							tableid("otherout") outcome("`out'") c(`c') exl(`exl') ///
 							samp("`samp'") context("main-serial")
 						continue
 					}
 
-					** Store results
-					local tmp_tau = e(ATT)
-					local tmp_se = e(se)
+					** Headline results -> postfile
+					local tmp_tau       = r(tau)
+					local tmp_se        = r(se)
+					local tmp_premean   = r(pre_mean)
+					local tmp_ncounties = r(n_counties)
+					local tmp_event_ok  = r(event_ok)
+					tempname _evres
+					if `tmp_event_ok' == 1 matrix `_evres' = r(event_res)
 
-					** Pre-treatment mean and county count
-					qui summ `out' if multnomah == 1 & Treated == 0 & sample == 1
-					local tmp_premean = r(mean)
-					estadd scalar mean = r(mean)
-
-					qui summ `out' if year == 2021 & sample == 1
-					local tmp_ncounties = r(N)
-					estadd scalar count = r(N)
-
-					** Post results to postfile (O(1) append)
-					local tmp_pval = 2 * (1 - normal(abs(`tmp_tau'/`tmp_se')))
+					local tmp_pval  = 2 * (1 - normal(abs(`tmp_tau'/`tmp_se')))
 					local tmp_ci_lo = `tmp_tau' - 1.96 * `tmp_se'
 					local tmp_ci_hi = `tmp_tau' + 1.96 * `tmp_se'
-					local tmp_sig = abs(`tmp_tau'/`tmp_se') > 1.96
+					local tmp_sig   = abs(`tmp_tau'/`tmp_se') > 1.96
 					post `pf_results' ("otherout") ("`samp'") ("`out'") ///
 						(`c') (`exl') (`tmp_tau') (`tmp_se') (`tmp_pval') ///
 						(`tmp_ci_lo') (`tmp_ci_hi') (`tmp_ncounties')     ///
 						(`tmp_premean') (`tmp_sig')
 
-					** Run event study
-					capture noisily {
-						sdid_event `out' fips year Treated	///
-							if sample == 1,				///
-							`covars_event'				///
-							vce(placebo) 				///
-							brep(`reps') 				///
-							placebo(all)
-					}
-
-					local event_rc = _rc
-					capture drop ever_treated*
-
-					if `event_rc' == 0 {
-
-						** Store max year
-						qui summ year if multnomah == 1 & sample == 1
-						local max_yr = r(max)
-
-						** Extract matrix
-						qui count if multnomah == 1 & sample == 1
-						local ct = r(N)
-						local ct = `ct' + 1
-
-						capture mat res = e(H)[2..`ct',1..5]
-						if _rc != 0 {
-							continue
-						}
-
-						** Preserve and plot
+					** Event-study figure from r(event_res): cols are
+					** year, tau, ci_lo, ci_hi. The engine already applies the
+					** exclusion-year shift, so the matrix years plot as-is.
+					if `tmp_event_ok' == 1 {
 						preserve
-						svmat res
-						gen id = `max_yr' - _n + 1 if !missing(res1)
-
-						if `exl' == 1 {
-							replace id = id - 1 if id <= 2020
-							expand 2 if id == 2019, gen(tag)
-							replace id = 2020 if tag == 1
-							replace res1 = . if tag == 1
-							replace res3 = . if tag == 1
-							replace res4 = . if tag == 1
-						}
+						clear
+						svmat `_evres', names(_ev)
+						rename _ev1 id
+						rename _ev2 _evtau
+						rename _ev3 _evlo
+						rename _ev4 _evhi
 						label var id "Year"
 						sort id
 
-						twoway	(rcap res3 res4 id, lc(gs10) fc(gs11%50))	///
-								(scatter res1 id, mc(black)),				///
-							legend(off) ytitle("`label'")					///
-							yline(0, lc("`col_zero'") lp(-))							///
+						twoway	(rcap _evlo _evhi id, lc(gs10) fc(gs11%50))	///
+								(scatter _evtau id, mc(black)),				///
+							legend(off) ytitle("`lbl_`out''")				///
+							yline(0, lc("`col_zero'") lp(-))				///
 							xline(2020.5, lc(black) lp(solid))
 
 						if `exl' == 1 local evpath "${results}sdid/otherout/fig_otherout_`out'_`c'_`samp'_excl2020_eventstudy.jpg"
@@ -955,44 +908,11 @@ else {
 
 			} // END OUTCOME LOOP
 
-			** Table of results (all 4 outcomes, with/without covariates)
-			if `exl' == 0 local tabfname "tab_otherout_`samp'.tex"
-			if `exl' == 1 local tabfname "tab_otherout_`samp'_excl2020.tex"
-
-			local _dests `""${results}sdid/otherout/`tabfname'""'
-			if ${overleaf} == 1 {
-				local _dests `"`_dests' "${ol_tab}`tabfname'""'
-			}
-
-			** Build dynamic esttab model list
-			local est_list ""
-			local mtitle_list ""
-			local mgroup_labels ""
-			local mgroup_pattern ""
-			foreach out of local outcomes {
-				local est_list "`est_list' sdid_`out'_0 sdid_`out'_1"
-				local mtitle_list `"`mtitle_list' "No Cov." "Cov.""'
-				local mgroup_labels `"`mgroup_labels' "`lbl_`out''""'
-				local mgroup_pattern "`mgroup_pattern' 1 0"
-			}
-
-			foreach _outfile of local _dests {
-			capture noisily {
-				esttab `est_list'	///
-					using "`_outfile'",								///
-				starlevel("*" 0.10 "**" 0.05 "***" 0.01)		///
-				b(%-9.3f) se(%-9.3f) replace 					///
-				mgroups(`mgroup_labels',						///
-					pattern(`mgroup_pattern'))					///
-				mtitle(`mtitle_list')							///
-				stats(count mean, 								///
-					fmt(%9.0fc %9.3fc) 							///
-					labels("Number of Counties" "Pre-treatment mean"))
-			}
-			} // end foreach _outfile (tab_otherout)
-
-			** Drop sample var
-			drop sample
+			** Result tables for this sample are built after postclose from
+			** otherout_sdid_results.dta (see the "Result tables" pass below).
+			** The former esttab-on-live-estimates block was removed: fit_spec_sdid
+			** leaves no stored estimate to esttab, and building tables from the
+			** results file matches the main-SDID / 02_tables_figures.do pattern.
 
 		} // END EXCLUSION LOOP
 
@@ -1008,6 +928,85 @@ else {
 		save "${results}sdid/otherout/otherout_sdid_results.dta", replace
 		capture erase "${results}sdid/otherout/otherout_sdid_results_new.dta"
 	}
+
+	** ---- Result tables: built from otherout_sdid_results.dta (replaces the
+	**      former per-(samp,exl) esttab tables). 8 columns = 4 outcomes x
+	**      {No Cov., Cov.}; rows = SDID treatment effect (tau, se, stars),
+	**      county count, and pre-treatment mean. ----
+	preserve
+	use "${results}sdid/otherout/otherout_sdid_results.dta", clear
+	foreach samp in sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency {
+		forvalues exl = 0/1 {
+			if `exl' == 0 local tabfname "tab_otherout_`samp'.tex"
+			if `exl' == 1 local tabfname "tab_otherout_`samp'_excl2020.tex"
+			local _dests `""${results}sdid/otherout/`tabfname'""'
+			if ${overleaf} == 1 local _dests `"`_dests' "${ol_tab}`tabfname'""'
+
+			local taurow  "PFA effect"
+			local serow   ""
+			local cntrow  "Number of Counties"
+			local meanrow "Pre-treatment mean"
+			foreach out in ln_n1 ln_agi ln_total_inc ln_wage {
+				forvalues c = 0/1 {
+					qui count if outcome=="`out'" & sample=="`samp'" & exclusion==`exl' & controls==`c'
+					if r(N) >= 1 {
+						qui summ tau        if outcome=="`out'" & sample=="`samp'" & exclusion==`exl' & controls==`c', meanonly
+						local b = r(mean)
+						qui summ se         if outcome=="`out'" & sample=="`samp'" & exclusion==`exl' & controls==`c', meanonly
+						local s = r(mean)
+						qui summ pval       if outcome=="`out'" & sample=="`samp'" & exclusion==`exl' & controls==`c', meanonly
+						local p = r(mean)
+						qui summ n_counties if outcome=="`out'" & sample=="`samp'" & exclusion==`exl' & controls==`c', meanonly
+						local nc = r(mean)
+						qui summ pre_mean   if outcome=="`out'" & sample=="`samp'" & exclusion==`exl' & controls==`c', meanonly
+						local pm = r(mean)
+						local star ""
+						if `p' < 0.10 local star "*"
+						if `p' < 0.05 local star "**"
+						if `p' < 0.01 local star "***"
+						local bf  : di %9.3f `b'
+						local bf  = strtrim("`bf'")
+						local sf  : di %9.3f `s'
+						local sf  = strtrim("`sf'")
+						local ncf : di %9.0fc `nc'
+						local ncf = strtrim("`ncf'")
+						local pmf : di %9.3f `pm'
+						local pmf = strtrim("`pmf'")
+						local taurow  "`taurow' & `bf'`star'"
+						local serow   "`serow' & (`sf')"
+						local cntrow  "`cntrow' & `ncf'"
+						local meanrow "`meanrow' & `pmf'"
+					}
+					else {
+						local taurow  "`taurow' & "
+						local serow   "`serow' & "
+						local cntrow  "`cntrow' & "
+						local meanrow "`meanrow' & "
+					}
+				}
+			}
+
+			foreach _outfile of local _dests {
+				tempname th
+				file open `th' using "`_outfile'", write replace
+				file write `th' "\begin{tabular}{l*{8}{c}}" _n
+				file write `th' "\toprule" _n
+				file write `th' `" & \multicolumn{2}{c}{`lbl_ln_n1'} & \multicolumn{2}{c}{`lbl_ln_agi'} & \multicolumn{2}{c}{`lbl_ln_total_inc'} & \multicolumn{2}{c}{`lbl_ln_wage'} \\"' _n
+				file write `th' "\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}" _n
+				file write `th' " & No Cov. & Cov. & No Cov. & Cov. & No Cov. & Cov. & No Cov. & Cov. \\" _n
+				file write `th' "\midrule" _n
+				file write `th' `"`taurow' \\"' _n
+				file write `th' `"`serow' \\"' _n
+				file write `th' "\midrule" _n
+				file write `th' `"`cntrow' \\"' _n
+				file write `th' `"`meanrow' \\"' _n
+				file write `th' "\bottomrule" _n
+				file write `th' "\end{tabular}" _n
+				file close `th'
+			}
+		}
+	}
+	restore
 
 	** Clean up mata checkpoint lookup. `capture` prevents an error if an
 	** earlier failure in the loop dropped _done_set prematurely.
