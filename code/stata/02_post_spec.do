@@ -211,7 +211,7 @@ foreach v in beta_kleven beta_se_kleven beta_kleven_shs beta_se_kleven_shs ///
 		stock_elast_imp_common stock_elast_imp_full stock_elast_imp_ann     ///
 		stock_elast_total_common_shs stock_elast_total_full_shs stock_elast_total_ann_shs ///
 		stock_elast_imp_common_shs stock_elast_imp_full_shs stock_elast_imp_ann_shs ///
-		pfa_loss state_loss ///
+		pfa_loss state_loss scale ///
 		X_pfa R_m_pfa dynamic_pfa ratio_pfa baseline_pfa actual_pfa ///
 		X_state R_m_state dynamic_state ratio_state baseline_state actual_state {
 	gen double `v' = .
@@ -297,6 +297,7 @@ qui {
 			outstate(`os_i') datatype("`dt_i'")
 		replace pfa_loss   = r(pfa_loss)   in `i'
 		replace state_loss = r(state_loss) in `i'
+		replace scale      = r(scale)      in `i'
 
 		** Revenue-decomposition intermediates (populated only for net specs in
 		** the matching outstate branch; missing otherwise). Used by the
@@ -349,6 +350,7 @@ label var data_type        "Data source label (IRS, ACS All, ACS College, ...)"
 label var period_type      "Sample period (16-22 / 16-24)"
 label var outstate         "1 = out-of-state migration only"
 
+label var scale            "Revenue-branch scale factor: 1 (IRS/ACS All) or college_agi_share (ACS College); from compute_spec_revenue. Used by tbl_revenue_decomposition.tex."
 label var scale_total      "Scale to total AGI (1 or college_agi_share)"
 label var scale_taxbase    "Scale to impacted AGI (scale_total / impacted_agi_share)"
 label var stock_dln_ntr    "Spec-specific Δln(1-τ_total) used for stock elasticities"

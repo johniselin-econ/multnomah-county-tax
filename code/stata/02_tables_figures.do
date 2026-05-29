@@ -1755,12 +1755,18 @@ local tex_path "${results}revenue/tbl_revenue_decomposition.tex"
 tempname fh
 file open `fh' using "`tex_path'", write replace text
 
+** Literal "\$" for the LaTeX currency units (\$B, \$M). Writing "\$" directly
+** lets Stata consume the backslash (yielding a bare "$" that LaTeX reads as a
+** math toggle), so build the two characters explicitly: char(92)=backslash,
+** char(36)=dollar. Same idiom as 02_descriptives.do. Note line below keeps the
+** math-mode "\$...\$" for $\hat\tau$, $X$, $R_m$ — those ARE meant to be math.
+local dol = char(92) + char(36)
 file write `fh' "\begin{tabular}{l*{9}{c}}" _n
 file write `fh' "\toprule" _n
-file write `fh' " & \$\hat\tau\$ & Scale & \$X\$ & \$R_m\$ & Baseline & Dynamic & \$R_m/\$dyn & Actual & Implied \\\\" _n
-file write `fh' "Spec & (pp) & & (\\\$B) & (\\\$M) & (\\\$M) & (\\\$M) & (\%) & (\\\$M) & (\\\$M) \\\\" _n
+file write `fh' " & \$\hat\tau\$ & Scale & \$X\$ & \$R_m\$ & Baseline & Dynamic & \$R_m/\$dyn & Actual & Implied \\" _n
+file write `fh' "Spec & (pp) & & (`dol'B) & (`dol'M) & (`dol'M) & (`dol'M) & (\%) & (`dol'M) & (`dol'M) \\" _n
 file write `fh' "\midrule" _n
-file write `fh' "\multicolumn{10}{l}{\textit{Panel A: PFA (Multnomah)}} \\\\" _n
+file write `fh' "\multicolumn{10}{l}{\textit{Panel A: PFA (Multnomah)}} \\" _n
 
 forvalues r = 1/6 {
 	local lbl : word `r' of `spec_labels'
@@ -1783,11 +1789,11 @@ forvalues r = 1/6 {
 		" & " %5.1f (`rat_v')                                  ///
 		" & " %6.1f (`act_v')                                  ///
 		" & " %6.1f (`imp_v')                                  ///
-		" \\\\" _n
+		" \\" _n
 }
 
 file write `fh' "\midrule" _n
-file write `fh' "\multicolumn{10}{l}{\textit{Panel B: Oregon (Multnomah-resident share)}} \\\\" _n
+file write `fh' "\multicolumn{10}{l}{\textit{Panel B: Oregon (Multnomah-resident share)}} \\" _n
 
 forvalues r = 1/6 {
 	local lbl : word `r' of `spec_labels'
@@ -1810,7 +1816,7 @@ forvalues r = 1/6 {
 		" & " %5.1f (`rat_v')                                  ///
 		" & " %6.1f (`act_v')                                  ///
 		" & " %6.1f (`imp_v')                                  ///
-		" \\\\" _n
+		" \\" _n
 }
 
 file write `fh' "\bottomrule" _n
