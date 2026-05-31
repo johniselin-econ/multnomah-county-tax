@@ -47,17 +47,8 @@ if "${dir}" == "" {
     else global dir "`_cwd'"
 }
 do "${dir}/code/utils/globals.do"
-** 01a_programs.do is normally sourced by 00_multnomah.do; source defensively
-** so build_acs_balanced_set is available when run standalone.
-
-if "${ol_tab}" == "" {
-    capture do "${dir}/profile.do"
-    if "${oth_path}" != "" {
-        global ol_fig "${oth_path}figures/"
-        global ol_tab "${oth_path}tables/"
-        global overleaf = 1
-    }
-}
+** Overleaf sync (ol_fig / ol_tab / overleaf) is resolved in globals.do from
+** user_settings.do; programs (incl. build_acs_balanced_set) are loaded there too.
 
 capture log close log_02_appx
 log using "${logs}02_log_appendix_descriptives_${date}", replace text name(log_02_appx)

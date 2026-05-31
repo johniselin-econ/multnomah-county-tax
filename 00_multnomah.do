@@ -42,118 +42,52 @@ clear all
 set more off
 set linesize 120
 
-** Load shared project defaults and helper programs
+** ----------------------------------------------------------------------------
+** Locate the project root (works from the repo root, code/stata, or code/utils),
+** then defer ALL setup to globals.do (loaded below, after the run-control flags).
+** ----------------------------------------------------------------------------
 if "${dir}" == "" {
     local _cwd = subinstr("`c(pwd)'", "\", "/", .)
     if regexm("`_cwd'", "(.*)/code/(stata|utils)$") global dir = regexs(1)
     else global dir "`_cwd'"
 }
+
+
+** ============================================================================
+** RUN-CONTROL FLAGS  (the knobs for this run)
+** ============================================================================
+** Set the active configuration here. globals.do supplies the same defaults for
+** scripts run standalone, and resolves these (use_parallel downgrade) once set.
+
+** Bootstrap
+global run_bootstrap         = 1        // 1 to (re)run bootstrap; 0 to skip the stage
+global bootstrap_reps        = 500      // 20=smoke, 100=stress, 500=publication
+global show_bootstrap_cis    = 1        // 1 to render bootstrap CI whiskers on spec curves
+global ci_level              = 95       // 90, 95, or 99 -- percentile CI level
+
+** Parallel execution
+global use_parallel          = 1        // 1 to use Vega `parallel' ado; globals.do downgrades to 0 if missing
+global n_clusters            = 4        // worker count; setup_parallel caps to floor(physical_cores / processors_max)
+global resume                = 0        // 1 to skip bootstrap reps whose draw .dta already exists
+
+** Output mode
+global event_study_mode      "all"      // "all" | "main" | "none" -- which event studies the SDID stage runs
+
+
+** ============================================================================
+** LOAD PROJECT SETTINGS + PROGRAMS
+** ============================================================================
+** globals.do derives all paths, sets analysis parameters, resolves the flags
+** above, checks required packages, creates output directories, resolves Overleaf
+** sync from user_settings.do, and loads all programs from programs.do. Sourcing
+** it is the single setup step.
 do "${dir}/code/utils/globals.do"
 
-** Verify all required packages are installed
-local pkg_missing = 0
-foreach pkg in reghdfe ftools ppmlhdfe sdid sdid_event estout coefplot fre distinct taxsimlocal35 {
-    capture which `pkg'
-    if _rc {
-        di as error "  Package not found: `pkg'"
-        local pkg_missing = 1
-    }
-}
-capture findfile scheme-plotplainblind.scheme
-if _rc {
-    di as error "  Package not found: blindschemes (scheme plotplainblind)"
-    local pkg_missing = 1
-}
-** parallel is optional — handled by the use_parallel auto-downgrade block
-** below the PROJECT GLOBALS panel.
-if `pkg_missing' {
-    di as error _n "ERROR: Required Stata packages are missing."
-    di as error "See STATA_REQUIREMENTS.txt for install instructions."
-    error 199
-}
-
-
-** ============================================================================
-** PROJECT GLOBALS — RUN-CONTROL FLAGS
-** ============================================================================
-
-** ----------------------------------------------------------------
-** Bootstrap
-** ----------------------------------------------------------------
-global run_bootstrap         = 1 		// 1 to (re)run bootstrap; 0 to skip the stage
-global bootstrap_reps        = 500		// 20=smoke, 100=stress, 500=publication
-global show_bootstrap_cis    = 1		// 1 to render rcap whiskers on spec curves (requires bootstrap_cis.dta)
-global ci_level              = 95		// 90, 95, or 99 — percentile CI level for bootstrap_cis.dta
-
-** ----------------------------------------------------------------
-** Parallel execution
-** ----------------------------------------------------------------
-global use_parallel          = 1		// 1 to use Vega `parallel` ado; auto-downgrades to 0 if package missing
-global n_clusters            = 4		// worker count; setup_parallel caps to floor(physical_cores / processors_max)
-global resume                = 0		// 1 to skip bootstrap reps whose draw .dta already exists
-
-** ----------------------------------------------------------------
-** Output mode
-** ----------------------------------------------------------------
-global event_study_mode      "all"     // "all" | "main" | "none" — which event studies the SDID stage runs
-global overleaf              = 1       // 1 to copy figures/tables to ${oth_path}; auto-set to 1 below if profile.do defines oth_path
-
-** Auto-downgrade use_parallel if the `parallel` ado isn't installed.
-** User intent of 1 means "use parallel if available", not "fail if missing".
-capture which parallel
-if _rc & ${use_parallel} == 1 {
-    di as txt "  Note: `parallel` package not installed. Downgrading use_parallel 1 -> 0."
-    global use_parallel = 0
-}
-
-
-** ============================================================================
-** PROJECT PATHS & LOGGING
-** ============================================================================
-** Working directory, Overleaf sync, output directories, log file. Path
-** defaults live in 00_stata_config.do; this section only overrides as needed.
-
-** Set working directory to project root before running
 cd "${dir}"
-
-** Overleaf sync (optional) — set oth_path and overleaf=1 in profile.do (gitignored)
-global ol_fig   ""
-global ol_tab   ""
-capture do "${dir}/profile.do"
-if "${oth_path}" != "" {
-    global ol_fig "${oth_path}figures/"
-    global ol_tab "${oth_path}tables/"
-    global overleaf = 1
-}
-else if ${overleaf} == 1 {
-    ** Guard: overleaf=1 from the RUN-CONTROL FLAGS panel but profile.do
-    ** didn't define ${oth_path}, so ${ol_fig} / ${ol_tab} are empty. Every
-    ** downstream `graph export "${ol_fig}foo.png"` would silently land in
-    ** the current working directory. Downgrade to 0 with a visible warning.
-    dis as error "WARNING: overleaf=1 but oth_path unset (profile.do missing or " ///
-        "doesn't define oth_path). Disabling overleaf sync for this run."
-    global overleaf = 0
-}
-
-** Create output directories
-foreach d in "" "tables" "figures" "sdid" "flows" "did" "individual" {
-    capture mkdir "${results}`d'"
-}
-capture mkdir "${logs}"
-
-** Start log
 log using "${logs}00_log_${pr_name}_${date}", replace text
 
-** Seed and scheme
+** Reproducible seed + run manifest (records this run's configuration signature)
 project_set_seed, context("00_multnomah.do") offset(0)
-
-
-** ============================================================================
-** PARAMETERS
-** ============================================================================
-
-** Shared defaults live in 00_stata_config.do.
-** Override specific globals here only for intentionally custom runs.
 project_export_run_manifest
 
 

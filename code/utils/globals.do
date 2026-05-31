@@ -37,20 +37,19 @@ if "${artifact_schema_version}" == "" global artifact_schema_version "2026-03-15
 if "${preferred_spec_version}" == ""  global preferred_spec_version "2026-03-main"
 
 ** ------------------------------------------------------------------
-** Run-control fallbacks. The orchestrator (00_multnomah.do PROJECT
-** GLOBALS — RUN-CONTROL FLAGS section) sets each of these explicitly,
-** so the lazy-sets here become no-ops in a full pipeline run. They
-** stay as safety nets for callee scripts run standalone.
+** Run-control defaults + parallel resolution. Entry scripts (the
+** orchestrator's RUN-CONTROL FLAGS panel, or a standalone callee) may set
+** these before sourcing this file; the lazy-sets below fill in anything
+** left unset. Either way we resolve use_parallel against actual `parallel'
+** availability here, in one place: an intent of 1 means "use it if
+** installed", so a 1 with the package missing downgrades to 0.
 ** ------------------------------------------------------------------
 capture which parallel
 local has_parallel = (_rc == 0)
-if "${use_parallel}" == "" {
-    if `has_parallel' {
-        global use_parallel = 1
-    }
-    else {
-        global use_parallel = 0
-    }
+if "${use_parallel}" == "" global use_parallel = `has_parallel'
+if ${use_parallel} == 1 & !`has_parallel' {
+    di as txt "  Note: `parallel' package not installed. Downgrading use_parallel 1 -> 0."
+    global use_parallel = 0
 }
 if "${n_clusters}" == "" global n_clusters = 4
 if "${resume}" == ""     global resume = 0
@@ -74,9 +73,21 @@ if "${end_yy_irs_agi}" == ""       global end_yy_irs_agi       = 22
 if "${start_yy_irs_county}" == ""  global start_yy_irs_county  = 12
 if "${end_yy_irs_county}" == ""    global end_yy_irs_county    = 22
 
-** Overleaf sync (default off; orchestrator panel sets explicitly, then the
-** profile.do block in 00_multnomah.do auto-promotes to 1 if oth_path defined)
-if "${overleaf}" == "" global overleaf = 0
+** ------------------------------------------------------------------
+** Overleaf sync. Enabled iff a (gitignored) user_settings.do at the repo
+** root defines ${oth_path}; that single switch drives ol_fig / ol_tab and
+** the overleaf flag read by downstream graph export / esttab. No
+** user_settings.do (or no oth_path) -> overleaf 0, no sync.
+** ------------------------------------------------------------------
+global ol_fig ""
+global ol_tab ""
+capture do "${dir}/user_settings.do"
+if "${oth_path}" != "" {
+    global ol_fig "${oth_path}figures/"
+    global ol_tab "${oth_path}tables/"
+    global overleaf = 1
+}
+else global overleaf = 0
 
 ** ------------------------------------------------------------------
 ** PFA policy & calibration constants (tax year 2022)
@@ -104,10 +115,11 @@ if "${statewide_oregon_revenue}" == ""  global statewide_oregon_revenue  = 11772
 ** CPI-U inflation factor, 2019 annual -> 2022 annual (BLS series CUUR0000SA0)
 if "${cpi_2019_to_2022}" == ""     global cpi_2019_to_2022     = 1.136
 
-capture mkdir "${results}"
+** Output directories (created here so standalone callees have them too).
+foreach d in "" "tables" "figures" "sdid" "flows" "did" "individual" {
+    capture mkdir "${results}`d'"
+}
 capture mkdir "${logs}"
-
-set scheme plotplainblind
 
 ** ------------------------------------------------------------------
 ** plotplainblind palette (RGB) — shared by SDID and elasticity spec curves
@@ -123,22 +135,34 @@ if "${col_zero}" == ""          global col_zero          "204 121 167"   // redd
 if "${col_ref}" == ""           global col_ref           "153 153 153"   // gs10 (p2)       — reference lines
 
 ** ------------------------------------------------------------------
-** Pre-flight: required SSC packages
-** Fails fast with an install hint rather than letting the pipeline die
-** cryptically later on `command not found`.
+** Pre-flight: required packages (single authoritative list for the whole
+** pipeline). Fails fast with an install hint rather than dying cryptically
+** later on `command not found'. See STATA_REQUIREMENTS.txt for install lines.
 ** ------------------------------------------------------------------
-local required_ssc reghdfe ppmlhdfe coefplot estout distinct sdid
-foreach pkg of local required_ssc {
+local required_pkgs reghdfe ftools ppmlhdfe sdid sdid_event estout coefplot fre distinct
+foreach pkg of local required_pkgs {
     capture which `pkg'
     if _rc {
         di as error "Missing required package: `pkg'"
-        di as error "  Install with: ssc install `pkg'"
+        di as error "  See STATA_REQUIREMENTS.txt for install instructions."
         exit 199
     }
 }
-** Non-SSC packages (soft-checked — callers handle their own fallbacks):
-**   parallel:      net install parallel, from(https://raw.github.com/gvegayon/parallel/stable/) replace
-**   taxsimlocal35: ssc install taxsim35  (or see https://taxsim.nber.org/taxsim35/)
+capture findfile scheme-plotplainblind.scheme
+if _rc {
+    di as error "Missing required package: blindschemes (scheme plotplainblind)"
+    di as error "  See STATA_REQUIREMENTS.txt for install instructions."
+    exit 199
+}
+set scheme plotplainblind
+
+** Optional packages (soft-checked — callers have fallbacks): `parallel'
+** auto-downgrades use_parallel above; taxsimlocal35 falls back to
+** taxsim_fallback_calc in programs.do.
+foreach pkg in parallel taxsimlocal35 {
+    capture which `pkg'
+    if _rc di as txt "  Note: optional package `pkg' not installed (soft dependency)."
+}
 
 
 ** ------------------------------------------------------------------

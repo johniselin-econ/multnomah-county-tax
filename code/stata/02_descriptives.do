@@ -48,17 +48,8 @@ if "${dir}" == "" {
 }
 do "${dir}/code/utils/globals.do"
 
-** Source profile.do for Overleaf sync globals when run standalone (the
-** orchestrator does this in 00_multnomah.do; replicate here so this script
-** writes to Overleaf either way).
-if "${ol_tab}" == "" {
-    capture do "${dir}/profile.do"
-    if "${oth_path}" != "" {
-        global ol_fig "${oth_path}figures/"
-        global ol_tab "${oth_path}tables/"
-        global overleaf = 1
-    }
-}
+** Overleaf sync (ol_fig / ol_tab / overleaf) is resolved in globals.do from
+** user_settings.do, so it is already set whether run standalone or orchestrated.
 
 ** Start log file
 capture log close log_02

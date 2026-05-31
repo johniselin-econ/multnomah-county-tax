@@ -17,7 +17,7 @@ slurm-*.out
 .Rproj.user
 
 # Local configuration (user-specific)
-profile.do
+user_settings.do
 profile.R
 api_codes.txt
 code/00_ipums_api.R
