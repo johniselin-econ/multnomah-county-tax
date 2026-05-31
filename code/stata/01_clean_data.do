@@ -13,7 +13,7 @@
 *   01g_irs_agi.do      — IRS county AGI by bracket
 *   01h_auxiliary.do    — DOL childcare + property tax rates
 *
-* NOTE: 01a_programs.do (reusable helpers) is now sourced by 00_multnomah.do
+* NOTE: programs.do (reusable helpers) is now sourced by 00_multnomah.do
 *       before this file runs, so its programs are available throughout the
 *       pipeline (not just the cleaning stage).
 *

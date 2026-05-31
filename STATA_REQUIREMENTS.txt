@@ -49,11 +49,11 @@ REQUIRED PACKAGES
 ADDITIONAL TOOLING
 --------------------------------------------------------------------------------
 
-12. TAXSIM 35 local executable - Revenue microsimulation in 02_revenue.do
+12. TAXSIM 35 local executable - Revenue microsimulation in 02_revenue_microsim.do
     Download: https://taxsim.nber.org/taxsim35/
     Setup: Place the executable on your system PATH, or otherwise make it
            available to Stata's taxsimlocal35 command.
-    Note: If TAXSIM is not installed, 02_revenue.do falls back to a simplified
+    Note: If TAXSIM is not installed, 02_revenue_microsim.do falls back to a simplified
           tax calculator. That fallback is functional, but it is not the paper's
           preferred revenue specification.
 

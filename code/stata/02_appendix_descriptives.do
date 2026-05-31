@@ -292,7 +292,7 @@ dis "--- Table A1.B: IRS Flow descriptives ---"
 preserve
 capture confirm file "${data}working/acs_county_gross_25plus.dta"
 if _rc == 0 {
-    ** Shared single-source-of-truth builder (01a_programs.do); leaves the set
+    ** Shared single-source-of-truth builder (programs.do); leaves the set
     ** in memory so the count below works, and saves it to the tempfile.
     tempfile acs_counties
     build_acs_balanced_set, saving(`acs_counties') flag(acs_county)

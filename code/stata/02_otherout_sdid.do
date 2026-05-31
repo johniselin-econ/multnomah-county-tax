@@ -42,7 +42,7 @@ if "${dir}" == "" {
     else global dir "`_cwd'"
 }
 do "${dir}/code/utils/globals.do"
-** 01a_programs.do (project_set_seed, sdid_log_failure) and 02_spec_engine.do
+** programs.do (project_set_seed, sdid_log_failure) and 02_spec_engine.do
 ** (fit_spec_sdid, load_spec_panel) are normally sourced earlier by the
 ** orchestrator; source them defensively so this script also runs standalone.
 do "${code}02_spec_engine.do"

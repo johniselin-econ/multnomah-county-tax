@@ -47,7 +47,7 @@ Requires:       results/bootstrap/bootstrap_draws.dta from
                 02_bootstrap.do (parallel via Stata `parallel` ado, or
                 serial when ${use_parallel}=0).
                 project_assert_manifest, project_build_signature,
-                project_write_manifest (from 00_stata_config.do).
+                project_write_manifest (from programs.do).
 
 Globals:        ci_level    integer in {90, 95, 99}; default 95
                             (sets percentile pair: 5/95, 2.5/97.5,

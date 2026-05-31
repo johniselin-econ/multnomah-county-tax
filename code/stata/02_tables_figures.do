@@ -63,7 +63,7 @@ if "${dir}" == "" {
     else global dir "`_cwd'"
 }
 do "${dir}/code/utils/globals.do"
-** 01a_programs.do is normally sourced by 00_multnomah.do; source defensively
+** Helper programs are loaded by globals.do (sourced above);
 ** so 02_tables_figures.do can run standalone during development.
 do "${code}02_spec_engine.do"
 

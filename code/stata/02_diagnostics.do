@@ -38,7 +38,7 @@ if "${dir}" == "" {
     else global dir "`_cwd'"
 }
 do "${dir}/code/utils/globals.do"
-** 01a_programs.do is normally sourced by 00_multnomah.do; source defensively
+** Helper programs are loaded by globals.do (sourced above);
 ** so 02_diagnostics.do can be invoked standalone (needs load_narrow_pool).
 
 capture log close log_diag
@@ -378,7 +378,7 @@ if _rc == 0 {
 ********************************************************************************
 
 ** ACS county set: balanced over 2016-2024, via the shared helper
-** (01a_programs.do) -- the same set the flow estimation and appendix
+** (programs.do) -- the same set the flow estimation and appendix
 ** descriptives use.
 tempfile flow_acs_fips
 build_acs_balanced_set, saving(`flow_acs_fips')

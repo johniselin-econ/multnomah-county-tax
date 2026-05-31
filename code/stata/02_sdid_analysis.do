@@ -31,7 +31,7 @@ if "${dir}" == "" {
     else global dir "`_cwd'"
 }
 do "${dir}/code/utils/globals.do"
-** 01a_programs.do is normally sourced by 00_multnomah.do; source defensively
+** Helper programs are loaded by globals.do (sourced above);
 ** so standalone invocation also has project_parse_outcome_components.
 do "${code}02_spec_engine.do"
 
@@ -43,7 +43,7 @@ log using "${logs}02_log_sdid_${date}", replace text name(log_02)
 ** CONFIGURATION
 ********************************************************************************
 
-** plotplainblind palette (RGB) — pulled from globals set in 00_stata_config.do
+** plotplainblind palette (RGB) — pulled from globals set in globals.do
 ** so both SDID spec curves and elasticity spec curves share one palette.
 local col_sig_notpref   "${col_sig_notpref}"
 local col_insig_notpref "${col_insig_notpref}"
@@ -805,9 +805,9 @@ if ${use_parallel} == 1 {
 	** rc=198 syntax errors on every spec. Re-sourcing the engine file
 	** here keeps the workers synchronized with disk.
 	**
-	** 00_stata_config.do and 01a_programs.do are NOT re-sourced: their
+	** globals.do and programs.do are NOT re-sourced: their
 	** programs are stable, their globals are forwarded by parallel, and
-	** sourcing 00_stata_config.do under concurrent worker load triggers
+	** sourcing globals.do under concurrent worker load triggers
 	** sporadic rc=199 from the SSC `which` checks racing on the ado-path
 	** cache. Those programs come in via parallel's prog() list instead.
 	capture program drop parallel_sdid_wrapper
@@ -1490,7 +1490,7 @@ capture mkdir "${results}sdid/spec_curves"
 use "${results}sdid/sdid_results.dta", clear
 
 ** Parse outcome / sample_data into spec metadata + spec_* indicator
-** family via the shared helper (01a_programs.do).
+** family via the shared helper (programs.do).
 project_parse_outcome_components, indicators
 
 ** Calculate statistical significance (p < 0.05)
@@ -1498,7 +1498,7 @@ replace significant = pval < 0.05 if missing(significant)
 
 ********************************************************************************
 ** DEFINE PREFERRED SPECIFICATIONS
-** Shared preferred-spec logic lives in 00_stata_config.do so downstream
+** Shared preferred-spec logic lives in programs.do so downstream
 ** scripts use the exact same highlighted specifications.
 ********************************************************************************
 

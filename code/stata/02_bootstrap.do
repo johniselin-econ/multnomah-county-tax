@@ -35,13 +35,13 @@ Purpose:        Donor-cluster bootstrap driver for the highlighted SDID
                 are bootstrapped: IRS and ACS College (including their
                 out-of-state variants) × {sample_all, sample_stringency,
                 sample_narrow} × {net, in, out} with controls=1, exclusion=1.
-                Mirrors project_mark_preferred_main in 00_stata_config.do.
+                Mirrors project_mark_preferred_main in programs.do.
 
 Called by:      00_multnomah.do (guarded by ${run_bootstrap})
 Requires:       ${data}working/sdid_analysis_data.dta   (02_sdid_analysis.do)
                 ${data}working/revenue_parameters.dta   (02_revenue_microsim.do)
                 02_spec_engine.do                       (sourced for helpers)
-                01a_programs.do                         (setup_parallel)
+                programs.do                         (setup_parallel)
 
 Outputs:        ${results}bootstrap/bootstrap_draws.dta  (canonical, combined)
                 ${results}bootstrap/bootstrap_draws_manifest.dta
@@ -52,10 +52,10 @@ Outputs:        ${results}bootstrap/bootstrap_draws.dta  (canonical, combined)
 Globals (defaulted at top of this file unless noted):
     bootstrap_reps         total reps to run (default 20 — smoke)
     bootstrap_seed_offset  added to master_seed when deriving per-rep seeds
-                           (default lives in 00_stata_config.do alongside
+                           (default lives in globals.do alongside
                            master_seed)
     bootstrap_output       canonical combined draws .dta path
-    use_parallel           project-wide parallel flag (00_stata_config.do)
+    use_parallel           project-wide parallel flag (globals.do)
     n_clusters             worker count (auto-capped by setup_parallel)
     resume                 if 1, skip reps whose per-rep .dta already exists
 
@@ -80,7 +80,7 @@ do "${dir}/code/utils/globals.do"
 do "${code}02_spec_engine.do"
 
 ** Bootstrap-specific globals.
-** bootstrap_seed_offset lives in 00_stata_config.do alongside master_seed
+** bootstrap_seed_offset lives in globals.do alongside master_seed
 ** so all randomness controls sit in one place.
 if "${bootstrap_reps}" == ""        global bootstrap_reps        = 20
 if "${bootstrap_output}" == ""      global bootstrap_output      "${results}bootstrap/bootstrap_draws.dta"
@@ -436,7 +436,7 @@ end
 ** are pinned to the on-disk version (avoids the version-drift trap
 ** documented in 02_sdid_analysis.do:778-785).
 **
-** 00_stata_config.do and 01a_programs.do are NOT re-sourced here:
+** globals.do and programs.do are NOT re-sourced here:
 ** sourcing them under concurrent worker load triggers sporadic rc=199
 ** from SSC `which` checks racing on the ado-path cache. Their globals
 ** are forwarded by parallel; their programs come in via prog().
@@ -486,7 +486,7 @@ dis "Built rep grid: ${bootstrap_reps} reps queued."
 if ${use_parallel} == 1 {
 	** ---- Parallel path ----
 	** setup_parallel auto-caps n_clusters at processors_max / 4
-	** (per the project's 4-core MP license; see 01a_programs.do).
+	** (per the project's 4-core MP license; see programs.do).
 	setup_parallel
 
 	use "${data}working/bootstrap_rep_grid.dta", clear

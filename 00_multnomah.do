@@ -142,7 +142,7 @@ do "${code}02_revenue_microsim.do"
 do "${code}02_post_spec.do"
 
 ** Donor-cluster bootstrap for highlighted-spec CIs.
-** Gated by ${run_bootstrap} from the PROJECT GLOBALS panel above.
+** Gated by ${run_bootstrap} from the RUN-CONTROL FLAGS panel above.
 **
 ** Two-stage pipeline:
 **   1. 02_bootstrap.do        — runs all reps and writes the canonical

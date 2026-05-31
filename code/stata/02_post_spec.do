@@ -40,7 +40,7 @@ if "${dir}" == "" {
     else global dir "`_cwd'"
 }
 do "${dir}/code/utils/globals.do"
-** 01a_programs.do is normally sourced by 00_multnomah.do before this file
+** Helper programs are loaded by globals.do (sourced above) before this file
 ** runs, but we source it defensively here so that 02_post_spec.do can be
 ** invoked standalone during development. `capture program drop` in each
 ** program definition makes this idempotent.
@@ -92,7 +92,7 @@ use "${results}sdid/sdid_results.dta", clear
 dis "Total specifications loaded: " _N
 
 ** Parse outcome / sample_data into the canonical spec-metadata columns.
-** Centralized in 01a_programs.do (project_parse_outcome_components) so
+** Centralized in programs.do (project_parse_outcome_components) so
 ** the ad-hoc parsing blocks that used to live in this file +
 ** 02_sdid_analysis.do share one implementation.
 project_parse_outcome_components

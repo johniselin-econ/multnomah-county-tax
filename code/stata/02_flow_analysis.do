@@ -48,7 +48,7 @@ if "${dir}" == "" {
     else global dir "`_cwd'"
 }
 do "${dir}/code/utils/globals.do"
-** 01a_programs.do is normally sourced by 00_multnomah.do; source defensively
+** Helper programs are loaded by globals.do (sourced above);
 ** so build_acs_balanced_set / setup_parallel are available when run standalone.
 
 
@@ -74,7 +74,7 @@ local debug_n = 20  // Number of random counties to sample in debug mode (plus M
 ** Build the balanced ACS county set: counties observed in the ACS 25+ panel in
 ** every analysis year 2016-2024 (~389 counties). The ACS file starts in 2012,
 ** but the SDID/DiD samples use 2016-2024, so the flow county set is balanced
-** over that same window. Single source of truth lives in 01a_programs.do
+** over that same window. Single source of truth lives in programs.do
 ** (build_acs_balanced_set) so this set can't drift from the diagnostics audit
 ** or the appendix flow descriptives.
 tempfile acs_fips

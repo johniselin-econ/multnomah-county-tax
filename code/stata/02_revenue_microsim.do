@@ -53,7 +53,7 @@ project_set_seed, context("02_revenue_microsim.do") offset(40)
 scalar effect_agi = 0.02			// placeholder: net out-migration effect on AGI
 scalar effect_agi_oregon = 0.02		// placeholder: Oregon-level effect
 
-** Pull calibration + policy parameters from 00_stata_config.do globals.
+** Pull calibration + policy parameters from globals.do globals.
 ** statewide_oregon_revenue is the STATEWIDE Oregon individual income tax total;
 ** the Multnomah-resident share (actual_oregon_revenue) is computed in Section 3
 ** once the IRS county-AGI file has been read.
@@ -80,7 +80,7 @@ dis "Section 0B: SDID estimation of migration effects"
 dis "=============================================="
 
 ** Load SDID estimates from stored results (produced by 02_sdid_analysis.do)
-** Highlighted specs mirror project_mark_preferred_main in 00_stata_config.do:
+** Highlighted specs mirror project_mark_preferred_main in programs.do:
 **   - IRS (16-22) × {sample_all, sample_stringency, sample_narrow} × {domestic, out-of-state}
 **   - ACS College (16-24) × {sample_all, sample_stringency, sample_narrow} × {domestic, out-of-state}
 ** All with controls == 1 & exclusion == 1 (excl. 2020)
@@ -376,7 +376,7 @@ dis "Total Multnomah County AGI (2019): $" %15.0fc total_irs_agi_2019
 
 ** ----------------------------------------------------------------
 ** Multnomah's share of statewide Oregon individual income tax.
-** statewide_oregon_revenue (set in 00_stata_config.do) is statewide collections;
+** statewide_oregon_revenue (set in globals.do) is statewide collections;
 ** scaling by Multnomah's IRS AGI share converts it to a Multnomah-resident
 ** figure that is apples-to-apples with the simulated baseline_state_revenue
 ** (which is computed from the Multnomah-only TAXSIM sample).

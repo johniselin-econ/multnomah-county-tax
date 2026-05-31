@@ -65,7 +65,7 @@ Callers:        02_post_spec.do
                 02_sdid_analysis.do (to be rewired, Phase B)
 
 Requires:       ${data}working/revenue_parameters.dta (from 02_revenue_microsim.do)
-                project_assert_manifest (from 00_stata_config.do)
+                project_assert_manifest (from programs.do)
 
 Testing:        This file defines programs only. To verify arithmetic matches
                 the pre-restructure 02_elasticities.do and 02_revenue_microsim.do §12
@@ -257,7 +257,7 @@ program define load_revenue_params
 
 	** Publish ${actual_oregon_revenue} as a macro global so compute_spec_revenue
 	** picks up the Multnomah-share value when scripts are re-run standalone
-	** (i.e., without re-running 02_revenue_microsim.do). 00_stata_config.do
+	** (i.e., without re-running 02_revenue_microsim.do). globals.do
 	** sets ${statewide_oregon_revenue} but no longer sets actual_oregon_revenue
 	** directly; that value depends on Multnomah's IRS AGI share, which is
 	** computed during the microsim and persisted to revenue_parameters.dta.
@@ -983,7 +983,7 @@ end
 **     OUTSTATE     0 | 1
 **     DATA_TYPE    (as above)
 **
-** Requires ${actual_pfa_revenue} (set by 00_stata_config.do) and
+** Requires ${actual_pfa_revenue} (set by globals.do) and
 ** ${actual_oregon_revenue} (set by 02_revenue_microsim.do Section 3 once
 ** the Multnomah AGI share has been computed from IRS county data).
 **

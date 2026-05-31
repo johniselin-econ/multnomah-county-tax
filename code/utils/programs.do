@@ -1,7 +1,7 @@
 /*****************************************************************************
-* File:        01a_programs.do
+* File:        code/utils/programs.do  (formerly 01a_programs.do)
 * Purpose:     Define value labels and reusable programs for data cleaning
-* Called by:   01_clean_data.do
+* Loaded by:   code/utils/globals.do (sourced by every entry script)
 * Outputs:     In-memory label definitions and programs:
 *                lb_move_type, lb_agi (labels)
 *                make_fips, unsuppress, setup_parallel,
