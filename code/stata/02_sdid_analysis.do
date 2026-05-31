@@ -1680,14 +1680,14 @@ foreach otype in "n1" "n2" "agi" {
 				`ind_layers'                                              	///
 			, yline(`sep_y', lc(gs12) lp(solid) lw(vthin)) 					///
 			  yline(0, lc("`col_zero'") lp(dash)) 							///
-			  ylabel(`tick_lo'(1)`tick_hi', labsize(vsmall) nogrid) 		///
+			  ylabel(`tick_lo'(1)`tick_hi', labsize(small) nogrid) 		///
 			  ylabel(`ind_ylabels'                                          ///
-				, labsize(vsmall) angle(0) notick nogrid add) 				///
+				, labsize(small) angle(0) notick nogrid add) 				///
 			  legend(order(5 "Sig. (p<0.05)" 6 "Insig." 					///
 						   7 "Sig., Preferred" 8 "Insig., Preferred") 		///
-					 rows(1) pos(6) size(vsmall)) 							///
-			  ytitle("Treatment Effect (pp)", size(vsmall)) 				///
-			  xtitle("Specification (ranked by effect size)", size(vsmall)) ///
+					 rows(1) pos(6) size(small)) 							///
+			  ytitle("Treatment Effect (pp)", size(small)) 				///
+			  xtitle("Specification (ranked by effect size)", size(small)) ///
 			  xlabel(none) 													///
 			  xscale(range(0.5 `=`n_specs'+0.5')) 							///
 			  graphregion(color(white)) 									///

@@ -445,4 +445,41 @@ list data_type sample migration outstate ///
 	pfa_loss state_loss ///
 	if preferred == 1 & migration == "net", sep(0) abbreviate(25)
 
+********************************************************************************
+** SECTION 8: DiD-IMPLIED SEMI-ELASTICITIES
+********************************************************************************
+** Put the ACS individual-level DiD (College x Post) estimates on the same
+** semi-elasticity metric as the SDID results, for the comparison in the ACS
+** DiD results section. The DiD treats college-educated Multnomah residents, so
+** we use the headline (PFA+SHS) college net-of-tax denominator
+** delta_ln_ntr_total_college_shs (the same one compute_spec_elasticities uses
+** for ACS-college specs). ACS DiD outcomes are scaled x100, so the coefficient
+** b is in percentage points:
+**     semi_elast = (b / 100) / delta_ln_ntr_total_college_shs
+** b > 0 (more out-migration) with the negative denominator yields a negative
+** semi-elasticity, matching the SDID gross-out-migration sign convention. The
+** SE is propagated treating the (fixed) denominator as known, mirroring
+** compute_spec_elasticities (beta_se).
+capture confirm file "${results}did/did_coefficients.dta"
+if _rc == 0 {
+	preserve
+	use "${results}did/did_coefficients.dta", clear
+	gen double dln_college_shs = scalar(delta_ln_ntr_total_college_shs)
+	gen double semi_elast      = (b  / 100) / dln_college_shs
+	gen double semi_elast_se   = (se / 100) / abs(dln_college_shs)
+	label var semi_elast      "DiD-implied semi-elasticity (headline PFA+SHS, college denominator)"
+	label var semi_elast_se   "SE (denominator treated as fixed)"
+	label var dln_college_shs "Delta-ln(1-tau_total), headline college denominator"
+	order outcome b se semi_elast semi_elast_se dln_college_shs n
+	save "${results}did/did_elasticities.dta", replace
+	dis ""
+	dis "--- DiD-implied semi-elasticities (headline PFA+SHS, college denominator) ---"
+	list outcome b se semi_elast semi_elast_se, noobs sep(0) abbreviate(20)
+	dis "Output: ${results}did/did_elasticities.dta"
+	restore
+}
+else {
+	dis as txt "Note: ${results}did/did_coefficients.dta not found -- run 02_did_analysis.do first to enable DiD semi-elasticities."
+}
+
 capture log close log_02pspec

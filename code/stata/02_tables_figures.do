@@ -424,11 +424,11 @@ program define elast_speccurve_plot
 	twoway `coef_layers' `ind_layers'                                                       ///
 		, yline(`sep_y', lc(gs12) lp(solid) lw(vthin))                                     ///
 		  yline(0, lc("`colzero'") lp(dash))                                               ///
-		  ylabel(`tick_lo'(`tick_step')`tick_hi', labsize(vsmall) nogrid)                  ///
-		  ylabel(`ind_ylabels', labsize(vsmall) angle(0) notick nogrid add)                ///
-		  legend(order(1 "Specification" 2 "Preferred") rows(1) pos(6) size(vsmall))       ///
-		  ytitle(`"`ytitle'"', size(vsmall))                                               ///
-		  xtitle("Specification (ranked by estimate)", size(vsmall))                       ///
+		  ylabel(`tick_lo'(`tick_step')`tick_hi', labsize(small) nogrid)                  ///
+		  ylabel(`ind_ylabels', labsize(small) angle(0) notick nogrid add)                ///
+		  legend(order(1 "Specification" 2 "Preferred") rows(1) pos(6) size(small))       ///
+		  ytitle(`"`ytitle'"', size(small))                                               ///
+		  xtitle("Specification (ranked by estimate)", size(small))                       ///
 		  xlabel(none)                                                                      ///
 		  xscale(range(0.5 `=`n_specs'+0.5'))                                              ///
 		  graphregion(color(white))                                                        ///

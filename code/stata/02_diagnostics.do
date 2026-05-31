@@ -248,7 +248,7 @@ save `acs_id'
 ** county's 2023-2024 ACS rows therefore only count if it ALSO has BEA coverage
 ** those years, so a county balanced in the RAW ACS panel but missing 2023-2024
 ** BEA is NOT in acs_period_2. Reproduce that ACS-and-BEA-every-year rule here
-** (demographics is time-invariant -> applied at Step 3; the covid/proptax/age
+** (demographics is time-invariant -> applied at Step 2; the covid/proptax/age
 ** merges keep non-matches, so they do not gate the panel) so the funnel endpoint
 ** reconciles with the estimation by construction, rather than approximating it
 ** with the raw-ACS balance (build_acs_balanced_set, used for the flow sample).
@@ -276,60 +276,68 @@ diag_distinct fips
 funnel_post, step(1) label("IRS county-to-county file (2016-2022)") ///
 	ncty(`r(nd)') funnelfile(`funnel')
 
-** Step 2: + matched to the ACS 25+ panel (county appears in ACS)
-merge m:1 fips using `acs_id', keep(master match) gen(_macs)
-diag_distinct fips if _macs == 3
-funnel_post, step(2) label("+ matched to ACS 25+ panel") ///
-	ncty(`r(nd)') funnelfile(`funnel')
-keep if _macs == 3
-drop _macs acs_identified
+** Steps 2-5 build the IRS-side donor pool (covariate match, IRS balance, state
+** drops -> the "IRS, all counties" set in Panel A) BEFORE the ACS restrictions
+** that define Panels B-D, so the funnel reads in the same order as the SDID
+** sample panels.
 
-** Step 3: + matched to demographics_2020
+** Step 2: + matched to demographics_2020
 merge m:1 fips using "${data}working/demographics_2020", gen(demo_merge) ///
 	keep(master match)
 keep if demo_merge == 3
 diag_distinct fips
-funnel_post, step(3) label("+ matched to demographics") ///
+funnel_post, step(2) label("+ matched to demographics") ///
 	ncty(`r(nd)') funnelfile(`funnel')
 
-** Step 4: + matched to BEA economics
+** Step 3: + matched to BEA economics
 merge m:1 year fips using "${data}working/bea_economics", gen(econ_merge) ///
 	keep(master match)
 keep if econ_merge == 3
 diag_distinct fips
-funnel_post, step(4) label("+ matched to BEA economics") ///
+funnel_post, step(3) label("+ matched to BEA economics") ///
 	ncty(`r(nd)') funnelfile(`funnel')
 
-** Step 5: + non-zero IRS base population + IRS-balanced (all 7 years 2016-2022)
+** Step 4: + non-zero IRS base population + IRS-balanced (all 7 years 2016-2022)
 drop if (missing(n1_out_1) | n1_out_1 == 0) & year <= 2022
 bysort fips: egen ct_irs = total(inrange(year, 2016, 2022))
 keep if ct_irs == 7
 drop ct_irs
 diag_distinct fips
-funnel_post, step(5) label("+ non-zero base, IRS-balanced (2016-2022)") ///
+funnel_post, step(4) label("+ non-zero base, IRS-balanced (2016-2022)") ///
 	ncty(`r(nd)') funnelfile(`funnel')
 
-** Step 6: + ACS-balanced = acs_period_2. acs_bal (built above) reproduces the
-**         estimation's rule: ACS-25+ AND BEA-matched in every analysis year
-**         2016-2024, so the 2023-2024 ACS rows are gated by BEA coverage exactly
-**         as in 02_sdid_analysis.do. This is the SDID ACS estimation county set.
-merge m:1 fips using `acs_bal', keep(master match) gen(_mbal)
-keep if _mbal == 3
-drop _mbal acs_balanced
-diag_distinct fips
-funnel_post, step(6) label("+ ACS-balanced panel (acs_period_2, 2016-2024)") ///
-	ncty(`r(nd)') funnelfile(`funnel')
-
-** Step 7: + state drops (AK, HI, CA, WA, non-Multnomah OR). Dropping ALL of
+** Step 5: + state drops (AK, HI, CA, WA, non-Multnomah OR). Dropping ALL of
 **         CA/WA/OR (except Multnomah) matches the SDID's sample_all donor pool,
 **         which sets narrow-pool keepers (Sacramento/Seattle) to sample_all==0.
+**         This is the IRS all-counties donor pool (cf. Panel A).
 gen byte multnomah = state_fips == 41 & county_fips == 51
 drop if inlist(state_fips, 2, 15)                       // Alaska, Hawaii
 drop if inlist(state_fips, 6, 53) & multnomah == 0      // California, Washington
 drop if state_fips == 41 & multnomah == 0               // non-Multnomah Oregon
 diag_distinct fips
+funnel_post, step(5) label("+ state drops (IRS all-counties donor pool)") ///
+	ncty(`r(nd)') funnelfile(`funnel')
+
+** Step 6: + matched to the ACS 25+ panel (county appears in ACS). This is the
+**         IRS set restricted to ACS-identified counties (cf. Panel B).
+merge m:1 fips using `acs_id', keep(master match) gen(_macs)
+keep if _macs == 3
+drop _macs acs_identified
+diag_distinct fips
+funnel_post, step(6) label("+ matched to ACS 25+ panel (ACS-identified)") ///
+	ncty(`r(nd)') funnelfile(`funnel')
+
+** Step 7: + ACS-balanced = acs_period_2. acs_bal (built above) reproduces the
+**         estimation's rule: ACS-25+ AND BEA-matched in every analysis year
+**         2016-2024, so the 2023-2024 ACS rows are gated by BEA coverage exactly
+**         as in 02_sdid_analysis.do. This is the SDID ACS estimation county set
+**         (cf. Panels B-D).
+merge m:1 fips using `acs_bal', keep(master match) gen(_mbal)
+keep if _mbal == 3
+drop _mbal acs_balanced
+diag_distinct fips
 local funnel_final = r(nd)
-funnel_post, step(7) label("+ state drops (= SDID ACS estimation sample)") ///
+funnel_post, step(7) label("+ ACS-balanced panel (= SDID ACS estimation sample)") ///
 	ncty(`r(nd)') funnelfile(`funnel')
 
 ** Validate the funnel endpoint against the from-file count (Section 1, k=3).
@@ -382,7 +390,10 @@ keep if inrange(year, 2016, 2022)
 drop if inlist(state_fips_o, 2, 15)
 drop if inlist(state_fips_d, 2, 15)
 
-** Tag flows whose BOTH endpoints are in the balanced ACS county set
+** Tag flows whose BOTH endpoints are in the balanced ACS county set.
+** `fips' is a scratch merge key (dropped after each merge); clear any
+** same-named variable already on irs_county_flow so the gen does not collide.
+capture drop fips
 gen fips = fips_o
 merge m:1 fips using `flow_acs_fips', keep(master match) gen(_m_o)
 drop fips

@@ -212,6 +212,24 @@ esttab did_out did_out_state did_in_west did_in_48 						///
 	stats(N_unwtd, fmt(%12.0fc) labels("Observations"))
 
 ********************************************************************************
+** EXPORT DiD COEFFICIENTS FOR ELASTICITY CALCULATION (consumed in Stage 4)
+********************************************************************************
+** The four College x Post coefficients (in percentage points -- ACS migration
+** outcomes are scaled x100) feed the DiD-implied semi-elasticities computed in
+** 02_post_spec.do, where the microsimulation-derived net-of-tax denominator
+** (delta_ln_ntr_total_college_shs) is available. We export here because these
+** regression estimates live only in this script's memory.
+tempname didpost
+postfile `didpost' str20 outcome double(b se n) ///
+	using "${results}did/did_coefficients.dta", replace
+foreach est in did_out did_out_state did_in_west did_in_48 {
+	estimates restore `est'
+	post `didpost' ("`est'") (_b[treated]) (_se[treated]) (e(N))
+}
+postclose `didpost'
+dis as txt "Saved DiD College x Post coefficients to ${results}did/did_coefficients.dta"
+
+********************************************************************************
 ** REGRESSION 2: EVENT STUDY
 ********************************************************************************
 
