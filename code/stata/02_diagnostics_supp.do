@@ -11,12 +11,12 @@
 ******************************************************************************/
 
 ** Load shared project defaults and helper programs
-if "${code}" == "" {
+if "${dir}" == "" {
     local _cwd = subinstr("`c(pwd)'", "\", "/", .)
-    if regexm("`_cwd'", "(.*)/code/stata$") global code "`_cwd'/"
-    else global code "`_cwd'/code/stata/"
+    if regexm("`_cwd'", "(.*)/code/(stata|utils)$") global dir = regexs(1)
+    else global dir "`_cwd'"
 }
-do "${code}00_stata_config.do"
+do "${dir}/code/utils/globals.do"
 
 capture log close log_diag_supp
 log using "${logs}02_log_diagnostics_supp_${pr_name}_${date}", replace text name(log_diag_supp)

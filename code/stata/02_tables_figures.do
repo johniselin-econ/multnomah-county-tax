@@ -57,15 +57,14 @@ For more information, contact john.iselin@yale.edu
 ** ------------------------------------------------------------------
 ** Bootstrap project paths
 ** ------------------------------------------------------------------
-if "${code}" == "" {
-	local _cwd = subinstr("`c(pwd)'", "\", "/", .)
-	if regexm("`_cwd'", "(.*)/code/stata$") global code "`_cwd'/"
-	else global code "`_cwd'/code/stata/"
+if "${dir}" == "" {
+    local _cwd = subinstr("`c(pwd)'", "\", "/", .)
+    if regexm("`_cwd'", "(.*)/code/(stata|utils)$") global dir = regexs(1)
+    else global dir "`_cwd'"
 }
-do "${code}00_stata_config.do"
+do "${dir}/code/utils/globals.do"
 ** 01a_programs.do is normally sourced by 00_multnomah.do; source defensively
 ** so 02_tables_figures.do can run standalone during development.
-do "${code}01a_programs.do"
 do "${code}02_spec_engine.do"
 
 capture log close log_02tf

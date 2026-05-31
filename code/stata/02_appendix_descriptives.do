@@ -41,15 +41,14 @@ Outputs:        ${results}tables/tableA1_sdid.tex
 *******************************************************************************/
 
 ** Load shared project defaults (path globals + Overleaf sync)
-if "${code}" == "" {
+if "${dir}" == "" {
     local _cwd = subinstr("`c(pwd)'", "\", "/", .)
-    if regexm("`_cwd'", "(.*)/code/stata$") global code "`_cwd'/"
-    else global code "`_cwd'/code/stata/"
+    if regexm("`_cwd'", "(.*)/code/(stata|utils)$") global dir = regexs(1)
+    else global dir "`_cwd'"
 }
-do "${code}00_stata_config.do"
+do "${dir}/code/utils/globals.do"
 ** 01a_programs.do is normally sourced by 00_multnomah.do; source defensively
 ** so build_acs_balanced_set is available when run standalone.
-do "${code}01a_programs.do"
 
 if "${ol_tab}" == "" {
     capture do "${dir}/profile.do"

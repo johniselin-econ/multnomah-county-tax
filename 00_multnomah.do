@@ -43,13 +43,12 @@ set more off
 set linesize 120
 
 ** Load shared project defaults and helper programs
-if "${code}" == "" {
+if "${dir}" == "" {
     local _cwd = subinstr("`c(pwd)'", "\", "/", .)
-    if regexm("`_cwd'", "(.*)/code/stata$") global code "`_cwd'/"
-    else global code "`_cwd'/code/stata/"
+    if regexm("`_cwd'", "(.*)/code/(stata|utils)$") global dir = regexs(1)
+    else global dir "`_cwd'"
 }
-do "${code}00_stata_config.do"
-do "${code}01a_programs.do"   // reusable helpers (project_set_seed, project_report_merge, etc.)
+do "${dir}/code/utils/globals.do"
 
 ** Verify all required packages are installed
 local pkg_missing = 0

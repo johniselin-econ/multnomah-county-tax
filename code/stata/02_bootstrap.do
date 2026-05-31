@@ -70,14 +70,13 @@ For more information, contact john.iselin@yale.edu
 
 ** Support standalone invocation: reconstruct project paths if a bare
 ** `do 02_bootstrap.do` is issued from code/stata with no orchestrator.
-if "${code}" == "" {
-	local _cwd = subinstr("`c(pwd)'", "\", "/", .)
-	if regexm("`_cwd'", "(.*)/code/stata$") global code "`_cwd'/"
-	else global code "`_cwd'/code/stata/"
+if "${dir}" == "" {
+    local _cwd = subinstr("`c(pwd)'", "\", "/", .)
+    if regexm("`_cwd'", "(.*)/code/(stata|utils)$") global dir = regexs(1)
+    else global dir "`_cwd'"
 }
 
-do "${code}00_stata_config.do"
-do "${code}01a_programs.do"
+do "${dir}/code/utils/globals.do"
 do "${code}02_spec_engine.do"
 
 ** Bootstrap-specific globals.

@@ -32,12 +32,12 @@ For more information, contact john.iselin@yale.edu
 *******************************************************************************/
 
 ** Load shared project defaults and helper programs
-if "${code}" == "" {
-	local _cwd = subinstr("`c(pwd)'", "\", "/", .)
-	if regexm("`_cwd'", "(.*)/code/stata$") global code "`_cwd'/"
-	else global code "`_cwd'/code/stata/"
+if "${dir}" == "" {
+    local _cwd = subinstr("`c(pwd)'", "\", "/", .)
+    if regexm("`_cwd'", "(.*)/code/(stata|utils)$") global dir = regexs(1)
+    else global dir "`_cwd'"
 }
-do "${code}00_stata_config.do"
+do "${dir}/code/utils/globals.do"
 
 ********************************************************************************
 ** SECTION 0: Setup & Parameters

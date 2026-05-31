@@ -32,15 +32,14 @@
 ******************************************************************************/
 
 ** Load shared project defaults and helper programs
-if "${code}" == "" {
-	local _cwd = subinstr("`c(pwd)'", "\", "/", .)
-	if regexm("`_cwd'", "(.*)/code/stata$") global code "`_cwd'/"
-	else global code "`_cwd'/code/stata/"
+if "${dir}" == "" {
+    local _cwd = subinstr("`c(pwd)'", "\", "/", .)
+    if regexm("`_cwd'", "(.*)/code/(stata|utils)$") global dir = regexs(1)
+    else global dir "`_cwd'"
 }
-do "${code}00_stata_config.do"
+do "${dir}/code/utils/globals.do"
 ** 01a_programs.do is normally sourced by 00_multnomah.do; source defensively
 ** so 02_diagnostics.do can be invoked standalone (needs load_narrow_pool).
-do "${code}01a_programs.do"
 
 capture log close log_diag
 log using "${logs}02_log_diagnostics_${pr_name}_${date}", replace text name(log_diag)

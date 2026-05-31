@@ -62,13 +62,13 @@ For more information, contact john.iselin@yale.edu
 ** SECTION 0: Setup
 ** ------------------------------------------------------------------
 
-if "${code}" == "" {
-	local _cwd = subinstr("`c(pwd)'", "\", "/", .)
-	if regexm("`_cwd'", "(.*)/code/stata$") global code "`_cwd'/"
-	else global code "`_cwd'/code/stata/"
+if "${dir}" == "" {
+    local _cwd = subinstr("`c(pwd)'", "\", "/", .)
+    if regexm("`_cwd'", "(.*)/code/(stata|utils)$") global dir = regexs(1)
+    else global dir "`_cwd'"
 }
 
-do "${code}00_stata_config.do"
+do "${dir}/code/utils/globals.do"
 
 if "${ci_level}" == "" global ci_level = 95
 if !inlist(${ci_level}, 90, 95, 99) {

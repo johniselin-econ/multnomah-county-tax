@@ -36,16 +36,15 @@ For more information, contact john.iselin@yale.edu
 *******************************************************************************/
 
 ** Load shared project defaults and helper programs
-if "${code}" == "" {
-	local _cwd = subinstr("`c(pwd)'", "\", "/", .)
-	if regexm("`_cwd'", "(.*)/code/stata$") global code "`_cwd'/"
-	else global code "`_cwd'/code/stata/"
+if "${dir}" == "" {
+    local _cwd = subinstr("`c(pwd)'", "\", "/", .)
+    if regexm("`_cwd'", "(.*)/code/(stata|utils)$") global dir = regexs(1)
+    else global dir "`_cwd'"
 }
-do "${code}00_stata_config.do"
+do "${dir}/code/utils/globals.do"
 ** 01a_programs.do (project_set_seed, sdid_log_failure) and 02_spec_engine.do
 ** (fit_spec_sdid, load_spec_panel) are normally sourced earlier by the
 ** orchestrator; source them defensively so this script also runs standalone.
-do "${code}01a_programs.do"
 do "${code}02_spec_engine.do"
 
 
