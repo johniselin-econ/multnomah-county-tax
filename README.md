@@ -216,7 +216,7 @@ do "code/stata/02_bootstrap_tables.do"    // collapses to percentile CIs
 
 ### First-run expectations
 
-A full first run downloads ~5 GB of raw data (13 years of ACS microdata plus IRS, BEA, and Census data) and produces ~3 GB of intermediate Stata datasets in `data/working/`. Expect the R data-pull stage to take under an hour depending on network speed and API responsiveness. The Stata pipeline takes an additional 2--4 hours with parallel SDID enabled, longer in sequential mode. Subsequent runs skip cached downloads and are substantially faster.
+A full first run downloads ~5 GB of raw data (13 years of ACS microdata plus IRS, BEA, and Census data) and produces ~3 GB of intermediate Stata datasets in `data/working/`. Expect the R data-pull stage to take under an hour depending on network speed and API responsiveness. The Stata pipeline takes an additional 2--4 days with parallel SDID enabled (the full SDID grid plus the 500-rep donor-cluster bootstrap), longer in sequential mode. Subsequent runs skip cached downloads and are substantially faster.
 
 ### Replication checklist
 
@@ -312,7 +312,7 @@ The pipeline runs in three stages: **R downloads → Stata → post-Stata R**. T
 
 ```text
 Stage 1 (R)     →  source("00_download_data.R")     # 30 min first run, seconds on cached re-runs
-Stage 2 (Stata) →  do "00_multnomah.do"             # 2–4 hr (full SDID + 100-rep bootstrap)
+Stage 2 (Stata) →  do "00_multnomah.do"             # 2–4 days (full SDID + 500-rep bootstrap)
 Stage 3 (R)     →  source("00_post_stata.R")        # ~1 min — diagrams + maps
 ```
 
