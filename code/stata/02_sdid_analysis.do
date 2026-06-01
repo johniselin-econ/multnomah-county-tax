@@ -623,6 +623,23 @@ if ${use_parallel} == 1 {
 					}
 				}
 
+				** Per-spec FIGURE gate (sdid_perspec_figs) -- decoupled from the
+				** event-study computation above, so the full stock-elasticity
+				** distribution is always computed while the bulky per-spec figures
+				** render only for highlighted specs. Empty graphbase => fit_spec_sdid
+				** skips the trends PDF; the .jpg block below gates on render_figs.
+				local render_figs = 1
+				if "${sdid_perspec_figs}" == "preferred" {
+					local render_figs = 0
+					if inlist("`samp_var'", "sample_all", "sample_stringency", "sample_narrow") & `c' == 1 & `exl' == 1 {
+						if "`out_txt'" == "irs_full_16_22" | "`out_txt'" == "acs_16_24_col" {
+							local render_figs = 1
+						}
+					}
+				}
+				local gb = ""
+				if `render_figs' == 1 local gb `"`path'"'
+
 				** Run SDID through shared engine. fit_spec_sdid declares
 				** GRAPHBASE(string asis); pass via compound quotes so the
 				** quote chars don't survive into the macro and end up doubled
@@ -630,7 +647,7 @@ if ${use_parallel} == 1 {
 				capture noisily {
 					fit_spec_sdid, sampledata("`out_txt'") sample(`samp_var') ///
 						outcome(`outcome') controls(`c') exclusion(`exl') ///
-						eventstudy(`run_event') reps(`reps') graphbase(`"`path'"')
+						eventstudy(`run_event') reps(`reps') graphbase(`"`gb'"')
 				}
 
 				if _rc != 0 {
@@ -679,7 +696,7 @@ if ${use_parallel} == 1 {
 				save "`results_path'sdid/temp_results/results_`table_id'_`outvar'_`c'.dta", replace
 				restore
 
-				if `run_event' == 1 & `event_ok' == 1 {
+				if `render_figs' == 1 & `event_ok' == 1 {
 
 					preserve
 					clear
@@ -1222,13 +1239,30 @@ else {
 									}
 								}
 
+								** Per-spec FIGURE gate (sdid_perspec_figs) -- decoupled from the
+								** event-study computation above, so the full stock-elasticity
+								** distribution is always computed while the bulky per-spec figures
+								** render only for highlighted specs. Empty graphbase => fit_spec_sdid
+								** skips the trends PDF; the .jpg block below gates on render_figs.
+								local render_figs = 1
+								if "${sdid_perspec_figs}" == "preferred" {
+									local render_figs = 0
+									if inlist("`samp'", "sample_all", "sample_stringency", "sample_narrow") & `c' == 1 & `exl' == 1 {
+										if "`out_txt'" == "irs_full_16_22" | "`out_txt'" == "acs_16_24_col" {
+											local render_figs = 1
+										}
+									}
+								}
+								local gb = ""
+								if `render_figs' == 1 local gb `"`path'"'
+
 								** Run SDID through shared engine. graphbase passed
 								** via compound quotes — see note at parallel call
 								** site for why.
 								capture noisily {
 									fit_spec_sdid, sampledata("`out_txt'") sample(`samp') ///
 										outcome(`out') controls(`c') exclusion(`exl') ///
-										eventstudy(`run_event') reps(`reps') graphbase(`"`path'"')
+										eventstudy(`run_event') reps(`reps') graphbase(`"`gb'"')
 								}
 
 								if _rc != 0 {
@@ -1265,7 +1299,7 @@ else {
 									(`tmp_ci_lo') (`tmp_ci_hi') (`tmp_ncounties')     ///
 									(`tmp_premean') (`tmp_sig')
 
-								if `run_event' == 1 & `event_ok' == 1 {
+								if `render_figs' == 1 & `event_ok' == 1 {
 
 									preserve
 									clear

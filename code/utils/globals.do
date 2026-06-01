@@ -54,13 +54,20 @@ if ${use_parallel} == 1 & !`has_parallel' {
 if "${n_clusters}" == "" global n_clusters = 4
 if "${resume}" == ""     global resume = 0
 
-** Event-study mode: "all" runs event studies for every SDID spec (needed for
-** the full distribution of stock elasticity in 02_post_spec.do). "preferred"
-** restricts to the 4 domestic baseline specs (sample_all × c=1 × exl=1 ×
-** {irs_full_16_22, acs_16_24_col}) — much faster when you only need the
-** main table's cumulative stock column. Orchestrator override in PROJECT
-** GLOBALS — RUN-CONTROL FLAGS.
+** Event-study COMPUTATION mode: "all" runs event studies for every SDID spec
+** (needed for the full stock-elasticity distribution in 02_post_spec.do that
+** feeds the appendix spec curves and Table B11). "preferred" restricts to the
+** 4 domestic baseline specs (sample_all × c=1 × exl=1 × {irs_full_16_22,
+** acs_16_24_col}) — much faster, but truncates that distribution, so use it
+** only for quick iteration. Orchestrator override in RUN-CONTROL FLAGS.
 if "${event_study_mode}" == "" global event_study_mode "all"
+
+** Per-spec FIGURE rendering — orthogonal to the computation mode above.
+** "preferred" (default) writes the bulky per-spec trends / event-study figures
+** only for the highlighted specs; "all" writes them for every spec (hundreds of
+** MB). Event-study results are still COMPUTED for every spec either way, so no
+** analytical output or paper figure depends on this flag.
+if "${sdid_perspec_figs}" == "" global sdid_perspec_figs "preferred"
 
 if "${start_year_irs_data}" == ""     global start_year_irs_data     = 2012
 if "${start_year_irs_analysis}" == "" global start_year_irs_analysis = 2016
