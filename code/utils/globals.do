@@ -123,7 +123,9 @@ if "${statewide_oregon_revenue}" == ""  global statewide_oregon_revenue  = 11772
 if "${cpi_2019_to_2022}" == ""     global cpi_2019_to_2022     = 1.136
 
 ** Output directories (created here so standalone callees have them too).
-foreach d in "" "tables" "figures" "sdid" "flows" "did" "individual" {
+foreach d in "" "tables" "figures" "sdid" "flows" "did" "individual" ///
+             "maps" "elasticities" "revenue" "bootstrap" "stringency"  ///
+             "appx_irs_data" "_runs" {
     capture mkdir "${results}`d'"
 }
 capture mkdir "${logs}"

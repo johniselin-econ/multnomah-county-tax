@@ -164,10 +164,6 @@ foreach x in "n1" "n2" "agi" {
 ** Keep final variables 
 keep state_name county_name period *_rate
 
-** Export
-export excel using "${results}Table2.xlsx", 	///
-	sheet("raw_irs") sheetreplace firstrow(variables)
-
 ** Save IRS rates for combined Table 2 generation after ACS data prep
 save "${data}working/table2_irs_rates.dta", replace
 
@@ -237,10 +233,6 @@ foreach x in "hh" "per" "dol" {
 
 ** Keep final variables 
 keep state_name county_name period *_rate
-
-** Export
-export excel using "${results}Table2.xlsx", 	///
-	sheet("raw_acs") sheetreplace firstrow(variables)
 
 ** Save ACS rates for combined Table 2 generation
 save "${data}working/table2_acs_rates.dta", replace

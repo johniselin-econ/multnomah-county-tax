@@ -811,8 +811,11 @@ program define project_export_run_manifest
     gen str40 preferred_spec_version = "${preferred_spec_version}"
     gen str40 artifact_schema_version = "${artifact_schema_version}"
 
-    save "${results}run_manifest_${date}_`stamp'.dta", replace
-    export delimited using "${results}run_manifest_${date}_`stamp'.csv", replace
+    ** Dated snapshots archive under _runs/; run_manifest_latest stays at the
+    ** results root (the reproducibility-signature check reads _latest).
+    capture mkdir "${results}_runs"
+    save "${results}_runs/run_manifest_${date}_`stamp'.dta", replace
+    export delimited using "${results}_runs/run_manifest_${date}_`stamp'.csv", replace
     save "${results}run_manifest_latest.dta", replace
     export delimited using "${results}run_manifest_latest.csv", replace
     restore

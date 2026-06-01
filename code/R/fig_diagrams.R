@@ -453,7 +453,7 @@ draw_data_comparison <- function(out_file, with_title = FALSE) {
 # ==========================================================================
 # Generate both figures
 # ==========================================================================
-out_dir <- "results"
+out_dir <- file.path("results", "figures")
 if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
 
 # Paper versions: no in-figure title or bottom notes (LaTeX \caption{} and
