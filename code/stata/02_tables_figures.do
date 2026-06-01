@@ -579,7 +579,7 @@ elast_tex_notes_open, handle(`fh')
 file write `fh' "PFA-only sensitivity counterpart to Table~\ref{tab:elasticities}. " _n
 file write `fh' "Point estimates of $\hat{\tau}$ are unchanged; only the denominator differs. " _n
 file write `fh' "Here $\tau_\text{total}$ excludes the Metro SHS contribution (average total rate on impacted filers: `total_pct'\%). " _n
-file write `fh' "Because the denominator $|\Delta\ln(1-\tau_\text{total})|$ is smaller without SHS, $|\beta|$ and stock $\varepsilon$ are correspondingly larger than in Table~\ref{tab:elasticities}. " _n
+file write `fh' "Because the denominator $|\Delta\ln(1-\tau_\text{total})|$ is smaller without SHS, $|\varepsilon_{\text{semi}}|$ and stock $\varepsilon$ are correspondingly larger than in Table~\ref{tab:elasticities}. " _n
 file write `fh' "See Appendix~\ref{sec:appb_elast} for formulas. " _n
 file write `fh' "Bracketed values are 95\% donor-cluster bootstrap percentile CIs. " _n
 elast_tex_close, handle(`fh')
@@ -630,7 +630,7 @@ elast_stock_compare_panel, handle(`fh2') ///
 elast_tex_notes_open, handle(`fh2')
 file write `fh2' "$\hat{\tau}$ is the SDID coefficient on the AGI net-migration rate, reported in percentage points. " _n
 file write `fh2' "$\Delta \ln(1-t)$ is the change in the log after-tax rate used in the elasticity denominator; for ACS College, the subgroup-specific after-tax change is used. " _n
-file write `fh2' "Flow semi-elasticity is $\beta = (\hat{\tau}/100)/\Delta\ln(1-t)$. " _n
+file write `fh2' "Flow semi-elasticity is $\varepsilon_{\text{semi}} = (\hat{\tau}/100)/\Delta\ln(1-t)$. " _n
 file write `fh2' "Stock elasticities are calculated on the total AGI base from cumulated net-migration event-study effects: $\varepsilon_{\text{stock},H} = \Delta\ln S_H / \Delta\ln(1-t)$. " _n
 file write `fh2' "Common uses the 2021--2022 IRS-ACS overlap window, Full uses all available post years, and Annualized equals Full divided by the number of post years. " _n
 file write `fh2' "Positive stock elasticities indicate that the AGI stock shrinks when the tax rate rises because the after-tax rate falls. " _n
@@ -683,7 +683,7 @@ elast_inout_panel, handle(`fh') direction("in")
 elast_tex_notes_open, handle(`fh')
 file write `fh' "PFA-only sensitivity counterpart to Table~\ref{tab:elasticities_inout}. " _n
 file write `fh' "Point estimates of $\hat{\tau}$ are unchanged; only the denominator differs (excludes Metro SHS; average total rate on impacted filers: `total_pct'\%). " _n
-file write `fh' "Because the denominator is smaller without SHS, $|\beta|$ is correspondingly larger than in Table~\ref{tab:elasticities_inout}. " _n
+file write `fh' "Because the denominator is smaller without SHS, $|\varepsilon_{\text{semi}}|$ is correspondingly larger than in Table~\ref{tab:elasticities_inout}. " _n
 file write `fh' "See Appendix~\ref{sec:appb_elast} for formulas. " _n
 file write `fh' "Bracketed values are 95\% donor-cluster bootstrap percentile CIs. " _n
 elast_tex_close, handle(`fh')
@@ -726,11 +726,11 @@ elast_main_net_panel, handle(`fh_shs') ///
 
 elast_tex_notes_open, handle(`fh_shs')
 file write `fh_shs' "$\hat{\tau}$ is the SDID coefficient on the AGI net migration rate (percentage points). " _n
-file write `fh_shs' "Semi-elasticity $\beta = (\hat{\tau}/100)/\Delta\ln(1-\tau_\text{total})$ and stock elasticity $\varepsilon_{\text{stock},H} = \Delta\ln S_H / \Delta\ln(1-\tau_\text{total})$, where $S_H$ is the cumulative AGI stock at horizon $H$, are computed against the joint PFA + Metro SHS rate change; both took effect January~1, 2021. " _n
+file write `fh_shs' "Semi-elasticity $\varepsilon_{\text{semi}} = (\hat{\tau}/100)/\Delta\ln(1-\tau_\text{total})$ and stock elasticity $\varepsilon_{\text{stock},H} = \Delta\ln S_H / \Delta\ln(1-\tau_\text{total})$, where $S_H$ is the cumulative AGI stock at horizon $H$, are computed against the joint PFA + Metro SHS rate change; both took effect January~1, 2021. " _n
 file write `fh_shs' "Average total marginal rate on impacted filers: `total_shs_pct'\% (federal + Oregon state + FICA-employee + PFA + SHS). " _n
 file write `fh_shs' "The stock object is the 2-year cumulative AGI-stock change on the total AGI base; see Appendix~\ref{sec:appb_elast} for the recursion and Appendix Table~\ref{tab:elasticities_pfa_only} for a PFA-only-denominator sensitivity. " _n
 file write `fh_shs' "Gross out- and in-migration semi-elasticities are in Appendix Table~\ref{tab:elasticities_inout}. " _n
-file write `fh_shs' "Positive $\beta$ or stock $\varepsilon$ indicates AGI inflow / stock shrinks when the after-tax rate falls. " _n
+file write `fh_shs' "Positive $\varepsilon_{\text{semi}}$ or stock $\varepsilon$ indicates AGI inflow / stock shrinks when the after-tax rate falls. " _n
 file write `fh_shs' "Bracketed values are 95\% donor-cluster bootstrap percentile CIs (treats tax parameters and microsimulation denominators as fixed). " _n
 elast_tex_close, handle(`fh_shs')
 
@@ -834,9 +834,9 @@ elast_inout_panel, handle(`fh_shs_io') direction("in") ///
 
 elast_tex_notes_open, handle(`fh_shs_io')
 file write `fh_shs_io' "$\hat{\tau}$ is the SDID coefficient on the AGI gross out- (Panel~A) or in- (Panel~B) migration rate (percentage points). " _n
-file write `fh_shs_io' "Semi-elasticity $\beta = (\hat{\tau}/100)/\Delta\ln(1-\tau_\text{total})$ is computed against the joint PFA + Metro SHS rate change (average total marginal rate on impacted filers: `total_shs_pct'\%); see Appendix~\ref{sec:appb_elast} for the formula and Table~\ref{tab:elasticities} for the corresponding net-migration object. " _n
+file write `fh_shs_io' "Semi-elasticity $\varepsilon_{\text{semi}} = (\hat{\tau}/100)/\Delta\ln(1-\tau_\text{total})$ is computed against the joint PFA + Metro SHS rate change (average total marginal rate on impacted filers: `total_shs_pct'\%); see Appendix~\ref{sec:appb_elast} for the formula and Table~\ref{tab:elasticities} for the corresponding net-migration object. " _n
 file write `fh_shs_io' "A PFA-only-denominator sensitivity is in Appendix Table~\ref{tab:elasticities_inout_pfa_only}. " _n
-file write `fh_shs_io' "Sign convention: negative $\beta$ for out-migration indicates a larger outflow when the after-tax rate falls; positive $\beta$ for in-migration indicates a smaller inflow. " _n
+file write `fh_shs_io' "Sign convention: negative $\varepsilon_{\text{semi}}$ for out-migration indicates a larger outflow when the after-tax rate falls; positive $\varepsilon_{\text{semi}}$ for in-migration indicates a smaller inflow. " _n
 file write `fh_shs_io' "Bracketed values are 95\% donor-cluster bootstrap percentile CIs. " _n
 elast_tex_close, handle(`fh_shs_io')
 
@@ -1402,22 +1402,22 @@ foreach migr in "net" "in" "out" {
 	summ beta_kleven, detail
 
 	elast_speccurve_plot, var(beta_kleven) ///
-		ytitle(`"Migration Semi-Elasticity ({&beta})"') ///
+		ytitle(`"Migration Semi-Elasticity (Semi-{&epsilon})"') ///
 		file("${results}elasticities/fig_speccurve_elast_beta_`migr'") ///
 		indicators("`indic_county'") scope(county)
 	elast_speccurve_plot, var(beta_kleven) ///
-		ytitle(`"Migration Semi-Elasticity ({&beta})"') ///
+		ytitle(`"Migration Semi-Elasticity (Semi-{&epsilon})"') ///
 		file("${results}elasticities/fig_speccurve_elast_beta_`migr'_outstate") ///
 		indicators("`indic_outstate'") scope(outstate)
 
 	dis as text "Kleven semi-elasticity beta distribution (`migr'), +SHS:"
 	summ beta_kleven_shs, detail
 	elast_speccurve_plot, var(beta_kleven_shs) ///
-		ytitle(`"Migration Semi-Elasticity ({&beta}, PFA+SHS)"') ///
+		ytitle(`"Migration Semi-Elasticity (Semi-{&epsilon}, PFA+SHS)"') ///
 		file("${results}elasticities/fig_speccurve_elast_beta_`migr'_shs") ///
 		indicators("`indic_county'") scope(county)
 	elast_speccurve_plot, var(beta_kleven_shs) ///
-		ytitle(`"Migration Semi-Elasticity ({&beta}, PFA+SHS)"') ///
+		ytitle(`"Migration Semi-Elasticity (Semi-{&epsilon}, PFA+SHS)"') ///
 		file("${results}elasticities/fig_speccurve_elast_beta_`migr'_outstate_shs") ///
 		indicators("`indic_outstate'") scope(outstate)
 

@@ -164,7 +164,7 @@ program define elast_tex_notes_inference
 		file write `handle' "are treated as fixed throughout the bootstrap." _n
 	}
 	else {
-		file write `handle' "Standard errors in parentheses are SDID placebo-inference SEs for $\hat{\tau}$ and the implied $\beta$. " _n
+		file write `handle' "Standard errors in parentheses are SDID placebo-inference SEs for $\hat{\tau}$ and the implied semi-elasticity $\varepsilon_{\text{semi}}$. " _n
 		if "`stock'" != "" {
 			file write `handle' "Cumulative stock elasticities require joint event-study covariances that the current pipeline does not export, " _n
 			file write `handle' "so analytic SEs are not reported for those columns; donor-cluster bootstrap CIs are available as a separate output." _n
