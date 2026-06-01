@@ -24,6 +24,7 @@ api_codes.txt
 
 # Claude Code
 .claude/
+.agents/
 quality_reports/
 
 # Personal notes
