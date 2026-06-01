@@ -14,7 +14,7 @@ Cluster facts (verified 2026-05-21):
 - Stata module: `Stata/19` (MP/16 license — `c(processors_max)=16`)
 - Project root: `/nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax`
 - Curated outputs land in `results/overleaf_export/{figures,tables}/`
-  (driven by `profile.do` → `${oth_path}`)
+  (driven by `user_settings.do` → `${oth_path}`)
 
 ---
 
@@ -46,8 +46,8 @@ Cluster facts (verified 2026-05-21):
 
 3. **API keys**: `api_codes.txt` exists in repo root (IPUMS + Census keys).
 
-4. **Fake Overleaf staging**: `profile.do` is in place; mirrors curated outputs
-   to `results/overleaf_export/`. Edit `oth_path` in `profile.do` to relocate.
+4. **Fake Overleaf staging**: `user_settings.do` is in place; mirrors curated outputs
+   to `results/overleaf_export/`. Edit `oth_path` in `user_settings.do` to relocate.
 
 ---
 
@@ -140,13 +140,13 @@ Before the multi-hour Stata run, inside the salloc:
 |--------------------------------------------------|------------------|
 | `nproc`                                          | matches `--cpus-per-task` |
 | `stata-mp -q -b -e 'di c(processors_max)'`       | `16` (MP/16 license)       |
-| `cat profile.do`                                 | shows `oth_path` set       |
+| `cat user_settings.do`                                 | shows `oth_path` set       |
 | `ls data/acs/acs_2024.csv`                       | exists (Stage 1 ran)       |
 | `ls results/overleaf_export/{figures,tables}`    | both exist                 |
 
 ## Sizing rationale (MP/16)
 
-`setup_parallel` in `code/stata/01a_programs.do` reads `nproc` (respects
+`setup_parallel` in `code/utils/programs.do` reads `nproc` (respects
 SLURM cgroup) and caps `n_clusters = floor(visible_cores / 16)`. Each
 worker then runs Stata/MP at the full 16-core license cap.
 
