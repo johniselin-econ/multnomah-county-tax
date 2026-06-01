@@ -17,12 +17,12 @@ suppressPackageStartupMessages({
   library(readr)
 })
 
-# ---- Paths (set by 00_multnomah.R before sourcing) ----
+# ---- Paths (set by 00_download_data.R before sourcing) ----
 if (!exists("project_root")) {
-  stop("project_root must be defined (set by 00_multnomah.R)")
+  stop("project_root must be defined (set by 00_download_data.R)")
 }
 if (!exists("api_codes_path")) {
-  stop("api_codes_path must be defined (set by 00_multnomah.R)")
+  stop("api_codes_path must be defined (set by 00_download_data.R)")
 }
 
 output_path <- file.path(project_root, "data", "working", "age_shares_county.csv")

@@ -3,7 +3,7 @@
 # Purpose: Download NHGIS time-series demographics via IPUMS API, replicating
 #          the manual extract #0031.
 #
-# Called by: 00_multnomah.R
+# Called by: 00_download_data.R
 #
 # Requires: ipumsr (>= 0.7.0) with NHGIS API support
 #           IPUMS API key in api_codes.txt

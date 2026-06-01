@@ -67,13 +67,13 @@ multnomah_r_init <- function(script_label = "R pipeline") {
 
   source(file.path(dir_code_r, "utils.R"))
 
-  # Overleaf sync (optional) — mirrors profile.do convention
+  # Overleaf sync (optional) — mirrors the Stata user_settings.do convention
   overleaf   <- FALSE
   dir_ol_fig <- ""
   dir_ol_tab <- ""
-  profile_r  <- file.path(project_root, "profile.R")
-  if (file.exists(profile_r)) {
-    source(profile_r, local = TRUE)
+  user_settings_r <- file.path(project_root, "user_settings.R")
+  if (file.exists(user_settings_r)) {
+    source(user_settings_r, local = TRUE)
   }
   if (nzchar(Sys.getenv("OVERLEAF_PATH", ""))) {
     oth_path <- Sys.getenv("OVERLEAF_PATH")

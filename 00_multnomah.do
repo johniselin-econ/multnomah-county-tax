@@ -8,8 +8,8 @@
 	              migration. Calls data-cleaning scripts (01_*) and analysis
 	              scripts (02_*) in dependency order.
 
-	Prerequisite: Run 00_download_data.R (or 00_multnomah.R) first to
-	              download the R-managed inputs used below.
+	Prerequisite: Run 00_download_data.R first to download the R-managed
+	              inputs used below.
 
 	Author:       John Iselin (john.iselin@yale.edu)
 *******************************************************************************/

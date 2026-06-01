@@ -123,7 +123,7 @@ if "`covid_file'"=="" {
 
 * ----------------------------
 * Verify public data downloads (DOL + BLS)
-* These are now auto-downloaded by 00_multnomah.R (download_public_data.R).
+* These are now auto-downloaded by 00_download_data.R (download_public_data.R).
 * Keep verification as a safety check but warn instead of stopping.
 * ----------------------------
 
@@ -132,24 +132,24 @@ local bls_dir "${data}demographic/bls/la.data.64.County"
 
 if !fileexists("`dol_dir'") {
     di as err "ERROR: `dol_dir' not found."
-    di as err "Run 00_multnomah.R first, or download manually from:"
+    di as err "Run 00_download_data.R first, or download manually from:"
     di as err "  https://www.dol.gov/sites/dolgov/files/WB/NDCP2022.xlsx"
     exit 601
 }
 
 if !fileexists("`bls_dir'") {
     di as err "ERROR: `bls_dir' not found."
-    di as err "Run 00_multnomah.R first, or download manually from:"
+    di as err "Run 00_download_data.R first, or download manually from:"
     di as err "  https://download.bls.gov/pub/time.series/la/la.data.64.County"
     exit 601
 }
 
 * ----------------------------
-* Census B01001: County Age Shares (created by 00_multnomah.R)
+* Census B01001: County Age Shares (created by 00_download_data.R)
 * ----------------------------
 if !fileexists("${data}working/age_shares_county.csv") {
     di as err "ERROR: age_shares_county.csv not found."
-    di as err "Run 00_multnomah.R first to download Census age share data."
+    di as err "Run 00_download_data.R first to download Census age share data."
     exit 601
 }
 

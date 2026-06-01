@@ -3,7 +3,7 @@
 # Purpose: Download publicly available data files (BLS LAUS, DOL childcare,
 #          county centroids) that were previously manual downloads.
 #
-# Called by: 00_multnomah.R
+# Called by: 00_download_data.R
 #
 # Functions:
 #   download_bls_laus(dir_data, overwrite = FALSE)

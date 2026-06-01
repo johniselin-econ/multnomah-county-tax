@@ -18,9 +18,8 @@ slurm-*.out
 
 # Local configuration (user-specific)
 user_settings.do
-profile.R
+user_settings.R
 api_codes.txt
-code/00_ipums_api.R
 
 # Claude Code
 .claude/
