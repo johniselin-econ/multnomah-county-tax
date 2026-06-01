@@ -57,8 +57,28 @@ Cluster facts (verified 2026-05-21):
 
 **Option A: SLURM batch job (preferred — clean log, unattended).**
 
+The repo no longer ships a `.sbatch` (it was cluster/path-specific, and `*.sbatch`
+is gitignored). Create one from this template on the cluster, then submit:
+
 ```bash
 cd /nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax
+cat > stage1.sbatch <<'SBATCH'
+#!/usr/bin/env bash
+#SBATCH --job-name=multnomah-stage1
+#SBATCH --partition=day
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=8G
+#SBATCH --time=02:00:00
+#SBATCH --output=slurm-stage1-%j.log
+#SBATCH --mail-type=END,FAIL
+set -euo pipefail
+module purge
+module load R/4.4.1-foss-2022b
+cd "$SLURM_SUBMIT_DIR"
+./run_stage1.sh
+SBATCH
 sbatch stage1.sbatch
 # monitor:
 squeue -u $USER
