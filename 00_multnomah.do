@@ -95,7 +95,7 @@ project_export_run_manifest
 ** STAGE 1: DATA CLEANING
 ** ============================================================================
 ** Calls 01a_programs through 01h_auxiliary; see 01_clean_data.do for details.
-do "${code}01_clean_data.do"
+*do "${code}01_clean_data.do"
 
 
 ** ============================================================================
@@ -127,7 +127,7 @@ do "${code}02_sdid_analysis.do"
 do "${code}02_descriptives.do"
 
 ** ACS individual-level conditional-mean migration regressions
-do "${code}02_indiv_analysis.do"
+*do "${code}02_indiv_analysis.do"
 
 
 ** ============================================================================

@@ -45,6 +45,8 @@ data/irs/*.csv
 data/working/
 data/demographic/CAINC1/
 data/demographic/bls/
+data/qcew/
+data/qwi/
 
 # ========================================
 # Results: all generated from code
