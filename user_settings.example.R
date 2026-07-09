@@ -9,3 +9,11 @@
 # (You can alternatively set the OVERLEAF_PATH environment variable.)
 
 # oth_path <- "C:/Users/<you>/Dropbox/Apps/Overleaf/Multnomah County/"
+
+# ACS data source (see code/R/multnomah_r_common.R). Default is "shared".
+#   acs_source      : "shared" reads the Budget Lab common IPUMS extract from the
+#                     shared drive; "local" downloads via the IPUMS API.
+#   acs_shared_root : path to the shared per-year extract root (contains
+#                     us<YYYY>a/ folders). Required when acs_source is "shared".
+# acs_source      <- "shared"
+# acs_shared_root <- "/path/to/shared/raw_data/ACS/acs_common"

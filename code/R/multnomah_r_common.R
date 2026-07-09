@@ -85,6 +85,17 @@ multnomah_r_init <- function(script_label = "R pipeline") {
     cat("Overleaf sync ON:", oth_path, "\n\n")
   }
 
+  # ---- ACS data source -------------------------------------------------------
+  # "shared" (default): read the Budget Lab common IPUMS extract from the shared
+  # drive. "local": download a fresh per-year extract via the IPUMS API (needs
+  # api_codes.txt). Override either in user_settings.R (gitignored):
+  #   acs_source      <- "local"
+  #   acs_shared_root <- "/nfs/.../shared/raw_data/ACS/acs_common"
+  # The absolute shared path is kept out of the repo (set in user_settings.R).
+  acs_source      <- if (exists("acs_source") && nzchar(acs_source)) tolower(acs_source) else "shared"
+  acs_shared_root <- if (exists("acs_shared_root")) acs_shared_root else NULL
+  cat("ACS source:", acs_source, "\n\n")
+
   list(
     project_root = project_root,
     dir_code_r = dir_code_r,
@@ -96,7 +107,9 @@ multnomah_r_init <- function(script_label = "R pipeline") {
     overwrite_csv = overwrite_csv,
     overleaf = overleaf,
     dir_ol_fig = dir_ol_fig,
-    dir_ol_tab = dir_ol_tab
+    dir_ol_tab = dir_ol_tab,
+    acs_source = acs_source,
+    acs_shared_root = acs_shared_root
   )
 }
 
@@ -111,7 +124,9 @@ run_multnomah_data_pulls <- function(cfg) {
     api_codes_path = cfg$api_codes_path,
     start_year = cfg$start_year,
     end_year = cfg$end_year,
-    overwrite_csv = cfg$overwrite_csv
+    overwrite_csv = cfg$overwrite_csv,
+    acs_source = cfg$acs_source,
+    shared_acs_dir = cfg$acs_shared_root
   )
   cat("   Done.\n\n")
 

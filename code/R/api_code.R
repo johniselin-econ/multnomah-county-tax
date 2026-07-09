@@ -35,23 +35,60 @@ download_ipums_acs <- function(project_root,
                                end_year   = 2023,
                                overwrite_csv = FALSE,
                                overwrite_extract_files = TRUE,
-                               extract_desc_prefix = "ACS microdata extract") {
-  
+                               extract_desc_prefix = "ACS microdata extract",
+                               acs_source     = NULL,
+                               shared_acs_dir = NULL) {
+
   # Normalize paths (Windows-safe)
   project_root  <- normalizePath(project_root, winslash = "/", mustWork = TRUE)
   dir_data_acs  <- normalizePath(dir_data_acs, winslash = "/", mustWork = FALSE)
-  api_codes_path <- normalizePath(api_codes_path, winslash = "/", mustWork = TRUE)
-  
+  api_codes_path <- normalizePath(api_codes_path, winslash = "/", mustWork = FALSE)
+
   if (!dir.exists(dir_data_acs)) {
     dir.create(dir_data_acs, recursive = TRUE, showWarnings = FALSE)
   }
-  
+
   setwd(project_root)
-  
-  # IPUMS key setup
-  ipums_key <- read_api_key(api_codes_path, "ipums")
-  ipumsr::set_ipums_api_key(ipums_key, save = TRUE, overwrite = TRUE)
-  
+
+  # ---- ACS source toggle -----------------------------------------------------
+  # "shared" (default): read the Budget Lab common IPUMS extract from the shared
+  # drive (shared_acs_dir / acs_shared_root in user_settings.R). "local":
+  # download a fresh per-year extract via the IPUMS API (original behaviour).
+  if (is.null(acs_source) || !nzchar(acs_source)) acs_source <- "shared"
+  acs_source <- tolower(acs_source)
+  if (!acs_source %in% c("shared", "local")) {
+    stop("acs_source must be 'shared' or 'local' (got '", acs_source, "')", call. = FALSE)
+  }
+  if (identical(acs_source, "shared") && (is.null(shared_acs_dir) || !nzchar(shared_acs_dir))) {
+    stop("acs_source='shared' but acs_shared_root is not set.\n",
+         "  Set acs_shared_root in user_settings.R (see user_settings.example.R),\n",
+         "  or set acs_source <- \"local\" to download via the IPUMS API.", call. = FALSE)
+  }
+  message("ACS source: ", acs_source,
+          if (identical(acs_source, "shared")) paste0("  (", shared_acs_dir, ")") else "")
+
+  # IPUMS key setup (only needed to download in local mode)
+  if (identical(acs_source, "local")) {
+    ipums_key <- read_api_key(api_codes_path, "ipums")
+    ipumsr::set_ipums_api_key(ipums_key, save = TRUE, overwrite = TRUE)
+  }
+
+  # Column contract reproduced when reading the shared (superset) source: the
+  # exact per-year schema the local extract produced (lowercased, DDI order).
+  # any_of() tolerates IPUMS per-year availability (e.g. county migration fields
+  # absent in some years), matching what the same request yielded per year.
+  acs_keep_cols <- c(
+    "year","sample","serial","cbserial","hhwt","cluster","cpi99","statefip",
+    "countyfip","strata","gq","proptx99","rent","valueh","qprotx99","qrent",
+    "qvalueh","pernum","perwt","sploc","nchild","nchlt5","yngch","relate",
+    "related","sex","age","marst","race","raced","hispan","hispand","citizen",
+    "school","educ","educd","empstat","empstatd","workedyr","inctot","ftotinc",
+    "incwage","incbus00","incwelfr","incinvst","incsupp","incother","incearn",
+    "migrate1","migrate1d","migplac1","migcounty1","pwstate2","pwcounty",
+    "qempstat","qworkedy","qincearn","qincbus","qincinvs","qincothe","qincreti",
+    "qincss","qincsupp","qinctot","qftotinc","qincwage","qincwelf","qmigplc1"
+  )
+
   # Years
   years <- seq.int(start_year, end_year)
   if (length(years) == 0) stop("start_year must be <= end_year", call. = FALSE)
@@ -61,11 +98,28 @@ download_ipums_acs <- function(project_root,
     file_acs <- file.path(dir_data_acs, paste0("acs_", y, ".csv"))
     
     if (!file.exists(file_acs) || isTRUE(overwrite_csv)) {
-      
+
+     if (identical(acs_source, "shared")) {
+
+      message("Reading ACS ", y, " from shared common source...")
+      ddi_path <- file.path(shared_acs_dir, paste0("us", y, "a"),
+                            paste0("usa_", y, "a.xml"))
+      if (!file.exists(ddi_path)) {
+        stop("acs_source='shared' but the shared file is missing:\n  ", ddi_path,
+             "\n  Fix acs_shared_root, or set acs_source <- \"local\" to download.", call. = FALSE)
+      }
+      acs_data <- ipumsr::read_ipums_micro(ipumsr::read_ipums_ddi(ddi_path),
+                                           verbose = FALSE) |>
+        rename_with(tolower) |>
+        filter(as.integer(gq) %in% c(1L, 2L)) |>   # reproduce GQ case_selections c("1","2")
+        select(any_of(acs_keep_cols))               # reproduce original per-year column set
+
+     } else {
+
       message("Downloading ACS data for ", y, " via IPUMS...")
-      
+
       extract_name <- paste0(extract_desc_prefix, ", Year: ", y)
-      
+
       # Variable specs (as in your script)
       gq        <- var_spec("GQ", case_selections = c("1", "2"))
       workedyr  <- var_spec("WORKEDYR", data_quality_flags = TRUE)
@@ -131,7 +185,9 @@ download_ipums_acs <- function(project_root,
         download_extract(download_dir = dir_data_acs, overwrite = overwrite_extract_files) |>
         read_ipums_micro() |>
         rename_with(tolower)
-      
+
+     }
+
       # Write CSV
       utils::write.csv(acs_data, file_acs, row.names = FALSE)
       
