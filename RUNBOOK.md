@@ -9,6 +9,9 @@ Three-stage workflow on the McCleary-style cluster:
 Stages 1 and 3 are light and can run on the login node or as small SLURM
 jobs. Stage 2 is the heavy lifter and is run interactively in a salloc.
 
+Running off the cluster (laptop, no shared drive): the same three stages work,
+but `user_settings.R` must set `acs_source <- "local"` — see README §4.
+
 Cluster facts (verified 2026-05-21):
 - R module:     `R/4.4.1-foss-2022b`
 - Stata module: `Stata/19` (MP/16 license — `c(processors_max)=16`)

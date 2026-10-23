@@ -20,6 +20,7 @@ slurm-*.out
 # Local configuration (user-specific)
 user_settings.do
 user_settings.R
+profile.do
 api_codes.txt
 
 # Claude Code

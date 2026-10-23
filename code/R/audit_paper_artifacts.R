@@ -35,9 +35,14 @@ repo_root <- if (!is.null(script_dir)) normalizePath(file.path(script_dir, "..",
 manifest_path <- file.path(repo_root, "resources", "paper_manifest.csv")
 results_dir   <- file.path(repo_root, "results")
 
-# Overleaf .tex lives outside the repo; honor profile-level config if set,
-# otherwise try the user's default Dropbox path.
-tex_default <- "C:/Users/ji252/Dropbox/Apps/Overleaf/Multnomah County/Conway_Iselin_Rork_2026.tex"
+# Overleaf .tex lives outside the repo: OVERLEAF_TEX wins; otherwise look in
+# the Overleaf folder set as oth_path in user_settings.R (gitignored). Neither
+# set -> the tex audit is skipped below.
+user_settings_r <- file.path(repo_root, "user_settings.R")
+if (file.exists(user_settings_r)) source(user_settings_r, local = TRUE)
+tex_default <- if (exists("oth_path") && nzchar(oth_path)) {
+  file.path(oth_path, "Conway_Iselin_Rork_2026.tex")
+} else ""
 tex_path <- Sys.getenv("OVERLEAF_TEX", unset = tex_default)
 
 stopifnot(file.exists(manifest_path))
