@@ -90,7 +90,7 @@ multnomah_r_init <- function(script_label = "R pipeline") {
   # drive. "local": download a fresh per-year extract via the IPUMS API (needs
   # api_codes.txt). Override either in user_settings.R (gitignored):
   #   acs_source      <- "local"
-  #   acs_shared_root <- "/nfs/.../shared/raw_data/ACS/acs_common"
+  #   acs_shared_root <- "/nfs/.../shared/raw_data/ACS/acs_common_v2"
   # The absolute shared path is kept out of the repo (set in user_settings.R).
   acs_source      <- if (exists("acs_source") && nzchar(acs_source)) tolower(acs_source) else "shared"
   acs_shared_root <- if (exists("acs_shared_root")) acs_shared_root else NULL

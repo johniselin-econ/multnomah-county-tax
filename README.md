@@ -293,6 +293,14 @@ To sync outputs to an Overleaf folder or override other defaults, copy the track
 global oth_path "C:/Users/yourname/Dropbox/Apps/Overleaf/Your Project/"
 ```
 
+The R stages read their own `user_settings.R` (template: `user_settings.example.R`). **Off the Budget Lab cluster, this file is required:** R reads ACS microdata from the cluster's shared IPUMS extract by default and stops if `acs_shared_root` is unset. To download ACS through the IPUMS API instead (needs the IPUMS key in `api_codes.txt`), set:
+
+```r
+# user_settings.R
+acs_source <- "local"
+oth_path   <- "C:/Users/yourname/Dropbox/Apps/Overleaf/Your Project/"  # optional
+```
+
 ### 5. TAXSIM (optional)
 
 The revenue microsimulation (`02_revenue_microsim.do`) uses [TAXSIM 35](https://taxsim.nber.org/taxsim35/) to compute federal and state income tax liabilities. To run the preferred revenue specification:

@@ -16,4 +16,4 @@
 #   acs_shared_root : path to the shared per-year extract root (contains
 #                     us<YYYY>a/ folders). Required when acs_source is "shared".
 # acs_source      <- "shared"
-# acs_shared_root <- "/path/to/shared/raw_data/ACS/acs_common"
+# acs_shared_root <- "/path/to/shared/raw_data/ACS/acs_common_v2"
