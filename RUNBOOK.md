@@ -12,7 +12,7 @@ jobs. Stage 2 is the heavy lifter and is run interactively in a salloc.
 Cluster facts (verified 2026-05-21):
 - R module:     `R/4.4.1-foss-2022b`
 - Stata module: `Stata/19` (MP/16 license — `c(processors_max)=16`)
-- Project root: `/nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax`
+- Project root: `/path/to/repos/multnomah-county-tax`
 - Curated outputs land in `results/overleaf_export/{figures,tables}/`
   (driven by `user_settings.do` → `${oth_path}`)
 
@@ -61,7 +61,7 @@ The repo no longer ships a `.sbatch` (it was cluster/path-specific, and `*.sbatc
 is gitignored). Create one from this template on the cluster, then submit:
 
 ```bash
-cd /nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax
+cd /path/to/repos/multnomah-county-tax
 cat > stage1.sbatch <<'SBATCH'
 #!/usr/bin/env bash
 #SBATCH --job-name=multnomah-stage1
@@ -88,7 +88,7 @@ tail -f slurm-stage1-*.log
 **Option B: login-node (if cached, runs in seconds).**
 
 ```bash
-cd /nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax
+cd /path/to/repos/multnomah-county-tax
 module load R/4.4.1-foss-2022b
 ./run_stage1.sh
 ```
@@ -114,7 +114,7 @@ data blocks.
 
 ```bash
 module load Stata/19
-cd /nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax
+cd /path/to/repos/multnomah-county-tax
 
 # sanity-check: should print 16 for MP/16, and match --cpus-per-task for nproc
 stata-mp -q -b -e 'di c(processors_max)' && tail -2 *.log && rm -f *.log
@@ -134,7 +134,7 @@ done — don't sit on idle cores.
 ### Stage 3 — R post-Stata
 
 ```bash
-cd /nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax
+cd /path/to/repos/multnomah-county-tax
 module load R/4.4.1-foss-2022b
 ./run_stage3.sh
 ```
@@ -147,7 +147,7 @@ module load R/4.4.1-foss-2022b
 From your laptop:
 
 ```bash
-rsync -av <cluster>:/nfs/roberts/project/pi_nrs36/ji252/repos/multnomah-county-tax/results/overleaf_export/ ~/Dropbox/Overleaf-Multnomah/
+rsync -av <cluster>:/path/to/repos/multnomah-county-tax/results/overleaf_export/ ~/Dropbox/Overleaf-Multnomah/
 ```
 
 ---
