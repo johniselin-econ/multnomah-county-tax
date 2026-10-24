@@ -284,7 +284,7 @@ The pipeline downloads data from IPUMS and the Census Bureau via their APIs.
    "census", "YOUR_CENSUS_API_KEY_HERE"
    ```
 
-### 4. Local Configuration (optional)
+### 4. Local Configuration
 
 To sync outputs to an Overleaf folder or override other defaults, copy the tracked template `user_settings.example.do` to `user_settings.do` in the project root (the latter is gitignored) and set your path. `code/utils/globals.do` sources it automatically and turns on Overleaf sync whenever `oth_path` is defined:
 
@@ -293,13 +293,15 @@ To sync outputs to an Overleaf folder or override other defaults, copy the track
 global oth_path "C:/Users/yourname/Dropbox/Apps/Overleaf/Your Project/"
 ```
 
-The R stages read their own `user_settings.R` (template: `user_settings.example.R`). **Off the Budget Lab cluster, this file is required:** R reads ACS microdata from the cluster's shared IPUMS extract by default and stops if `acs_shared_root` is unset. To download ACS through the IPUMS API instead (needs the IPUMS key in `api_codes.txt`), set:
+The R stages read their own `user_settings.R` (template: `user_settings.example.R`), and **the file is required for Stage 1 everywhere**: `acs_source` defaults to `"shared"` (the Budget Lab cluster's common IPUMS extract) and R stops unless `acs_shared_root` names that extract. On the cluster, set `acs_shared_root`; anywhere else, switch to the IPUMS API:
 
 ```r
 # user_settings.R
-acs_source <- "local"
+acs_source <- "local"       # download via the IPUMS API (key in api_codes.txt)
 oth_path   <- "C:/Users/yourname/Dropbox/Apps/Overleaf/Your Project/"  # optional
 ```
+
+`api_codes.txt` (IPUMS + Census keys) is required for Stage 1 in both modes, because NHGIS and the Census age shares always download. Stage 3 (`00_post_stata.R`) needs neither file. `code/R/audit_paper_artifacts.R` reads the same `user_settings.R` (or `OVERLEAF_PATH` / `OVERLEAF_TEX`) to locate the Overleaf `.tex`.
 
 ### 5. TAXSIM (optional)
 
@@ -338,10 +340,12 @@ Each step is individually idempotent. Set `overwrite_csv <- TRUE` near the top o
 
 ### Stage 2 — `00_multnomah.do` (Stata)
 
-Reads R-produced data plus auto-downloads of IRS / BEA / NYTimes Covid (handled by `01b_download.do`). Runs `01_clean_data.do` (which calls `01a–01h`), then the analysis stages (`02_sdid_analysis`, `02_did_analysis`, `02_flow_analysis`, `02_revenue_microsim`, `02_descriptives`, `02_post_spec`, `02_bootstrap`, `02_bootstrap_tables`, `02_tables_figures`, plus appendices).
+Reads R-produced data plus auto-downloads of IRS / BEA / NYTimes Covid (handled by `01b_download.do`). Runs `01_clean_data.do` (which calls `01b–01h`; set `${run_cleaning} = 0` to reuse an existing `data/working/`), then the analysis stages (`02_sdid_analysis`, `02_did_analysis`, `02_flow_analysis`, `02_revenue_microsim`, `02_descriptives`, `02_post_spec`, `02_bootstrap`, `02_bootstrap_tables`, `02_tables_figures`, plus appendices).
 
 Key globals in the panel at the top of `00_multnomah.do`:
 
+- `${run_cleaning}` (0/1) — rebuild `data/working/` from the raw inputs (default 1).
+- `${run_indiv_analysis}` (0/1) — run the individual-level conditional-mean margins (default 1).
 - `${run_bootstrap}` (0/1) — toggle the donor-cluster bootstrap stage.
 - `${bootstrap_reps}` — `20` smoke / `100` stress / `500` publication.
 - `${use_parallel}`, `${n_clusters}` — parallel SDID / bootstrap settings.

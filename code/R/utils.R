@@ -44,3 +44,36 @@ read_api_key <- function(api_codes_path, label) {
 
   key
 }
+
+#' Load user_settings.R (gitignored, optional) into its own environment
+#'
+#' One loader for every R entry point (multnomah_r_common.R and
+#' audit_paper_artifacts.R), so the settings file is never sourced into a
+#' script's own frame where its assignments could overwrite local objects.
+#'
+#' @param project_root Repo root
+#' @return An environment holding whatever user_settings.R assigned (empty
+#'   if the file is absent)
+load_user_settings <- function(project_root) {
+  settings <- new.env(parent = globalenv())
+  path <- file.path(project_root, "user_settings.R")
+  if (file.exists(path)) sys.source(path, envir = settings)
+  settings
+}
+
+#' Resolve the Overleaf folder used for figure/table sync
+#'
+#' Precedence: the OVERLEAF_PATH environment variable, then `oth_path` from
+#' user_settings.R, else "" (sync off).
+#'
+#' @param settings Environment from load_user_settings()
+#' @return Character path or ""
+resolve_oth_path <- function(settings) {
+  env_path <- Sys.getenv("OVERLEAF_PATH", "")
+  if (nzchar(env_path)) return(env_path)
+  if (exists("oth_path", envir = settings, inherits = FALSE)) {
+    p <- get("oth_path", envir = settings)
+    if (is.character(p) && length(p) == 1 && nzchar(p)) return(p)
+  }
+  ""
+}

@@ -35,15 +35,22 @@ repo_root <- if (!is.null(script_dir)) normalizePath(file.path(script_dir, "..",
 manifest_path <- file.path(repo_root, "resources", "paper_manifest.csv")
 results_dir   <- file.path(repo_root, "results")
 
-# Overleaf .tex lives outside the repo: OVERLEAF_TEX wins; otherwise look in
-# the Overleaf folder set as oth_path in user_settings.R (gitignored). Neither
-# set -> the tex audit is skipped below.
-user_settings_r <- file.path(repo_root, "user_settings.R")
-if (file.exists(user_settings_r)) source(user_settings_r, local = TRUE)
-tex_default <- if (exists("oth_path") && nzchar(oth_path)) {
-  file.path(oth_path, "Conway_Iselin_Rork_2026.tex")
-} else ""
-tex_path <- Sys.getenv("OVERLEAF_TEX", unset = tex_default)
+# Overleaf .tex lives outside the repo: OVERLEAF_TEX wins; otherwise it is
+# <Overleaf folder>/Conway_Iselin_Rork_2026.tex, with the folder taken from
+# OVERLEAF_PATH or oth_path in user_settings.R through the pipeline's own
+# resolver (code/R/utils.R), so the two cannot disagree. No reachable .tex is
+# a hard stop: without one, every artifact the paper cites but the manifest
+# lacks would be labelled DEAD, inviting deletion of live figures.
+source(file.path(repo_root, "code", "R", "utils.R"))
+oth_path    <- resolve_oth_path(load_user_settings(repo_root))
+tex_default <- if (nzchar(oth_path)) file.path(oth_path, "Conway_Iselin_Rork_2026.tex") else ""
+tex_path    <- Sys.getenv("OVERLEAF_TEX", unset = tex_default)
+if (!nzchar(tex_path) || !file.exists(tex_path)) {
+  stop("Overleaf .tex not found (",
+       if (nzchar(tex_path)) tex_path else "no path configured",
+       "). Set OVERLEAF_TEX, OVERLEAF_PATH, or oth_path in user_settings.R.",
+       call. = FALSE)
+}
 
 stopifnot(file.exists(manifest_path))
 stopifnot(dir.exists(results_dir))

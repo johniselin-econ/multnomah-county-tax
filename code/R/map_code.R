@@ -931,12 +931,11 @@ orwa_coord_limits <- list(
 for (measure in c("n1", "n2", "agi")) {
 
  # Load flow comparison data from working directory
- csv_path <- file.path(flows_data_dir, paste0("multnomah_flow_comparison_", measure, ".csv"))
+ csv_path <- file.path(flows_data_dir, paste0("multnomah_partner_flows_", measure, ".csv"))
 
- # Check if file exists
+ # Written by 02_descriptives.do; a missing file is a build break, not a skip
  if (!file.exists(csv_path)) {
-   message(paste0("Warning: File not found - ", csv_path))
-   next
+   stop("Flow map input not found (run 02_descriptives.do first): ", csv_path, call. = FALSE)
  }
 
  flow_data <- read_csv(csv_path, show_col_types = FALSE)
@@ -986,20 +985,18 @@ message("All flow delta maps created successfully!")
 for (measure in c("n1", "n2", "agi")) {
 
  # Load flow comparison data from working directory
- csv_path <- file.path(flows_data_dir, paste0("multnomah_flow_comparison_", measure, ".csv"))
+ csv_path <- file.path(flows_data_dir, paste0("multnomah_partner_flows_", measure, ".csv"))
 
- # Check if file exists
+ # Written by 02_descriptives.do; a missing file is a build break, not a skip
  if (!file.exists(csv_path)) {
-   message(paste0("Warning: File not found - ", csv_path))
-   next
+   stop("Flow map input not found (run 02_descriptives.do first): ", csv_path, call. = FALSE)
  }
 
  flow_data <- read_csv(csv_path, show_col_types = FALSE)
 
- # Check if rate_change columns exist
+ # Rate-change columns are part of the partner_flows contract
  if (!all(c("out_rate_change", "in_rate_change", "net_rate_change") %in% names(flow_data))) {
-   message(paste0("Warning: Rate change columns not found in ", csv_path))
-   next
+   stop("Rate change columns missing in ", csv_path, call. = FALSE)
  }
 
  # Loop over directions for rate change maps

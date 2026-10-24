@@ -70,7 +70,8 @@ download_ipums_acs <- function(project_root,
   # IPUMS key setup (only needed to download in local mode)
   if (identical(acs_source, "local")) {
     ipums_key <- read_api_key(api_codes_path, "ipums")
-    ipumsr::set_ipums_api_key(ipums_key, save = TRUE, overwrite = TRUE)
+    # Session only: save = TRUE rewrote ~/.Renviron on every run
+    ipumsr::set_ipums_api_key(ipums_key, save = FALSE)
   }
 
   # Column contract reproduced when reading the shared (superset) source: the
@@ -188,8 +189,14 @@ download_ipums_acs <- function(project_root,
 
      }
 
-      # Write CSV
-      utils::write.csv(acs_data, file_acs, row.names = FALSE)
+      # Write to a temp name and rename, so an interrupted write (job killed,
+      # quota, OOM) cannot leave a truncated acs_YYYY.csv that later runs skip
+      # as "exists" and Stata imports without error.
+      file_acs_tmp <- paste0(file_acs, ".partial")
+      utils::write.csv(acs_data, file_acs_tmp, row.names = FALSE)
+      if (!file.rename(file_acs_tmp, file_acs)) {
+        stop("Could not move ", file_acs_tmp, " to ", file_acs, call. = FALSE)
+      }
       
       rm(acs_data)
       gc()

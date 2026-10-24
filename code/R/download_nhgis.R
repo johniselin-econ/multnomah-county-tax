@@ -52,7 +52,8 @@ download_nhgis_demographics <- function(dir_data, api_codes_path, overwrite = FA
 
   # Set IPUMS API key
   ipums_key <- read_api_key(api_codes_path, "ipums")
-  set_ipums_api_key(ipums_key, save = TRUE, overwrite = TRUE)
+  # Session only: save = TRUE rewrote ~/.Renviron on every run
+  set_ipums_api_key(ipums_key, save = FALSE)
 
   message("   Defining NHGIS extract ...")
 
