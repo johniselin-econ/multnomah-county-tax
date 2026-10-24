@@ -95,6 +95,20 @@ if "${oth_path}" != "" {
     global ol_fig "${oth_path}figures/"
     global ol_tab "${oth_path}tables/"
     global overleaf = 1
+    ** Stop HERE if the mirror is unusable, not 20 minutes in at the first
+    ** graph export. (A profile.do that built oth_path from ${dir} before the
+    ** orchestrator set it once resolved this to /results/... and the run
+    ** died inside 02_flow_analysis.do with r(198) on the first figure.)
+    capture mkdir "${oth_path}"
+    capture mkdir "${ol_fig}"
+    capture mkdir "${ol_tab}"
+    mata: st_local("ol_fig_ok", strofreal(direxists("${ol_fig}")))
+    mata: st_local("ol_tab_ok", strofreal(direxists("${ol_tab}")))
+    if "`ol_fig_ok'" != "1" | "`ol_tab_ok'" != "1" {
+        di as error "oth_path = ${oth_path} is not a usable directory: could not create ${ol_fig} / ${ol_tab}."
+        di as error "Fix oth_path in user_settings.do / profile.do, or leave it unset to disable the Overleaf mirror."
+        exit 601
+    }
 }
 else global overleaf = 0
 
