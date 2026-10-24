@@ -446,28 +446,28 @@ label var treated_age_3 "College x Post x Age 65+"
 
 ** Out-migration regression by age (Sample 1: Multnomah residents)
 reghdfe out_1 treated_age_* if sample_1 == 1 [pw = perwt], 	///
-	vce(robust) absorb(year cat_*)
+	vce(robust) absorb(year cat_* year#cat_age high_ed#cat_age)
 qui count if e(sample)
 estadd scalar N_unwtd = r(N)
 estimates store did_age_out
 
 ** In-migration regression by age (Sample 2: CA/OR/WA residents)
 reghdfe out_2 treated_age_* if sample_2 == 1 [pw = perwt], 	///
-	vce(cluster fips_o) absorb(year fips_o cat_*)
+	vce(cluster fips_o) absorb(year fips_o cat_* year#cat_age high_ed#cat_age)
 qui count if e(sample)
 estadd scalar N_unwtd = r(N)
 estimates store did_age_in_west
 
 ** In-migration regression by age (Sample 3: Lower 48 + DC residents)
 reghdfe out_2 treated_age_* if sample_3 == 1 [pw = perwt], 	///
-	vce(cluster fips_o) absorb(year fips_o cat_*)
+	vce(cluster fips_o) absorb(year fips_o cat_* year#cat_age high_ed#cat_age)
 qui count if e(sample)
 estadd scalar N_unwtd = r(N)
 estimates store did_age_in_48
 
 ** Out-of-state migration regression by age (Sample 1: Multnomah residents)
 reghdfe out_3 treated_age_* if sample_1 == 1 [pw = perwt], 	///
-	vce(robust) absorb(year cat_*)
+	vce(robust) absorb(year cat_* year#cat_age high_ed#cat_age)
 qui count if e(sample)
 estadd scalar N_unwtd = r(N)
 estimates store did_age_out_state
@@ -505,22 +505,22 @@ foreach y in 2016 2017 2018 2021 2022 2023 2024 {
 
 ** Out-migration event study by age
 reghdfe out_1 x_he_*_age* if sample_1 == 1 [pw = perwt], 	///
-	vce(robust) absorb(year cat_*)
+	vce(robust) absorb(year cat_* year#cat_age high_ed#cat_age)
 estimates store es_age_out
 
 ** In-migration event study by age (West Coast)
 reghdfe out_2 x_he_*_age* if sample_2 == 1 [pw = perwt], 	///
-	vce(cluster fips_o) absorb(year fips_o cat_*)
+	vce(cluster fips_o) absorb(year fips_o cat_* year#cat_age high_ed#cat_age)
 estimates store es_age_in_west
 
 ** In-migration event study by age (Lower 48 + DC)
 reghdfe out_2 x_he_*_age* if sample_3 == 1 [pw = perwt], 	///
-	vce(cluster fips_o) absorb(year fips_o cat_*)
+	vce(cluster fips_o) absorb(year fips_o cat_* year#cat_age high_ed#cat_age)
 estimates store es_age_in_48
 
 ** Out-of-state migration event study by age
 reghdfe out_3 x_he_*_age* if sample_1 == 1 [pw = perwt], 	///
-	vce(robust) absorb(year cat_*)
+	vce(robust) absorb(year cat_* year#cat_age high_ed#cat_age)
 estimates store es_age_out_state
 
 ********************************************************************************
