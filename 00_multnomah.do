@@ -100,8 +100,11 @@ project_export_run_manifest
 ** ============================================================================
 ** Calls 01b_download through 01h_auxiliary; see 01_clean_data.do for details.
 ** Gated on run_cleaning (default 1). The call had been commented out since
-** 68ca6bc, which made a fresh checkout fail on missing data/working/*.dta
-** and an existing checkout silently reuse stale cleaned data.
+** 68ca6bc, which made a fresh checkout fail on the missing cleaned .dta
+** files under data/working and an existing checkout silently reuse stale
+** ones. (Do not write "slash-star" sequences in comments here: Stata opens
+** a block comment on them even inside a ** line, which swallowed this whole
+** file once.)
 if ${run_cleaning} == 1 {
 	do "${code}01_clean_data.do"
 }
