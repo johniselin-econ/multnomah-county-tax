@@ -615,9 +615,10 @@ if ${use_parallel} == 1 {
 	** PARALLEL ESTIMATION
 	********************************************************************************
 
-	** Create temp directory for results (clean stale files unless resuming)
+	** Create temp directory for results (clean stale files unless resuming;
+	** project_rm_dir is OS-aware -- the old shell rmdir was a no-op on Linux)
 	if ${resume} == 0 {
-		capture shell rmdir "${results}sdid/temp_otherout_results" /s /q
+		project_rm_dir, path("${results}sdid/temp_otherout_results")
 	}
 	capture mkdir "${results}sdid/temp_otherout_results"
 
@@ -769,7 +770,7 @@ if ${use_parallel} == 1 {
 	save "${results}sdid/otherout/otherout_sdid_results.dta", replace
 
 	** Clean up temp directory
-	shell rmdir "${results}sdid/temp_otherout_results" /s /q
+	project_rm_dir, path("${results}sdid/temp_otherout_results")
 
 	** Clean up temporary files
 	capture erase "${data}working/otherout_sdid_data.dta"

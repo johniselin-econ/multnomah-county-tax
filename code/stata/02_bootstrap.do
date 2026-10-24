@@ -217,7 +217,19 @@ program define run_bootstrap_rep
 	if ${resume} == 1 {
 		capture confirm file "`out_path'"
 		if _rc == 0 {
-			dis "RESUME: skipping rep `rep' (output exists)"
+			** Reuse the draw only if it was produced under the current seed
+			** config; otherwise draws from two configurations get combined.
+			preserve
+			qui use "`out_path'", clear
+			local _prev_seed   = master_seed[1]
+			local _prev_offset = seed_offset[1]
+			restore
+			if `_prev_seed' != ${master_seed} | `_prev_offset' != ${bootstrap_seed_offset} {
+				dis as error "RESUME: rep `rep' draw on disk was made with master_seed=`_prev_seed', seed_offset=`_prev_offset'"
+				dis as error "        (current: ${master_seed}, ${bootstrap_seed_offset}). Re-run with resume=0 to wipe temp_draws/."
+				exit 459
+			}
+			dis "RESUME: skipping rep `rep' (output exists, seed config matches)"
 			exit 0
 		}
 	}
@@ -516,8 +528,8 @@ if ${use_parallel} == 1 {
 		processors(`_proc_per_worker'):                                         ///
 		parallel_bootstrap_wrapper
 
+	local parallel_rc = _rc		// read before `set linesize` overwrites _rc
 	set linesize `_orig_linesize'
-	local parallel_rc = _rc
 
 	timer off 1
 	timer list 1
@@ -616,6 +628,39 @@ if r(min) != 1 | r(max) != ${bootstrap_reps} {
 	exit 459
 }
 
+** Validate seed config: every row must carry the current seed/offset
+** (the per-rep resume check guards new runs; this guards the aggregate).
+qui count if master_seed != ${master_seed} | seed_offset != ${bootstrap_seed_offset}
+if r(N) > 0 {
+	dis as error ""
+	dis as error "`r(N)' aggregated rows were drawn under a different master_seed/seed_offset."
+	dis as error "Re-run with resume=0 to wipe temp_draws/."
+	exit 459
+}
+
+** Validate spec coverage: every spec in bootstrap_spec_grid.dta must have a
+** row in every rep. run_bootstrap_rep skips a spec whose fit fails (no row
+** posted), and percentiles over the survivors would be biased if failures
+** correlate with the draw -- so a shortfall stops the run here instead.
+qui describe using "${data}working/bootstrap_spec_grid.dta"
+local n_specs_expected = r(N)
+qui levelsof spec_id, local(specs_seen)
+local n_specs_seen : word count `specs_seen'
+tempvar n_rows_spec
+bysort spec_id: gen `n_rows_spec' = _N
+qui count if `n_rows_spec' != ${bootstrap_reps}
+local n_short = r(N)
+if `n_specs_seen' != `n_specs_expected' | `n_short' > 0 {
+	dis as error ""
+	dis as error "Spec coverage mismatch: expected `n_specs_expected' specs x ${bootstrap_reps} reps."
+	dis as error "  specs seen: `n_specs_seen'; specs with rows != ${bootstrap_reps}:"
+	if `n_short' > 0 tab spec_id if `n_rows_spec' != ${bootstrap_reps}
+	dis as error "Aborting before overwriting canonical bootstrap_draws.dta."
+	dis as error "Per-rep files in temp_draws/ are preserved; grep the logs for 'fit_spec_sdid failed'."
+	exit 459
+}
+drop `n_rows_spec'
+
 ** Sanity check: net-migration specs must produce stock elasticities.
 ** If none do, the most likely cause is that sdid_event doesn't accept
 ** vce(noinference) under the installed package version, which makes
@@ -644,15 +689,9 @@ project_write_manifest ///
 	artifact("bootstrap_draws") script("02_bootstrap.do") ///
 	upstream("`upstream'")
 
-** Remove the temp directory now that aggregation succeeded. shell rmdir
-** is platform-specific (Windows). The path conditionals follow the
-** pattern from 02_sdid_analysis.do:1022.
-if c(os) == "Windows" {
-	shell rmdir "${results}bootstrap/temp_draws" /s /q
-}
-else {
-	shell rm -rf "${results}bootstrap/temp_draws"
-}
+** Remove the temp directory now that aggregation succeeded (OS-aware helper
+** in programs.do, shared with 02_sdid_analysis.do and 02_otherout_sdid.do).
+project_rm_dir, path("${results}bootstrap/temp_draws")
 
 dis ""
 dis "=============================================="

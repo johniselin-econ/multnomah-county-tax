@@ -49,9 +49,9 @@ log using "${logs}02_log_revenue_microsim_${date}", name(log_02rev) replace text
 
 project_set_seed, context("02_revenue_microsim.do") offset(40)
 
-** SDID effect defaults (overwritten by Section 0B once SDID results load)
-scalar effect_agi = 0.02			// placeholder: net out-migration effect on AGI
-scalar effect_agi_oregon = 0.02		// placeholder: Oregon-level effect
+** effect_agi / effect_agi_oregon are set in Section 0B from sdid_results.dta.
+** There is deliberately no default: a placeholder would flow silently into
+** every revenue table.
 
 ** Pull calibration + policy parameters from globals.do globals.
 ** statewide_oregon_revenue is the STATEWIDE Oregon individual income tax total;
@@ -192,8 +192,9 @@ if _rc == 0 {
 	scalar effect_agi_oregon = effect_out_irs_all
 }
 else {
-	dis as error "WARNING: SDID results (sdid_results.dta) not found. Run 02_sdid_analysis.do first."
-	dis as error "         Using hardcoded default effects. Results are PLACEHOLDERS."
+	dis as error "SDID results (sdid_results.dta) not found. Run 02_sdid_analysis.do first."
+	dis as error "No placeholder effect is substituted: every revenue table depends on it."
+	exit 601
 }
 
 dis ""
@@ -656,16 +657,24 @@ keep taxsimid year state mstat depx page sage pwages swages ///
 order taxsimid year state mstat depx page sage pwages swages ///
 	psemp ssemp intrec otherprop idtl otheritem
 
-** Run TAXSIM locally
+** Run TAXSIM locally. `capture` so a real failure (e.g. rc 601, executable
+** missing) reaches the documented fallback instead of aborting the do-file;
+** without it, `_rc` below was whatever the ado's own last `capture` left,
+** so the fallback could never run when needed and could run when it wasn't.
 cd "${data}working"
-taxsimlocal35, full replace
+capture noisily taxsimlocal35, full replace
+local taxsim_rc = _rc
+scalar taxsim_fallback_used = (`taxsim_rc' != 0)
 
-if _rc != 0 {
-	di as error "TAXSIM failed — check installation"
+if `taxsim_rc' != 0 {
+	di as error "TAXSIM failed (rc=`taxsim_rc') — check installation"
 	cd "${dir}"
 	use `pre_taxsim', clear
 
-	dis "Using simplified tax calculator as fallback (see taxsim_fallback_calc)"
+	di as error "FALLBACK: using taxsim_fallback_calc (no federal liability, single-filer"
+	di as error "          Oregon brackets for everyone). avg_total_rate and the Kleven"
+	di as error "          elasticities built from it are approximations;"
+	di as error "          taxsim_fallback_used=1 is recorded in revenue_parameters.dta."
 	taxsim_fallback_calc, agi(agi_proxy) mstat(mstat) ///
 		pwages(pwages) swages(swages)
 }
@@ -1271,8 +1280,14 @@ gen double avg_total_rate_with_shs       = scalar(avg_total_rate_with_shs)
 gen double avg_total_rate_pre_with_shs   = scalar(avg_total_rate_pre_with_shs)
 gen double avg_total_rate_col_with_shs   = scalar(avg_total_rate_col_with_shs)
 gen double avg_total_rate_pre_col_with_shs = scalar(avg_total_rate_pre_col_with_shs)
+** 1 if taxsimlocal35 failed and taxsim_fallback_calc supplied the tax variables
+gen byte taxsim_fallback_used = scalar(taxsim_fallback_used)
 compress
 save "${data}working/revenue_parameters.dta", replace
+if scalar(taxsim_fallback_used) == 1 {
+	dis as error "NOTE: this run used the TAXSIM fallback calculator (taxsim_fallback_used=1);"
+	dis as error "      avg_total_rate* in revenue_parameters.dta are approximations."
+}
 project_build_signature, artifact("sdid_results")
 project_write_manifest using "${data}working/revenue_parameters_manifest.dta", ///
 	artifact("revenue_parameters") script("02_revenue_microsim.do") ///

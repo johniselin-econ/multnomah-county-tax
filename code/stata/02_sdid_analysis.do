@@ -866,7 +866,14 @@ if ${use_parallel} == 1 {
 	** PARALLEL ESTIMATION
 	********************************************************************************
 
-	** Create temp directories for results
+	** Create temp directories for results. Wipe a prior run's per-spec files
+	** first unless resuming (resume=1 uses them as the skip key); otherwise a
+	** spec that fails this run would be silently backfilled by its stale
+	** results_*.dta when the files are combined below.
+	if ${resume} == 0 {
+		project_rm_dir, path("${results}sdid/temp_results")
+		project_rm_dir, path("${results}sdid/temp_event_results")
+	}
 	capture mkdir "${results}sdid/temp_results"
 	capture mkdir "${results}sdid/temp_event_results"
 
@@ -1064,7 +1071,7 @@ if ${use_parallel} == 1 {
 	export excel using "${results}sdid/sdid_results.xlsx", firstrow(variables) replace
 
 	** Clean up temp directory
-	shell rmdir "${results}sdid/temp_results" /s /q
+	project_rm_dir, path("${results}sdid/temp_results")
 
 	** Combine event-study results from parallel workers
 	clear
@@ -1115,7 +1122,7 @@ if ${use_parallel} == 1 {
 		artifact("sdid_event_results") script("02_sdid_analysis.do")
 
 	** Clean up event-study temp directory
-	shell rmdir "${results}sdid/temp_event_results" /s /q
+	project_rm_dir, path("${results}sdid/temp_event_results")
 
 	** Clean up temporary files
 	capture erase "${data}working/table_grid.dta"
@@ -1130,8 +1137,12 @@ else {
 	** SEQUENTIAL ESTIMATION
 	********************************************************************************
 
-	** Open postfile for results accumulation (O(1) per spec)
+	** Event-study temp files: wipe a prior run's unless resuming (see the
+	** parallel block above for why)
+	if ${resume} == 0 project_rm_dir, path("${results}sdid/temp_event_results")
 	capture mkdir "${results}sdid/temp_event_results"
+
+	** Open postfile for results accumulation (O(1) per spec)
 	local pf_path "${results}sdid/sdid_results.dta"
 	if ${resume} == 1 {
 		local pf_path "${results}sdid/sdid_results_new.dta"
@@ -1507,7 +1518,7 @@ else {
 		artifact("sdid_event_results") script("02_sdid_analysis.do")
 
 	** Clean up event-study temp directory
-	shell rmdir "${results}sdid/temp_event_results" /s /q
+	project_rm_dir, path("${results}sdid/temp_event_results")
 
 } // END SEQUENTIAL ESTIMATION
 

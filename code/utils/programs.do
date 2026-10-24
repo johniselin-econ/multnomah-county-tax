@@ -412,10 +412,13 @@ end
 //   required(real)   — minimum match rate (master rows matched / master rows);
 //                      aborts with error if below
 //   keep_merge       — do not drop the merge indicator after reporting
+//   keepmatch        — keep only matched rows (_merge==3) AFTER reporting; use
+//                      this instead of merge's keep(match), which discards the
+//                      unmatched rows before they can be counted
 //------------------------------------------------------------------------------
 capture program drop project_report_merge
 program define project_report_merge
-    syntax, gen(name) [tag(string) required(real -1) keep_merge]
+    syntax, gen(name) [tag(string) required(real -1) keep_merge keepmatch]
     qui count if `gen' == 3
     local matched = r(N)
     qui count if `gen' == 1
@@ -434,6 +437,11 @@ program define project_report_merge
         di as error "  `tag': match rate `rate'% below required `required'%"
         exit 459
     }
+    ** keepmatch: apply keep(match) AFTER reporting, so the counts above still
+    ** see the master-only / using-only rows that `merge ..., keep(match)`
+    ** would have discarded before this program ran (every call site that
+    ** did so reported a 100% match rate no matter how many rows it lost).
+    if "`keepmatch'" != "" qui keep if `gen' == 3
     if "`keep_merge'" == "" drop `gen'
 end
 
@@ -764,6 +772,61 @@ program define project_set_seed
     local seed = ${master_seed} + `offset'
     set seed `seed'
     di as txt "Seed set to `seed' (`context')"
+end
+
+//------------------------------------------------------------------------------
+// build_acs_county_sample
+//
+// County flags for R/map_code.R's US pool map (acs_county_sample.xlsx).
+// Expects acs_county_flow (year fips_o fips_d county_fips_o county_fips_d
+// persons) in memory with multnomah_o / multnomah_d tags; leaves it unchanged.
+// Rule from the retired code/old/02_multi_analysis.do: rank partner counties
+// by ACS migrants to (in) / from (out) Multnomah summed over all years, and
+// flag those above the bottom 20% of the cumulative migrant mass. Suppressed
+// "Other" partners (county_fips == 0) are excluded. Nothing had written this
+// file since that code was archived, so the maps stage was silently skipped.
+//   build_acs_county_sample, saving(path.xlsx)
+//------------------------------------------------------------------------------
+capture program drop build_acs_county_sample
+program define build_acs_county_sample
+    syntax, SAVING(string)
+    local cum_share_cut = 0.20     // flag counties above this cumulative share
+
+    preserve
+    keep if (multnomah_o == 1 | multnomah_d == 1) & fips_o != fips_d
+    drop if county_fips_o == 0 | county_fips_d == 0
+    gen long   fips         = cond(multnomah_o == 1, fips_d, fips_o)
+    gen double migrants_out = cond(multnomah_o == 1, persons, 0)
+    gen double migrants_in  = cond(multnomah_d == 1, persons, 0)
+    collapse (sum) migrants_in migrants_out, by(fips)
+    foreach var of varlist migrants_in migrants_out {
+        sort `var' fips
+        gen double `var'_cum = sum(`var')
+        replace `var'_cum = `var'_cum / `var'_cum[_N]
+        gen byte sample_`var' = `var'_cum > `cum_share_cut'
+    }
+    keep fips sample_migrants_in sample_migrants_out
+    sort fips
+    qui count
+    di as text "  acs_county_sample: " r(N) " partner counties -> `saving'"
+    export excel using "`saving'", replace firstrow(variables)
+    restore
+end
+
+** Remove a directory tree on any OS. `shell rmdir "<dir>" /s /q` is
+** Windows-only: on Linux it is a silent no-op (shell raises no error), so
+** stale per-spec temp results from a prior run survived and were globbed
+** into the next run's combined output. Used by 02_sdid_analysis.do,
+** 02_otherout_sdid.do and 02_bootstrap.do.
+capture program drop project_rm_dir
+program define project_rm_dir
+    syntax , PATH(string)
+    if c(os) == "Windows" {
+        shell rmdir "`path'" /s /q
+    }
+    else {
+        shell rm -rf "`path'"
+    }
 end
 
 capture program drop project_build_signature
