@@ -485,9 +485,12 @@ if ${use_parallel} == 1 {
 
 				if `event_rc' == 0 {
 
-					** Store max year
-					qui summ year if multnomah == 1 & sample == 1
-					local max_yr = r(max)
+					** Year anchors for e(H)'s Effect_/Placebo_ rows (see
+					** sdid_event_row_year in 02_spec_engine.do)
+					qui summ year if multnomah == 1 & Treated == 1 & sample == 1
+					local first_post_yr = r(min)
+					qui summ year if multnomah == 1 & Treated == 0 & sample == 1
+					local last_pre_yr = r(max)
 
 					** Extract matrix
 					qui count if multnomah == 1 & sample == 1
@@ -502,10 +505,19 @@ if ${use_parallel} == 1 {
 					** Preserve and plot
 					preserve
 					svmat res
-					gen id = `max_yr' - _n + 1 if !missing(res1)
+					** Calendar year per e(H) row. The pre block already
+					** skips an excluded 2020, so no shift is needed.
+					local eH_rownames : rownames res
+					gen id = .
+					forvalues i = 1/`=rowsof(res)' {
+						local rname : word `i' of `eH_rownames'
+						sdid_event_row_year, rowname("`rname'") ///
+							firstpost(`first_post_yr') lastpre(`last_pre_yr')
+						local yr = r(year)
+						replace id = `yr' in `i'
+					}
 
 					if `exl' == 1 {
-						replace id = id - 1 if id <= 2020
 						expand 2 if id == 2019, gen(tag)
 						replace id = 2020 if tag == 1
 						replace res1 = . if tag == 1

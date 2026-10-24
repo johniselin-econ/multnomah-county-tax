@@ -561,8 +561,14 @@ program define fit_spec_sdid, rclass
 		capture drop ever_treated*
 
 		if `event_rc' == 0 {
-			qui summ year if multnomah == 1 & `in_sample' == 1
-			local max_yr = r(max)
+			** Calendar years for e(H)'s Effect_/Placebo_ rows (see
+			** sdid_event_row_year below). Both anchors are read
+			** off the estimation sample, so an excluded 2020 drops out
+			** of the pre block on its own.
+			qui summ year if multnomah == 1 & Treated == 1 & `in_sample' == 1
+			local first_post_yr = r(min)
+			qui summ year if multnomah == 1 & Treated == 0 & `in_sample' == 1
+			local last_pre_yr = r(max)
 
 			** sdid_event's e(H) shape depends on the vce() option:
 			**   vce(placebo) placebo(all):
@@ -585,11 +591,14 @@ program define fit_spec_sdid, rclass
 				tempname event_res
 				local posted = 0
 				local nrows = rowsof(`res')
+				local eH_rownames : rownames `res'
 				forvalues i = 1/`nrows' {
 					local tau_i = `res'[`i', 1]
 					if missing(`tau_i') continue
-					local yr = `max_yr' - `i' + 1
-					if `exclusion' == 1 & `yr' <= 2020 local yr = `yr' - 1
+					local rname : word `i' of `eH_rownames'
+					sdid_event_row_year, rowname("`rname'") ///
+						firstpost(`first_post_yr') lastpre(`last_pre_yr')
+					local yr = r(year)
 					local ci_lo_i = .
 					local ci_hi_i = .
 					if `has_ci' {
@@ -632,6 +641,46 @@ program define fit_spec_sdid, rclass
 		return matrix event_taus = `event_taus'
 		return matrix event_res = `event_res'
 	}
+end
+
+** ------------------------------------------------------------------
+** sdid_event_row_year
+**
+** Maps one e(H) row name from sdid_event to a calendar year.
+** sdid_event's e(H) rows are "ATT", then Effect_1..Effect_L, then (with
+** placebo()) Placebo_1..Placebo_P. Effect_l is the l-th TREATED period
+** (sdid_event.ado: T_XX == c - 1 + l), so Effect_1 is the FIRST post
+** year. Placebo_l is the l-th period BEFORE treatment counting backward
+** (ATT_compute_pl reads column cols-pl+1 of the pre block), so Placebo_1
+** is the LAST pre year. Both count in the sample's own time index, so an
+** excluded 2020 is simply absent: with exclusion the last pre year is
+** 2019 and Placebo_2 is 2018 -- no post-hoc shift is needed.
+**
+** Lives here (not programs.do) because bootstrap workers re-source only
+** this file. Returns r(year); errors on any other row name rather than
+** guessing (the disag option's Effect_c* names are not supported).
+** ------------------------------------------------------------------
+capture program drop sdid_event_row_year
+program define sdid_event_row_year, rclass
+	syntax , ROWNAME(string) FIRSTPOST(integer) LASTPRE(integer)
+
+	if strpos("`rowname'", "Effect_") == 1 {
+		local l = real(subinstr("`rowname'", "Effect_", "", .))
+		local year = `firstpost' + `l' - 1
+	}
+	else if strpos("`rowname'", "Placebo_") == 1 {
+		local l = real(subinstr("`rowname'", "Placebo_", "", .))
+		local year = `lastpre' - `l' + 1
+	}
+	else {
+		di as error "sdid_event_row_year: unexpected e(H) row name `rowname'"
+		exit 498
+	}
+	if missing(`year') {
+		di as error "sdid_event_row_year: could not parse row name `rowname'"
+		exit 498
+	}
+	return scalar year = `year'
 end
 
 ** ------------------------------------------------------------------
