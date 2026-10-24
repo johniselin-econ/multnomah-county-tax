@@ -79,9 +79,15 @@ gen day = day(date)
 ** Order data
 order date year month day fips state_name county_name cases deaths
 
-** Calculate cumulative cases and deaths
-bysort fips (date): gen cases_cum = sum(cases)
-bysort fips (date): gen deaths_cum = sum(deaths)
+** The NYT counts ARE cumulative (see the zero-fill note above), so the level
+** is the cumulative count and no running sum is taken. The previous sum()
+** here, then a monthly (sum) collapse, then another sum() across months,
+** produced a double time-integral of cumulative counts -- roughly case-days,
+** not cases -- which then defined the COVID k-means donor pool.
+gen cases_cum  = cases
+gen deaths_cum = deaths
+label var cases_cum  "Cumulative cases (NYT level)"
+label var deaths_cum "Cumulative deaths (NYT level)"
 
 ** Merge population data (2020)
 merge m:1 fips using "${data}working/population_2020", gen(pop_mrg)
@@ -91,20 +97,17 @@ project_report_merge, gen(pop_mrg) tag("covid_pop2020") keepmatch
 compress
 save "${data}working/covid_cleaned.dta", replace
 
-** Keep one observation per month
-keep year month fips state_name county_name cases deaths population
-collapse (sum) cases deaths (mean) population, by(year month fips state_name county_name)
+** Keep one observation per month: the END-OF-MONTH cumulative level
+keep year month day fips state_name county_name cases deaths population
+sort fips year month day
+collapse (last) cases deaths (mean) population, by(year month fips state_name county_name)
 sort year month fips
 egen date = group(year month)
 drop year month
 
-** Calculate cumulative cases and deaths
-bysort fips (date): gen cases_cum = sum(cases)
-bysort fips (date): gen deaths_cum = sum(deaths)
-
-** Generate per capita figures
-replace cases_cum = 1000 * cases_cum / population
-replace deaths_cum = 1000 * deaths_cum / population
+** Cumulative cases and deaths per 1,000 residents at month end
+gen cases_cum  = 1000 * cases / population
+gen deaths_cum = 1000 * deaths / population
 drop population cases deaths
 
 ** Reshape wide

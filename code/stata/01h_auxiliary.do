@@ -120,64 +120,61 @@ drop if proptx99 == 0
 ** Convert PROPTX99 codes to dollar midpoint values.
 ** PROPTX99 is a categorical variable from IPUMS that records annual property
 ** tax payments in coded brackets. We assign the midpoint dollar value of
-** each bracket so we can compute a continuous tax rate. The mapping follows
-** the IPUMS coding scheme:
+** each bracket so we can compute a continuous tax rate. The bracket edges
+** below are read off the extract's own DDI value labels (2026-10):
 **   https://usa.ipums.org/usa-action/variables/PROPTX99#codes_section
+** (The previous mapping assumed $100 brackets from code 13 and $1,000
+** brackets from code 70, one bracket early in each case; e.g. code 22 is
+** $1,000-1,099, not $1,400-1,499, so taxes above ~$950 were overstated by
+** about $400 per household.)
 gen proptx_dollars = .
 
-** Code 1: None (0)
+** Code 1: None
 replace proptx_dollars = 0 if proptx99 == 1
 
-** Code 2: $1-49 -> midpoint $25
+** Code 2: $1-49 -> midpoint
 replace proptx_dollars = 25 if proptx99 == 2
 
-** Codes 3-12: $50-99, $100-149, ... $500-549 (increments of 50, midpoints)
-forvalues i = 3/12 {
-    local lower = (`i' - 3) * 50 + 50
-    local upper = `lower' + 49
-    local midpoint = (`lower' + `upper') / 2
-    replace proptx_dollars = `midpoint' if proptx99 == `i'
+** Codes 3-21: $50 brackets, $50-99 ... $950-999
+forvalues i = 3/21 {
+    local lower = 50 + (`i' - 3) * 50
+    replace proptx_dollars = `lower' + 24.5 if proptx99 == `i'
 }
 
-** Codes 13-22: $550-599, $600-699, ... $1000-1099 (transitioning to $100 increments)
-replace proptx_dollars = 575 if proptx99 == 13
-replace proptx_dollars = 650 if proptx99 == 14
-replace proptx_dollars = 750 if proptx99 == 15
-replace proptx_dollars = 850 if proptx99 == 16
-replace proptx_dollars = 950 if proptx99 == 17
-replace proptx_dollars = 1050 if proptx99 == 18
-replace proptx_dollars = 1150 if proptx99 == 19
-replace proptx_dollars = 1250 if proptx99 == 20
-replace proptx_dollars = 1350 if proptx99 == 21
-replace proptx_dollars = 1450 if proptx99 == 22
-
-** Codes 23+: Higher ranges with $100 increments then $500/$1000 at top
-** $1500-1599, $1600-1699, ... up to high values
-forvalues i = 23/62 {
-    local lower = (`i' - 23) * 100 + 1500
-    local upper = `lower' + 99
-    local midpoint = (`lower' + `upper') / 2
-    replace proptx_dollars = `midpoint' if proptx99 == `i'
+** Codes 22-56: $100 brackets, $1,000-1,099 ... $4,400-4,499
+forvalues i = 22/56 {
+    local lower = 1000 + (`i' - 22) * 100
+    replace proptx_dollars = `lower' + 49.5 if proptx99 == `i'
 }
 
-** Codes 63+: Higher brackets ($5500+)
-replace proptx_dollars = 5750 if proptx99 == 63
-replace proptx_dollars = 6250 if proptx99 == 64
-replace proptx_dollars = 6750 if proptx99 == 65
-replace proptx_dollars = 7250 if proptx99 == 66
-replace proptx_dollars = 7750 if proptx99 == 67
-replace proptx_dollars = 8500 if proptx99 == 68
-replace proptx_dollars = 9500 if proptx99 == 69
-
-** For codes 70+: Use approximate midpoints for higher brackets
-** These are $10000+ ranges
-forvalues i = 70/100 {
-    local midpoint = 10000 + (`i' - 70) * 1000
-    replace proptx_dollars = `midpoint' if proptx99 == `i'
+** Code 57 is "$4500" in the 1990 samples only (never in ACS); codes 58-62
+** are $100 brackets, $4,500-4,599 ... $4,900-4,999
+replace proptx_dollars = 4500 if proptx99 == 57
+forvalues i = 58/62 {
+    local lower = 4500 + (`i' - 58) * 100
+    replace proptx_dollars = `lower' + 49.5 if proptx99 == `i'
 }
 
-** Top codes (very high property taxes)
-replace proptx_dollars = 75000 if proptx99 >= 140 & proptx99 < 159
+** Codes 63-68: two $500 brackets, then $1,000 brackets
+replace proptx_dollars = 5249.5 if proptx99 == 63    // $5,000-5,499
+replace proptx_dollars = 5749.5 if proptx99 == 64    // $5,500-5,999
+replace proptx_dollars = 6499.5 if proptx99 == 65    // $6,000-6,999
+replace proptx_dollars = 7499.5 if proptx99 == 66    // $7,000-7,999
+replace proptx_dollars = 8499.5 if proptx99 == 67    // $8,000-8,999
+replace proptx_dollars = 9499.5 if proptx99 == 68    // $9,000-9,999
+
+** Code 69: $10,000-10,999 from 2018 on. In the 2012-2017 ACS samples it is
+** the open-ended top code "$10,000+", so there the bracket midpoint is a
+** lower-bound-plus-$500 approximation.
+replace proptx_dollars = 10499.5 if proptx99 == 69
+
+** Codes 70-158: $1,000 brackets, $11,000-11,999 ... $99,000-99,999
+forvalues i = 70/158 {
+    local lower = 11000 + (`i' - 70) * 1000
+    replace proptx_dollars = `lower' + 499.5 if proptx99 == `i'
+}
+
+** Code 159: $100,000+ (2018-onward samples; open-ended, lower bound used)
 replace proptx_dollars = 100000 if proptx99 == 159
 
 ** Label variable

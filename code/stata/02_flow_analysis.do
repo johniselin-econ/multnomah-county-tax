@@ -94,8 +94,10 @@ drop if inlist(state_fips_d, 2, 15)   	// Alaska and Hawaii
 ** Clean up variables
 drop fips
 
-** Mover indicators
-gen mover = fips_o != fips_d
+** (The mover flag is built AFTER tsfill, below. Rows that tsfill adds have
+** no fips_o / fips_d yet, so a flag created here was missing on every
+** zero-filled pair-year and `if mover == 1` dropped all of them: the PPML
+** ran on observed positive flows only, 28% of pair-years short.)
 
 ** Generate flow id
 egen flow_id = group(fips_d fips_o)
@@ -105,7 +107,7 @@ xtset flow_id year
 tsfill, full
 
 ** Keep required variables
-keep fips_d fips_o flow_id year mover n1 n2 agi
+keep fips_d fips_o flow_id year n1 n2 agi
 
 ** Replace with 0s
 replace n1 = 0 if missing(n1)
@@ -147,6 +149,11 @@ foreach x in "o" "d" {
 	drop fips
 
 } // END ORIGIN-DESTINATION LOOP
+
+** Mover indicator, now that fips_o / fips_d are filled on every row
+** (including the zero-filled pair-years from tsfill)
+gen mover = fips_o != fips_d
+assert !missing(mover)
 
 ** Tag flows to-and-from acs counties
 gen acs_flow = merge_acs_d == 3 & merge_acs_o == 3

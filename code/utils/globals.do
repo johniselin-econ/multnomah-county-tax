@@ -121,8 +121,13 @@ if "${shs_rate}" == ""             global shs_rate             = 0.01
 **   (which is also Multnomah-resident-only).
 if "${actual_pfa_revenue}" == ""        global actual_pfa_revenue        = 187000000
 if "${statewide_oregon_revenue}" == ""  global statewide_oregon_revenue  = 11772886000
-** CPI-U inflation factor, 2019 annual -> 2022 annual (BLS series CUUR0000SA0)
-if "${cpi_2019_to_2022}" == ""     global cpi_2019_to_2022     = 1.136
+** CPI-U inflation factor, 2019 annual -> 2022 annual (BLS series CUUR0000SA0,
+** annual averages: 2019 = 255.657, 2022 = 292.655 -> 1.1447). The former
+** hardcoded 1.136 understated 2022 incomes, so fewer filers cleared the PFA
+** thresholds in the microsimulation.
+if "${cpi_u_2019_annual}" == ""    global cpi_u_2019_annual    = 255.657
+if "${cpi_u_2022_annual}" == ""    global cpi_u_2022_annual    = 292.655
+if "${cpi_2019_to_2022}" == ""     global cpi_2019_to_2022     = ${cpi_u_2022_annual} / ${cpi_u_2019_annual}
 
 ** Output directories (created here so standalone callees have them too).
 foreach d in "" "tables" "figures" "sdid" "flows" "did" "individual" ///
