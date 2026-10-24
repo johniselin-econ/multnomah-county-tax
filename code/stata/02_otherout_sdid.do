@@ -471,9 +471,12 @@ if ${use_parallel} == 1 {
 				restore
 
 				** Run event study
+				** Restrict the data itself: sdid_event's covariate step
+				** ignores `if` (see fit_spec_sdid in 02_spec_engine.do)
+				preserve
+				qui keep if sample == 1
 				capture noisily {
-					sdid_event `out' fips year Treated	///
-						if sample == 1,				///
+					sdid_event `out' fips year Treated,	///
 						`covars_event'				///
 						vce(placebo) 				///
 						brep(`reps') 				///
@@ -481,7 +484,7 @@ if ${use_parallel} == 1 {
 				}
 
 				local event_rc = _rc
-				capture drop ever_treated*
+				restore
 
 				if `event_rc' == 0 {
 

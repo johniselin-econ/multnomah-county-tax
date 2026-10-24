@@ -553,12 +553,18 @@ program define fit_spec_sdid, rclass
 			local eventopts "vce(off)"
 		}
 
-		capture noisily sdid_event `outcome' fips year Treated ///
-			if `in_sample' == 1, ///
+		** sdid_event ignores `if` when it partials out covariates (its
+		** covariate regression runs on every Treated==0 row in memory, so
+		** for covariate specs the adjustment was fit on ~2,800 counties incl.
+		** 2020, not on this spec's pool). Restrict the data itself; the e()
+		** results survive the restore.
+		preserve
+		qui keep if `in_sample' == 1
+		capture noisily sdid_event `outcome' fips year Treated, ///
 			`covars_event' ///
 			`eventopts'
 		local event_rc = _rc
-		capture drop ever_treated*
+		restore
 
 		if `event_rc' == 0 {
 			** Calendar years for e(H)'s Effect_/Placebo_ rows (see
