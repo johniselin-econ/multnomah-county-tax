@@ -262,11 +262,13 @@ program define run_bootstrap_rep
 		local gr_exl_`i'      = exclusion[`i']
 		local gr_ev_`i'       = event[`i']
 	}
-	** Collapse to unique sample_data blocks for per-rep panel caching
-	bysort sample_data (spec_id): keep if _n == 1
+	** Collapse to unique (sample_data, sample) blocks for per-rep panel
+	** caching: the donor resample is drawn within each spec's own pool
+	bysort sample_data sample (spec_id): keep if _n == 1
 	local n_blocks = _N
 	forvalues b = 1/`n_blocks' {
-		local gr_block_sd_`b' = sample_data[`b']
+		local gr_block_sd_`b'   = sample_data[`b']
+		local gr_block_samp_`b' = sample[`b']
 	}
 	restore
 
@@ -290,18 +292,20 @@ program define run_bootstrap_rep
 		double pfa_loss double state_loss                                   ///
 		using "`out_path'", replace
 
-	** ---- Cache per-sample_data panels into tempfiles ----
-	** Allocated once per rep; reused across the 6 specs that share each
-	** sample_data block (2 samples × 3 migrations).
+	** ---- Cache per-(sample_data, sample) resampled panels into tempfiles ----
+	** Allocated once per rep; reused across the 3 migration specs that share
+	** each (sample_data, sample) block. Donors are resampled within the
+	** spec's pool (donor_resample pool()).
 	forvalues b = 1/`n_blocks' {
 		tempfile panel_`b'
 	}
 	forvalues b = 1/`n_blocks' {
-		local sd_b `"`gr_block_sd_`b''"'
+		local sd_b   `"`gr_block_sd_`b''"'
+		local samp_b `"`gr_block_samp_`b''"'
 
 		preserve
 		load_spec_panel, sampledata("`sd_b'")
-		donor_resample, treatedcounty(`treated_fips')
+		donor_resample, treatedcounty(`treated_fips') pool(`samp_b')
 		** isid fips year should still hold because donor_resample
 		** renames duplicates to orig_id*1000 + dup_idx.
 		qui isid fips year
@@ -324,17 +328,17 @@ program define run_bootstrap_rep
 		local exl_i      = `gr_exl_`i''
 		local event_i    = `gr_ev_`i''
 
-		** Look up the cached panel path for this sample_data block.
+		** Look up the cached panel path for this (sample_data, sample) block.
 		** Tempfile path resolution must happen inside this loop so the
 		** local-macro indirection (panel_`b') resolves correctly.
 		local panel_path ""
 		forvalues b = 1/`n_blocks' {
-			if `"`gr_block_sd_`b''"' == `"`sd_i'"' {
+			if `"`gr_block_sd_`b''"' == `"`sd_i'"' & `"`gr_block_samp_`b''"' == `"`samp_i'"' {
 				local panel_path `"`panel_`b''"'
 			}
 		}
 		if `"`panel_path'"' == "" {
-			dis as error "run_bootstrap_rep: could not locate cached panel for `sd_i'"
+			dis as error "run_bootstrap_rep: could not locate cached panel for `sd_i' / `samp_i'"
 			local ++n_failed
 			continue
 		}

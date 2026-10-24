@@ -705,6 +705,12 @@ end
 **
 ** Optional args:
 **     IDVAR           panel unit identifier; defaults to fips
+**     POOL            0/1 donor-pool variable; when given, only donors with
+**                     POOL == 1 are resampled (counties outside the pool
+**                     are dropped). Without it every county in the data
+**                     block is drawn, which made the number of in-pool
+**                     donors random (about Poisson(1) copies each) and
+**                     added pool-size noise to the narrow/stringency CIs.
 **
 ** Returns via r():
 **     r(n_donors)     number of distinct donor counties in the source panel
@@ -712,7 +718,7 @@ end
 ** ------------------------------------------------------------------
 capture program drop donor_resample
 program define donor_resample, rclass
-	syntax, TREATEDCOUNTY(integer) [IDVAR(name)]
+	syntax, TREATEDCOUNTY(integer) [IDVAR(name) POOL(varname)]
 
 	local id_var "`idvar'"
 	if "`id_var'" == "" local id_var "fips"
@@ -732,6 +738,7 @@ program define donor_resample, rclass
 
 	use `source', clear
 	keep if `id_var' != `treatedcounty'
+	if "`pool'" != "" qui keep if `pool' == 1
 	levelsof `id_var', local(donors) clean
 	local n_donors : word count `donors'
 	if `n_donors' == 0 {
