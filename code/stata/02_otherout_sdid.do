@@ -187,25 +187,30 @@ drop tmp1 tmp2
 label var sample_urban75_covid "Urban counties (top 25%) w. COVID k-means match"
 
 ** Define sample 4: Demographic k-means match
-** Note: matches 02_sdid_analysis.do — clusters urban95 counties,
-** includes percent_urban as a clustering variable
+** Same construction as 02_sdid_analysis.do sample 4: standardize over ALL
+** counties in 2020 and k(10). (This script standardized within urban95 and
+** used k(5) while its comment claimed a match, so the "Demog. Match" pool
+** differed between the two analyses. The main script additionally excludes
+** narrow_only counties, which this data block does not carry.)
 gen pci_pre = per_capita_income if year == 2020
 bysort fips: egen pci_pre_fill = mean(pci_pre)
 drop pci_pre
 rename pci_pre_fill pci_pre
 
+gen not_missing = 1
 foreach v in pci_pre pop_census share_under_24 share_over_65 percent_urban {
-	egen std_`v' = std(`v') if sample_urban95 == 1 & year == 2020
+	egen std_`v' = std(`v') if year == 2020
+	replace not_missing = 0 if missing(`v')
 }
 
 cluster kmeans std_pci_pre std_pop_census std_share_under_24 std_share_over_65 std_percent_urban if ///
-	year == 2020 & !missing(share_under_24), k(5) gen(kmean_demog)
+	year == 2020 & not_missing == 1, k(10) gen(kmean_demog)
 bysort fips: egen kmean_demog_group = mean(kmean_demog)
 
-gen tmp1 = kmean_demog if year == 2020 & !missing(share_under_24) & multnomah == 1
+gen tmp1 = kmean_demog if year == 2020 & not_missing == 1 & multnomah == 1
 egen tmp2 = mean(tmp1)
 gen sample_demog = kmean_demog_group == tmp2
-drop tmp1 tmp2 std_* pci_pre
+drop tmp1 tmp2 std_* pci_pre not_missing
 label var sample_demog "Counties with Demographic Kmean Match (excluding AK, CA, HI OR, WA)"
 
 ** Define sample 5: COVID stringency k-means match (JII restriction-duration)
