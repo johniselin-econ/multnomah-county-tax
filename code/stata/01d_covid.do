@@ -84,8 +84,8 @@ bysort fips (date): gen cases_cum = sum(cases)
 bysort fips (date): gen deaths_cum = sum(deaths)
 
 ** Merge population data (2020)
-merge m:1 fips using "${data}working/population_2020", gen(pop_mrg) keep(match)
-project_report_merge, gen(pop_mrg) tag("covid_pop2020")
+merge m:1 fips using "${data}working/population_2020", gen(pop_mrg)
+project_report_merge, gen(pop_mrg) tag("covid_pop2020") keepmatch
 
 ** Save file
 compress

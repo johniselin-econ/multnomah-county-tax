@@ -153,13 +153,13 @@ if !fileexists("${data}working/age_shares_county.csv") {
     exit 601
 }
 
-** Import and save as Stata dataset
-if !fileexists("${data}working/age_shares_county.dta") {
-    import delimited "${data}working/age_shares_county.csv", clear
-    label var fips "County FIPS code"
-    label var share_under_24 "Share of population under age 24 (ACS 2015-2019)"
-    label var share_over_65 "Share of population age 65+ (ACS 2015-2019)"
-    compress
-    save "${data}working/age_shares_county", replace
-    clear
-}
+** Import and save as Stata dataset. Always rebuilt from the CSV (it is a
+** few thousand rows) so a re-download with overwrite_csv=TRUE is never
+** shadowed by a stale .dta.
+import delimited "${data}working/age_shares_county.csv", clear
+label var fips "County FIPS code"
+label var share_under_24 "Share of population under age 24 (ACS 2015-2019)"
+label var share_over_65 "Share of population age 65+ (ACS 2015-2019)"
+compress
+save "${data}working/age_shares_county", replace
+clear

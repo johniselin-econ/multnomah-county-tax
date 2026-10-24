@@ -16,16 +16,19 @@ Purpose:        Perform descriptive analysis. Two phases:
                        that file is missing.
 
 Outputs:
-- multnomah_flow_comparison_[n1|n2|agi].dta/csv: Pre-post flow comparison with:
-  - Raw flows (out_pre, out_post, in_pre, in_post)
-  - Multnomah baseline population (pop_pre, pop_post)
-  - Migration rates as % of Multnomah population (out_rate_*, in_rate_*)
-  - Rate changes in percentage points (out_rate_change, in_rate_change, net_rate_change)
+- acs_county_sample.xlsx: county flags for R/map_code.R's US pool map
+  (fips, sample_migrants_in, sample_migrants_out): counties in the top 80% of
+  the cumulative ACS migrant mass to / from Multnomah -- the rule the retired
+  code/old/02_multi_analysis.do used. Nothing wrote this file after that code
+  was archived, so the maps stage was silently skipped.
 
 - multnomah_partner_flows_[n1|n2|agi].dta/csv: Partner-normalized flows for maps:
+  - Raw flows (out_pre, out_post, in_pre, in_post)
   - Out-migration rates per 100K of DESTINATION county population
   - In-migration rates per 100K of ORIGIN county population
-  - Used by R/map_code.R to create directional flow maps
+  - Rate changes (out_rate_change, in_rate_change, net_rate_change)
+  - Used by R/map_code.R for the flow-delta, rate-change and directional maps
+    (this replaced the former multnomah_flow_comparison_* output)
 
 - table2.xlsx: Migration rates for Multnomah and neighboring counties
   - Sheet "IRS": IRS-based rates (2016-19 vs 2021-22)
@@ -115,7 +118,11 @@ foreach x in "o" "d" {
 	clear 
 	restore
 		
-} // END ORIGIN-DESTINATION LOOP 
+} // END ORIGIN-DESTINATION LOOP
+
+** County flags for R/map_code.R's US pool map (build_acs_county_sample in
+** programs.do). The data in memory is still acs_county_flow with the tags.
+build_acs_county_sample, saving("${data}working/acs_county_sample.xlsx")
 
 /*******************************************************************************
 SECTION 2: PRE-POST FLOW COMPARISON (2018-2019 vs 2021-2022 / 21-24)

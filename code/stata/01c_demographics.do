@@ -119,8 +119,8 @@ rename population population_acs
 
 ** Merge with other data
 merge 1:1 state_fips county_fips using "${data}working/population_2020", 		///
-	gen(pop2020_mrg) keep(match)
-project_report_merge, gen(pop2020_mrg) tag("pop2020")
+	gen(pop2020_mrg)
+project_report_merge, gen(pop2020_mrg) tag("pop2020") keepmatch
 
 ** Save data
 compress

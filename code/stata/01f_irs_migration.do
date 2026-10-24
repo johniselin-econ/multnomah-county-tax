@@ -239,9 +239,12 @@ foreach file in "irs_county_gross_in" "irs_county_gross_out" "irs_county_flow"{
 			** Rename
 			rename *_fips_`x' *_fips
 
-			** Merge with county and state names
+			** Merge with county and state names. IRS counties absent from
+			** the 2020 NHGIS id list (e.g. Alaska / Connecticut boundary
+			** changes) are dropped here -- report how many, don't hide it.
 			merge m:1 state_fips county_fips using "${data}working/ids", 	///
-				keep(match) nogen
+				gen(ids_mrg)
+			project_report_merge, gen(ids_mrg) tag("irs_flow_ids_`x'") keepmatch
 
 			** Rename
 			rename *_fips *_fips_`x'
@@ -260,9 +263,10 @@ foreach file in "irs_county_gross_in" "irs_county_gross_out" "irs_county_flow"{
 
 	else {
 
-		** Merge with county and state names
+		** Merge with county and state names (see the flow branch above)
 		merge m:1 state_fips county_fips using "${data}working/ids", 	///
-				keep(match) nogen
+				gen(ids_mrg)
+		project_report_merge, gen(ids_mrg) tag("irs_ids") keepmatch
 
 		** Order
 		order year state_* county* move_type
@@ -315,8 +319,8 @@ reshape wide n1_out_ n2_out_ agi_out_, i(year state_fips county_fips) j(move_typ
 label_irs_migration_vars, direction(out)
 
 ** Merge data
-merge 1:1 year state_fips county_fips using `gross_in', gen(gross_in_mrg) keep(match)
-project_report_merge, gen(gross_in_mrg) tag("irs_cty_gross_in")
+merge 1:1 year state_fips county_fips using `gross_in', gen(gross_in_mrg)
+project_report_merge, gen(gross_in_mrg) tag("irs_cty_gross_in") keepmatch
 
 ** Text for correct matching (non-movers should match perfectly)
 summ n*_*_1 agi_*_1
@@ -486,8 +490,8 @@ rename agi agi_in_
 reshape wide n1_in_ n2_in_ agi_in_, i(year state_fips) j(move_type)
 
 ** Merge inflow and outflow
-merge 1:1 year state_fips using `state_gross_out', gen(state_out_mrg) keep(match)
-project_report_merge, gen(state_out_mrg) tag("irs_state_out")
+merge 1:1 year state_fips using `state_gross_out', gen(state_out_mrg)
+project_report_merge, gen(state_out_mrg) tag("irs_state_out") keepmatch
 
 ** Generate net migration variables
 foreach a in "n1" "n2" "agi" {
