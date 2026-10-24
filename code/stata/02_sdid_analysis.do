@@ -696,7 +696,11 @@ if ${use_parallel} == 1 {
 				save "`results_path'sdid/temp_results/results_`table_id'_`outvar'_`c'.dta", replace
 				restore
 
-				if `render_figs' == 1 & `event_ok' == 1 {
+				** Event-study RESULTS are saved for every spec that computed
+				** one (run_event); only the per-spec FIGURE is gated on
+				** render_figs. 02_post_spec.do needs the full set for the
+				** stock-elasticity distribution.
+				if `event_ok' == 1 {
 
 					preserve
 					clear
@@ -712,17 +716,19 @@ if ${use_parallel} == 1 {
 					label var id "Year (destination)"
 					sort id
 
-					twoway 	(rcap res3 res4 id, lc(gs10) fc(gs11%50))	///
-							(scatter res1 id, mc(black)),				///
-						legend(off) ytitle("`label'") 					///
-						yline(0, lc("`col_zero'") lp(-)) 						///
-						xline(2020.5, lc(black) lp(solid))				///
-						ylabel(-10(2.5)10, format(%9.1f))
+					if `render_figs' == 1 {
+						twoway 	(rcap res3 res4 id, lc(gs10) fc(gs11%50))	///
+								(scatter res1 id, mc(black)),				///
+							legend(off) ytitle("`label'") 					///
+							yline(0, lc("`col_zero'") lp(-)) 						///
+							xline(2020.5, lc(black) lp(solid))				///
+							ylabel(-10(2.5)10, format(%9.1f))
 
-					if `exl' == 1 local evpath "`results_path'sdid/`out_txt'/fig_`out_txt'_`outcome'_`c'_`samp_var'_excl2020_eventstudy.jpg"
-					else local evpath "`results_path'sdid/`out_txt'/fig_`out_txt'_`outcome'_`c'_`samp_var'_eventstudy.jpg"
+						if `exl' == 1 local evpath "`results_path'sdid/`out_txt'/fig_`out_txt'_`outcome'_`c'_`samp_var'_excl2020_eventstudy.jpg"
+						else local evpath "`results_path'sdid/`out_txt'/fig_`out_txt'_`outcome'_`c'_`samp_var'_eventstudy.jpg"
 
-					graph export "`evpath'", as(jpg) name("Graph") quality(100) replace
+						graph export "`evpath'", as(jpg) name("Graph") quality(100) replace
+					}
 
 					gen str40 sample_data = "`out_txt'"
 					gen str40 sample = "`samp_var'"
@@ -1299,7 +1305,10 @@ else {
 									(`tmp_ci_lo') (`tmp_ci_hi') (`tmp_ncounties')     ///
 									(`tmp_premean') (`tmp_sig')
 
-								if `render_figs' == 1 & `event_ok' == 1 {
+								** Results saved for every spec with an event
+								** study; only the figure is gated on render_figs
+								** (see the serial block above).
+								if `event_ok' == 1 {
 
 									preserve
 									clear
@@ -1315,17 +1324,19 @@ else {
 									label var id "Year (destination)"
 									sort id
 
-									twoway 	(rcap res3 res4 id, lc(gs10) fc(gs11%50))	///
-											(scatter res1 id, mc(black)),				///
-										legend(off) ytitle("`label'") 					///
-										yline(0, lc("`col_zero'") lp(-)) 						///
-										xline(2020.5, lc(black) lp(solid))
+									if `render_figs' == 1 {
+										twoway 	(rcap res3 res4 id, lc(gs10) fc(gs11%50))	///
+												(scatter res1 id, mc(black)),				///
+											legend(off) ytitle("`label'") 					///
+											yline(0, lc("`col_zero'") lp(-)) 						///
+											xline(2020.5, lc(black) lp(solid))
 
-									if `exl' == 0 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_eventstudy.jpg"
-									if `exl' == 1 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_excl2020_eventstudy.jpg"
+										if `exl' == 0 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_eventstudy.jpg"
+										if `exl' == 1 local path "${results}sdid/`out_txt'/fig_`out_txt'_`out'_`c'_`samp'_excl2020_eventstudy.jpg"
 
-									graph export "`path'", 	///
-										as(jpg) name("Graph") quality(100) replace
+										graph export "`path'", 	///
+											as(jpg) name("Graph") quality(100) replace
+									}
 
 									gen str40 sample_data = "`out_txt'"
 									gen str40 sample = "`samp'"
