@@ -59,6 +59,10 @@ if "${dir}" == "" {
 ** Set the active configuration here. globals.do supplies the same defaults for
 ** scripts run standalone, and resolves these (use_parallel downgrade) once set.
 
+** Stages
+global run_cleaning          = 1        // 1 to rebuild data/working from raw inputs (01_clean_data.do); 0 to reuse it
+global run_indiv_analysis    = 1        // 1 to run the individual-level conditional-mean margins (02_indiv_analysis.do)
+
 ** Bootstrap
 global run_bootstrap         = 1        // 1 to (re)run bootstrap; 0 to skip the stage
 global bootstrap_reps        = 500      // 20=smoke, 100=stress, 500=publication
@@ -94,8 +98,13 @@ project_export_run_manifest
 ** ============================================================================
 ** STAGE 1: DATA CLEANING
 ** ============================================================================
-** Calls 01a_programs through 01h_auxiliary; see 01_clean_data.do for details.
-*do "${code}01_clean_data.do"
+** Calls 01b_download through 01h_auxiliary; see 01_clean_data.do for details.
+** Gated on run_cleaning (default 1). The call had been commented out since
+** 68ca6bc, which made a fresh checkout fail on missing data/working/*.dta
+** and an existing checkout silently reuse stale cleaned data.
+if ${run_cleaning} == 1 {
+	do "${code}01_clean_data.do"
+}
 
 
 ** ============================================================================
@@ -127,7 +136,9 @@ do "${code}02_sdid_analysis.do"
 do "${code}02_descriptives.do"
 
 ** ACS individual-level conditional-mean migration regressions
-*do "${code}02_indiv_analysis.do"
+if ${run_indiv_analysis} == 1 {
+	do "${code}02_indiv_analysis.do"
+}
 
 
 ** ============================================================================

@@ -181,6 +181,8 @@ worker then runs Stata/MP at the full 16-core license cap.
 
 ## Run-control knobs (`00_multnomah.do` PROJECT GLOBALS panel)
 
+- `run_cleaning` — `0` to skip the data-cleaning stage and reuse `data/working/*.dta`
+- `run_indiv_analysis` — `0` to skip the individual-level descriptive margins
 - `run_bootstrap` — `0` to skip the bootstrap stage entirely
 - `bootstrap_reps` — `20` smoke / `100` stress / `500` publication
 - `use_parallel` — `1` if `parallel` ado installed (auto-downgrades if not)

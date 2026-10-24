@@ -53,6 +53,8 @@ if ${use_parallel} == 1 & !`has_parallel' {
 }
 if "${n_clusters}" == "" global n_clusters = 4
 if "${resume}" == ""     global resume = 0
+if "${run_cleaning}" == ""       global run_cleaning = 1
+if "${run_indiv_analysis}" == "" global run_indiv_analysis = 1
 
 ** Event-study COMPUTATION mode: "all" runs event studies for every SDID spec
 ** (needed for the full stock-elasticity distribution in 02_post_spec.do that
