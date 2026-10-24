@@ -157,7 +157,9 @@ if _rc == 0 {
 			& controls == 1 & exclusion == 1, meanonly
 		if r(N) == 1 {
 			scalar tau_dom_`suf_`i'' = r(mean)
-			scalar effect_dom_`suf_`i'' = abs(r(mean)) / 100
+			** Net rate is in - out (01f_irs_migration.do), so tau < 0 is a net
+			** OUTflow: loss = -tau/100. abs() booked a net inflow as a loss too.
+			scalar effect_dom_`suf_`i'' = -r(mean) / 100
 			dis "    `lbl_`i'': tau = " %8.4f tau_dom_`suf_`i'' " pp, effect = " %8.6f effect_dom_`suf_`i''
 		}
 		else {
@@ -176,7 +178,7 @@ if _rc == 0 {
 			& controls == 1 & exclusion == 1, meanonly
 		if r(N) == 1 {
 			scalar tau_out_`suf_`i'' = r(mean)
-			scalar effect_out_`suf_`i'' = abs(r(mean)) / 100
+			scalar effect_out_`suf_`i'' = -r(mean) / 100   // signed, as above
 			dis "    `lbl_`i'': tau = " %8.4f tau_out_`suf_`i'' " pp, effect = " %8.6f effect_out_`suf_`i''
 		}
 		else {

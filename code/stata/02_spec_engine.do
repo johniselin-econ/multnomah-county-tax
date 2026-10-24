@@ -1003,7 +1003,7 @@ end
 ** specification, using the "rescale to actual collections" formula
 ** from the current 02_revenue_microsim.do §12:
 **
-**     effect       = |tau| / 100                # decimal migration rate
+**     effect       = -tau / 100                 # decimal net OUTflow rate (signed)
 **     effect       *= college_agi_share         # scale for ACS subsets
 **     X            = effect × total_agi_2022    # $ AGI leaving
 **     R_m          = avg_rate × X               # $ static revenue loss
@@ -1058,7 +1058,10 @@ program define compute_spec_revenue, rclass
 	local is_acs = (strpos("`data_type'", "ACS") > 0)
 	local scale = cond(`is_acs', college_agi_share, 1)
 
-	local effect_scaled = abs(`tau') / 100 * `scale'
+	** Signed: the net rate is in - out, so tau < 0 is a net outflow and a
+	** positive loss; abs() folded net-inflow draws onto the loss side and
+	** biased the revenue spec-curve percentiles upward.
+	local effect_scaled = -`tau' / 100 * `scale'
 
 	return scalar pfa_loss   = .
 	return scalar state_loss = .
