@@ -805,9 +805,9 @@ gen county_short = subinstr(county_name, " County", "", .)
 ** Oregon state income tax: 9.9% on income > $125K (single)
 ** Metro SHS: 1.0% on income > $125K (single) — Multnomah, Washington, Clackamas
 ** PFA bracket 1: 1.5% on income > $125K (single) — Multnomah only
-** PFA bracket 2: 3.0% on income > $200K (single) — Multnomah only
+** PFA bracket 2: 3.0% on income > $250K (single; ${pfa_thresh2_single}) — Multnomah only
 
-** Tax rate at $150K (single): above all $125K thresholds, below $200K PFA bracket 2
+** Tax rate at $150K (single): above all $125K thresholds, below the $250K PFA bracket 2
 gen tax_150k = 0
 replace tax_150k = 9.9 						if group <= 3  		// OR state
 replace tax_150k = tax_150k + 1.0 				if group <= 2  		// Metro SHS
@@ -829,6 +829,9 @@ list county_short population median_income per_capita_income ///
 local dsign = char(92) + char(36)
 local d125 = char(92) + char(36) + "125K"
 local d200 = char(92) + char(36) + "200K"
+** Single-filer PFA bracket-2 threshold from globals.do (250000 -> "$250K"); the
+** note used to hardcode $200K, which is the JOINT bracket-1 threshold
+local d_thr2_single = char(92) + char(36) + string(${pfa_thresh2_single} / 1000, "%3.0f") + "K"
 local d400 = char(92) + char(36) + "400K"
 
 ** Save table locally and to Overleaf
@@ -920,7 +923,7 @@ file write `fh' `"\end{tabular}%"' _n
 file write `fh' `"}"' _n
 file write `fh' `"\begin{tablenotes}[flushleft]"' _n
 file write `fh' `"\small"' _n
-file write `fh' `"\item \textit{Notes:} Population from 2020 Decennial Census. Median household income from ACS 2015--2019 5-year estimates. Per capita income from BEA CAINC1 (2020). Marginal tax rates shown for a single filer at the indicated income level (2021+). Oregon state income tax: 9.9\% on income above `d125'. Metro Supportive Housing Services tax: 1\% on income above `d125' (Multnomah, Washington, Clackamas counties). Preschool for All (PFA) tax: 1.5\% on income above `d125', rising to 3\% above `d200' (Multnomah County only). Married filing jointly thresholds are `d200' (Metro, PFA bracket 1) and `d400' (PFA bracket 2). Washington State has no personal income tax."' _n
+file write `fh' `"\item \textit{Notes:} Population from 2020 Decennial Census. Median household income from ACS 2015--2019 5-year estimates. Per capita income from BEA CAINC1 (2020). Marginal tax rates shown for a single filer at the indicated income level (2021+). Oregon state income tax: 9.9\% on income above `d125'. Metro Supportive Housing Services tax: 1\% on income above `d125' (Multnomah, Washington, Clackamas counties). Preschool for All (PFA) tax: 1.5\% on income above `d125', rising to 3\% above `d_thr2_single' (Multnomah County only). Married filing jointly thresholds are `d200' (Metro, PFA bracket 1) and `d400' (PFA bracket 2). Washington State has no personal income tax."' _n
 file write `fh' `"\end{tablenotes}"' _n
 file write `fh' `"\end{threeparttable}"' _n
 file write `fh' `"\end{table}"' _n

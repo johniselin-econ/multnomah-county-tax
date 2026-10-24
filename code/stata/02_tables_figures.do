@@ -581,7 +581,7 @@ file write `fh' "Point estimates of $\hat{\tau}$ are unchanged; only the denomin
 file write `fh' "Here $\tau_\text{total}$ excludes the Metro SHS contribution (average total rate on impacted filers: `total_pct'\%). " _n
 file write `fh' "Because the denominator $|\Delta\ln(1-\tau_\text{total})|$ is smaller without SHS, $|\varepsilon_{\text{semi}}|$ and stock $\varepsilon$ are correspondingly larger than in Table~\ref{tab:elasticities}. " _n
 file write `fh' "See Appendix~\ref{sec:appb_elast} for formulas. " _n
-file write `fh' "Bracketed values are 95\% donor-cluster bootstrap percentile CIs. " _n
+elast_tex_notes_inference, handle(`fh') stock
 elast_tex_close, handle(`fh')
 
 file close `fh'
@@ -685,7 +685,7 @@ file write `fh' "PFA-only sensitivity counterpart to Table~\ref{tab:elasticities
 file write `fh' "Point estimates of $\hat{\tau}$ are unchanged; only the denominator differs (excludes Metro SHS; average total rate on impacted filers: `total_pct'\%). " _n
 file write `fh' "Because the denominator is smaller without SHS, $|\varepsilon_{\text{semi}}|$ is correspondingly larger than in Table~\ref{tab:elasticities_inout}. " _n
 file write `fh' "See Appendix~\ref{sec:appb_elast} for formulas. " _n
-file write `fh' "Bracketed values are 95\% donor-cluster bootstrap percentile CIs. " _n
+elast_tex_notes_inference, handle(`fh')
 elast_tex_close, handle(`fh')
 
 file close `fh'
@@ -731,7 +731,7 @@ file write `fh_shs' "Average total marginal rate on impacted filers: `total_shs_
 file write `fh_shs' "The stock object is the 2-year cumulative AGI-stock change on the total AGI base; see Appendix~\ref{sec:appb_elast} for the recursion and Appendix Table~\ref{tab:elasticities_pfa_only} for a PFA-only-denominator sensitivity. " _n
 file write `fh_shs' "Gross out- and in-migration semi-elasticities are in Appendix Table~\ref{tab:elasticities_inout}. " _n
 file write `fh_shs' "Positive $\varepsilon_{\text{semi}}$ or stock $\varepsilon$ indicates AGI inflow / stock shrinks when the after-tax rate falls. " _n
-file write `fh_shs' "Bracketed values are 95\% donor-cluster bootstrap percentile CIs (treats tax parameters and microsimulation denominators as fixed). " _n
+elast_tex_notes_inference, handle(`fh_shs') stock
 elast_tex_close, handle(`fh_shs')
 
 file close `fh_shs'
@@ -837,7 +837,7 @@ file write `fh_shs_io' "$\hat{\tau}$ is the SDID coefficient on the AGI gross ou
 file write `fh_shs_io' "Semi-elasticity $\varepsilon_{\text{semi}} = (\hat{\tau}/100)/\Delta\ln(1-\tau_\text{total})$ is computed against the joint PFA + Metro SHS rate change (average total marginal rate on impacted filers: `total_shs_pct'\%); see Appendix~\ref{sec:appb_elast} for the formula and Table~\ref{tab:elasticities} for the corresponding net-migration object. " _n
 file write `fh_shs_io' "A PFA-only-denominator sensitivity is in Appendix Table~\ref{tab:elasticities_inout_pfa_only}. " _n
 file write `fh_shs_io' "Sign convention: negative $\varepsilon_{\text{semi}}$ for out-migration indicates a larger outflow when the after-tax rate falls; positive $\varepsilon_{\text{semi}}$ for in-migration indicates a smaller inflow. " _n
-file write `fh_shs_io' "Bracketed values are 95\% donor-cluster bootstrap percentile CIs. " _n
+elast_tex_notes_inference, handle(`fh_shs_io')
 elast_tex_close, handle(`fh_shs_io')
 
 file close `fh_shs_io'

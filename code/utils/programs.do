@@ -846,7 +846,11 @@ program define project_export_run_manifest
     local stamp = subinstr("`c(current_time)'", ":", "", .)
 
     project_build_signature, artifact("run_manifest")
-    local signature "`r(signature)'|parallel=${use_parallel}|clusters=${n_clusters}|resume=${resume}|event=${event_study_mode}"
+    ** Every setting that changes a result-bearing artifact belongs here:
+    ** sdid_data_filter changes which blocks run (and so the placebo RNG
+    ** stream); sdid_perspec_figs, bootstrap_reps, show_bootstrap_cis and
+    ** ci_level change what the tables and spec curves report.
+    local signature "`r(signature)'|parallel=${use_parallel}|clusters=${n_clusters}|resume=${resume}|event=${event_study_mode}|data_filter=${sdid_data_filter}|perspec_figs=${sdid_perspec_figs}|boot_reps=${bootstrap_reps}|show_cis=${show_bootstrap_cis}|ci=${ci_level}"
 
     preserve
     clear
@@ -854,7 +858,7 @@ program define project_export_run_manifest
 
     gen str40 project_name = "${pr_name}"
     gen str120 project_dir = "${dir}"
-    gen str244 config_signature = "`signature'"
+    gen str400 config_signature = "`signature'"    // str244 would truncate
     gen str20 run_date = "${date}"
     gen str20 run_time = "`c(current_time)'"
     gen double master_seed = real("${master_seed}")
@@ -898,7 +902,7 @@ program define project_write_manifest
 
     gen str80 artifact = "`artifact'"
     gen str120 script_name = "`script'"
-    gen str244 config_signature = "`signature'"
+    gen str400 config_signature = "`signature'"    // str244 would truncate
     gen str244 upstream_signature = "`upstream'"
     gen str20 created_date = "${date}"
     gen str20 created_time = "`c(current_time)'"

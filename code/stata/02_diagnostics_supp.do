@@ -53,6 +53,12 @@ collapse (sum) n1 mars1 mars2 mars4 n2 elderly agi n_total_inc a_total_inc n_wag
 keep if inrange(year, ${start_year_irs_analysis}, 2022)
 drop if county_fips == 0
 
+** Drop states exactly as 02_otherout_sdid.do does (AK, HI, CA, WA, and Oregon
+** except Multnomah); without this the county and observation counts here
+** included ~170 counties per year that the estimation excludes
+drop if inlist(state_fips, 2, 15, 6, 53)
+drop if state_fips == 41 & fips != 41051
+
 ** Merge demographics
 merge m:1 state_fips county_fips using "${data}working/demographics_2020", gen(demo_merge)
 keep if demo_merge == 3

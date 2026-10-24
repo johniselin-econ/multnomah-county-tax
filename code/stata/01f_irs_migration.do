@@ -128,7 +128,7 @@ forvalues y = $start_yy_irs_county(1)$end_yy_irs_county {
 		rename `home_state' state_fips
 
 		** Label variables
-		label var year "Tax year (year before move)"
+		label var year "Filing year of the 2nd return in the IRS y1-y2 pair (tax year = year - 1)"
 		label var state_fips "State FIPS code (`label_geo' state)"
 		label var county_fips "County FIPS code (`label_geo' county)"
 		label var move_type "Mover category"
@@ -175,7 +175,7 @@ forvalues y = $start_yy_irs_county(1)$end_yy_irs_county {
 			rename y2_countyfips y2_county_fips
 			rename y2_statefips y2_state_fips
 
-			label var year "Tax year (year before move)"
+			label var year "Filing year of the 2nd return in the IRS y1-y2 pair (tax year = year - 1)"
 			label var state_fips "State FIPS code (origin state)"
 			label var county_fips "County FIPS code (origin county)"
 			label var y2_state_fips "State FIPS code (dest. state)"

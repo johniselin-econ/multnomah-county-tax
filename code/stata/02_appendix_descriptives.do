@@ -520,7 +520,7 @@ use "${data}working/acs_migration_file.dta", clear
 
 ** Replicate the analytical-sample filters from 02_indiv_analysis.do so this
 ** descriptive table reflects the same universe used for paper estimates.
-keep if inrange(year, 2016, 2024)
+keep if inrange(year, 2016, 2024) & year != 2020   // the DiD samples exclude 2020
 drop if qmigplc1 == 4                    // bad migration place
 drop if inlist(state_fips_o, 2, 15)      // Alaska / Hawaii origin
 drop if inlist(state_fips_d, 2, 15)      // Alaska / Hawaii destination
@@ -530,9 +530,12 @@ drop if age < 25                         // 25+ subsample
 ** Multnomah origin flag (single column split)
 gen byte mult = (state_fips_o == 41 & county_fips_o == 51)
 
-** Migration indicators (using IPUMS migrate1: 1=non-mover, 2=same-state move,
-** 3=different-state move, 4=abroad, 9=unknown).
-gen byte cty_mover   = inlist(migrate1, 2, 3)
+** Migration indicators. County mover = origin county differs from current
+** county (same_county from 01e_acs.do), the same object as the DiD's out_1;
+** IPUMS migrate1 == 2 ("moved within state") includes within-county moves
+** and overstated the county migration rate. State mover keeps the IPUMS
+** code (3 = different-state move).
+gen byte cty_mover   = (same_county == 0)
 gen byte state_mover = (migrate1 == 3)
 
 ** Education collapsed to 4 categories (IPUMS educd):
