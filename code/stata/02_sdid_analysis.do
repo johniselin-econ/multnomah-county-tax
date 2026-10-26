@@ -665,6 +665,12 @@ if ${use_parallel} == 1 {
 				local tmp_ncounties = r(n_counties)
 				local label : variable label `outcome'
 				local event_ok = r(event_ok)
+				local event_rc = r(event_rc)
+				if r(event_requested) == 1 & `event_ok' == 0 {
+					sdid_log_failure, rc(`event_rc') script("02_sdid_analysis") ///
+						tableid("`table_id'") outcome("`outcome'") c(`c') exl(`exl') ///
+						samp("`samp_var'") context("event study failed; no event-study rows or figure")
+				}
 				if `event_ok' == 1 {
 					tempname event_res
 					matrix `event_res' = r(event_res)
@@ -765,13 +771,11 @@ if ${use_parallel} == 1 {
 
 		** Save table locally and to Overleaf
 		local _dests `""`tabpath'""'
-		if ${overleaf} == 1 {
-			if `exl' == 0 local ol_tabname "tab_sdid_`out_txt'_`migr'_`samp_var'.tex"
-			if `exl' == 1 local ol_tabname "tab_sdid_`out_txt'_`migr'_`samp_var'_excl2020.tex"
-			local _dests `"`_dests' "${ol_tab}`ol_tabname'""'
-		}
 
 		foreach _outfile of local _dests {
+
+		** A failed esttab must not leave last run's table looking current
+		capture erase "`_outfile'"
 
 		** Generate table based on data type
 		if "`data_var'" == "irs_sample_1" | "`data_var'" == "irs_sample_2" {
@@ -810,8 +814,14 @@ if ${use_parallel} == 1 {
 						labels("Number of Counties" "Pre-treatment mean"))
 			}
 		}
+		if _rc != 0 {
+			sdid_log_failure, rc(`=_rc') script("02_sdid_analysis.do") tableid("`table_id'") ///
+				outcome("esttab") c(-1) exl(`exl') samp("`samp_var'") context("esttab failed; table not written")
+		}
 
 		} // end foreach _outfile
+		** optional: a logged esttab failure above means there is no table to mirror
+		project_save_overleaf "`tabpath'", optional
 
 		dis "Completed table `table_id': `out_txt' / `migr' / `samp_var' / excl=`exl'"
 
@@ -1032,11 +1042,11 @@ if ${use_parallel} == 1 {
 	local _orig_linesize = c(linesize)
 	set linesize 255
 
-	parallel, prog(parallel_sdid_wrapper run_sdid_table sdid_log_failure ///
-		project_assert_manifest project_build_signature): parallel_sdid_wrapper
+	capture noisily parallel, prog(parallel_sdid_wrapper run_sdid_table sdid_log_failure ///
+		project_assert_manifest project_build_signature project_save_overleaf): parallel_sdid_wrapper
+	local parallel_rc = _rc
 
 	set linesize `_orig_linesize'
-	local parallel_rc = _rc
 
 	timer off 1
 	timer list 1
@@ -1296,6 +1306,12 @@ else {
 								local tmp_premean = r(pre_mean)
 								local tmp_ncounties = r(n_counties)
 								local event_ok = r(event_ok)
+								local event_rc = r(event_rc)
+								if r(event_requested) == 1 & `event_ok' == 0 {
+									sdid_log_failure, rc(`event_rc') script("02_sdid_analysis") ///
+										tableid("`out_txt'") outcome("`out'") c(`c') exl(`exl') ///
+										samp("`samp'") context("event study failed; no event-study rows or figure")
+								}
 								if `event_ok' == 1 {
 									tempname event_res
 									matrix `event_res' = r(event_res)
@@ -1386,16 +1402,14 @@ else {
 
 						** Save table locally and to Overleaf
 						local _dests `""`path'""'
-						if ${overleaf} == 1 {
-							if `exl' == 0 local ol_fname "tab_sdid_`out_txt'_`migr'_`samp'.tex"
-							if `exl' == 1 local ol_fname "tab_sdid_`out_txt'_`migr'_`samp'_excl2020.tex"
-							local _dests `"`_dests' "${ol_tab}`ol_fname'""'
-						}
 
 						foreach _outfile of local _dests {
 
+						** A failed esttab must not leave last run's table looking current
+						capture erase "`_outfile'"
+
 						** Table of results (capture in case some eststo entries
-						** are missing during a resume run)
+						** are missing during a resume run; the failure is logged below)
 						if "`data'" == "irs_sample_1" | "`data'" == "irs_sample_2" {
 
 						capture noisily {
@@ -1434,8 +1448,13 @@ else {
 						}
 
 						}
+						if _rc != 0 {
+							sdid_log_failure, rc(`=_rc') script("02_sdid_analysis.do") tableid("`out_txt'_`migr'_`samp'") ///
+								outcome("esttab") c(-1) exl(`exl') samp("`samp'") context("esttab failed; table not written")
+						}
 
 						} // end foreach _outfile
+						project_save_overleaf "`path'", optional
 
 					} // END MIGRATION TYPE LOOP
 
@@ -1755,9 +1774,7 @@ foreach otype in "n1" "n2" "agi" {
 		** Export figure
 		graph export "${results}sdid/spec_curves/fig_speccurve_`otype'_`migr'`fsuffix'.pdf", replace
 		graph export "${results}sdid/spec_curves/fig_speccurve_`otype'_`migr'`fsuffix'.jpg", as(jpg) quality(100) replace
-		if ${overleaf} == 1 {
-			graph export "${ol_fig}fig_speccurve_`otype'_`migr'`fsuffix'.pdf", replace
-		}
+		project_save_overleaf "${results}sdid/spec_curves/fig_speccurve_`otype'_`migr'`fsuffix'.pdf"
 
 		** Clean up
 		graph drop speccurve_`otype'_`migr'
@@ -1975,10 +1992,7 @@ foreach otype in "n1" "n2" "agi" {
 			as(jpg) quality(100) replace
 
 		** Overleaf copy
-		if ${overleaf} == 1 {
-			graph export 											///
-				"${ol_fig}fig_sdid_influence_`otype'_`migr'`geo_suffix'.pdf", replace
-		}
+		project_save_overleaf "${results}sdid/influence/fig_sdid_influence_`otype'_`migr'`geo_suffix'.pdf"
 
 		restore
 

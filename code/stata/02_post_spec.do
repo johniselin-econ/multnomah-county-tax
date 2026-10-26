@@ -219,6 +219,17 @@ foreach v in beta_kleven beta_se_kleven beta_kleven_shs beta_se_kleven_shs ///
 local post_years 2021 2022 2023 2024
 local n_years : word count `post_years'
 
+** Every post year must have an event_tau column (the ACS 16-24 event
+** studies supply 2023-2024). A missing column would otherwise quietly
+** shorten the full-horizon stock elasticities for every spec.
+foreach yr of local post_years {
+	capture confirm variable event_tau`yr'
+	if _rc {
+		di as error "02_post_spec.do: event_tau`yr' missing from the event-study results; no spec covers `yr'."
+		exit 111
+	}
+}
+
 dis ""
 dis "Looping over " _N " specs..."
 timer clear 1
@@ -240,11 +251,8 @@ qui {
 		local k 0
 		foreach yr of local post_years {
 			local ++k
-			capture confirm variable event_tau`yr'
-			if _rc == 0 {
-				matrix `etau'[`k', 1] = `yr'
-				matrix `etau'[`k', 2] = event_tau`yr'[`i']
-			}
+			matrix `etau'[`k', 1] = `yr'
+			matrix `etau'[`k', 2] = event_tau`yr'[`i']
 		}
 
 		** Elasticities (option names have no underscores — Stata `syntax`
@@ -479,6 +487,8 @@ if _rc == 0 {
 }
 else {
 	dis as txt "Note: ${results}did/did_coefficients.dta not found -- run 02_did_analysis.do first to enable DiD semi-elasticities."
+	** No stale output may outlive its missing input
+	capture erase "${results}did/did_elasticities.dta"
 }
 
 capture log close log_02pspec

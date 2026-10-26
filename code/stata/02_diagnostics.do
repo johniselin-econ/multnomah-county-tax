@@ -553,10 +553,7 @@ file write `fh' "\bottomrule" _n
 file write `fh' "\end{tabular}" _n
 file close `fh'
 
-if ${overleaf} == 1 {
-	copy "${results}tables/diagnostics_obs_counts.tex" ///
-		"${ol_tab}diagnostics_obs_counts.tex", replace
-}
+project_save_overleaf "${results}tables/diagnostics_obs_counts.tex"
 
 
 ********************************************************************************
@@ -589,10 +586,7 @@ file write `fh2' "\bottomrule" _n
 file write `fh2' "\end{tabular}" _n
 file close `fh2'
 
-if ${overleaf} == 1 {
-	copy "${results}tables/sdid_sample_funnel.tex" ///
-		"${ol_tab}sdid_sample_funnel.tex", replace
-}
+project_save_overleaf "${results}tables/sdid_sample_funnel.tex"
 
 dis _n "Diagnostics written to:"
 dis "  ${results}tables/diagnostics_obs_counts.{tex,csv,xlsx}"

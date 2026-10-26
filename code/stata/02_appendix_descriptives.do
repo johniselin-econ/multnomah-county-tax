@@ -37,7 +37,7 @@ Inputs:         ${data}working/sdid_analysis_data.dta            (Table A)
 Outputs:        ${results}tables/tableA1_sdid.tex
                 ${results}tables/tableA2_irs_flow.tex
                 ${results}tables/tableA3_acs.tex
-                Same files copied to ${ol_tab} when ${overleaf}=1
+                Same files mirrored via project_save_overleaf when ${overleaf}=1
 *******************************************************************************/
 
 ** Load shared project defaults (path globals + Overleaf sync)
@@ -196,9 +196,6 @@ mat list `M_SDID_ACS2'
 
 ** Write tex
 local _dests `""${results}tables/tableA1_sdid.tex""'
-if ${overleaf} == 1 {
-    local _dests `"`_dests' "${ol_tab}tableA1_sdid.tex""'
-}
 
 foreach _outfile of local _dests {
 
@@ -272,6 +269,7 @@ file write `fh' `"\end{table}"' _n
 file close `fh'
 dis "Wrote `_outfile'"
 }
+project_save_overleaf "${results}tables/tableA1_sdid.tex"
 
 
 ********************************************************************************
@@ -425,9 +423,6 @@ mat list `N_CTY'
 
 ** Write tex
 local _dests `""${results}tables/tableA2_irs_flow.tex""'
-if ${overleaf} == 1 {
-    local _dests `"`_dests' "${ol_tab}tableA2_irs_flow.tex""'
-}
 foreach _outfile of local _dests {
 tempname fh
 file open `fh' using "`_outfile'", write replace
@@ -495,6 +490,7 @@ file write `fh' `"\end{table}"' _n
 file close `fh'
 dis "Wrote `_outfile'"
 }
+project_save_overleaf "${results}tables/tableA2_irs_flow.tex"
 
 
 ********************************************************************************
@@ -646,9 +642,6 @@ mat list `M_ACS_SAMP'
 
 ** ---- Write LaTeX table ----
 local _dests `""${results}tables/tableA3_acs.tex""'
-if ${overleaf} == 1 {
-    local _dests `"`_dests' "${ol_tab}tableA3_acs.tex""'
-}
 foreach _outfile of local _dests {
 tempname fh
 file open `fh' using "`_outfile'", write replace
@@ -785,6 +778,7 @@ file write `fh' `"\end{table}"' _n
 file close `fh'
 dis "Wrote `_outfile'"
 }
+project_save_overleaf "${results}tables/tableA3_acs.tex"
 
 
 dis ""

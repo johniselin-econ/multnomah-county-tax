@@ -62,6 +62,17 @@ ln <- function(x0, y0, x1, y1, col = "#CCCCCC", lwd = 0.5) {
   )
 }
 
+# Check mark drawn as a two-segment polyline (native units, centred on x, y),
+# so it renders identically on every device and font (a U+2714 glyph fell
+# back to a box or a thin tick depending on the installed fonts).
+chk_mark <- function(x, y, col, w = 1.8, lwd = 2.4) {
+  grid.lines(
+    x = unit(c(x - 0.9 * w, x - 0.25 * w, x + w), "native"),
+    y = unit(c(y, y - 0.7 * w, y + 0.9 * w), "native"),
+    gp = gpar(col = col, lwd = lwd, lineend = "round", linejoin = "round")
+  )
+}
+
 open_pdf <- function(file, width, height) {
   if (capabilities("cairo")) {
     cairo_pdf(file, width = width, height = height)
@@ -359,10 +370,7 @@ draw_data_comparison <- function(out_file, with_title = FALSE) {
   tx((c3 + c4) / 2, hdr_y, "ACS",        sz = 11.5, face = "bold", col = "white")
   tx((c4 + tr) / 2, hdr_y, "Used In",    sz = 11.5, face = "bold", col = "white")
 
-  # Checkmark and dash symbols. Use heavy check (U+2714) so the glyph is
-  # unambiguous even at the small column width; bump font size so it reads
-  # as a checkmark and not a thin tick / fallback box.
-  chk <- "\u2714"
+  # "Not available" dash; the check mark is drawn by chk_mark() (vector path).
   na_sym <- "\u2014\u2014"
 
   # Row 1: Individual migration -- ACS only
@@ -372,7 +380,7 @@ draw_data_comparison <- function(out_file, with_title = FALSE) {
   tx(c1 + 2, y1 + 1, "1 if person h moved in/out of county i in year t",
      sz = 10.5, col = desc_col, j = "left")
   tx((c2 + c3) / 2, y1 + 1, na_sym, sz = 9, col = PPB_GREY)
-  tx((c3 + c4) / 2, y1 + 1, chk, sz = 13, col = green_plus)
+  chk_mark((c3 + c4) / 2, y1 + 1, col = green_plus)
   tx((c3 + c4) / 2, y1 - 1.2, "(389 counties)", sz = 6.5, col = desc_col)
   tx((c4 + tr) / 2, y1, "DiD", sz = 8.5, face = "bold", col = irs_blue)
 
@@ -382,7 +390,7 @@ draw_data_comparison <- function(out_file, with_title = FALSE) {
      sz = 10.5, face = "italic", col = dark_col, j = "left")
   tx(c1 + 2, y2 + 1, "# individuals/returns/AGI from county i to j in t",
      sz = 10.5, col = desc_col, j = "left")
-  tx((c2 + c3) / 2, y2 + 1, chk, sz = 13, col = green_plus)
+  chk_mark((c2 + c3) / 2, y2 + 1, col = green_plus)
   tx((c3 + c4) / 2, y2 + 1, na_sym, sz = 9, col = PPB_GREY)
   tx((c4 + tr) / 2, y2, "PPML", sz = 8.5, face = "bold", col = irs_blue)
 
@@ -393,8 +401,8 @@ draw_data_comparison <- function(out_file, with_title = FALSE) {
   tx(c1 + 2, y3 + 0.5,
      "In\u2013, out\u2013, net in\u2013migration rate for county i in t",
      sz = 10.5, col = desc_col, j = "left")
-  tx((c2 + c3) / 2, y3 + 0.5, chk, sz = 13, col = green_plus)
-  tx((c3 + c4) / 2, y3 + 0.5, chk, sz = 13, col = green_plus)
+  chk_mark((c2 + c3) / 2, y3 + 0.5, col = green_plus)
+  chk_mark((c3 + c4) / 2, y3 + 0.5, col = green_plus)
   tx((c4 + tr) / 2, y3, "SDID", sz = 8.5, face = "bold", col = irs_blue)
 
   # -----------------------------------------------------------------------
@@ -466,10 +474,8 @@ draw_data_comparison(file.path(out_dir, "fig_data_comparison.pdf"))
 draw_data_comparison(file.path(out_dir, "fig_data_comparison_titled.pdf"),
                      with_title = TRUE)
 
-# Overleaf copy — paper versions only (the titled variants stay local).
-if (exists("cfg") && isTRUE(cfg$overleaf) && nzchar(cfg$dir_ol_fig)) {
-  for (f in c("fig_empirical_approach.pdf", "fig_data_comparison.pdf")) {
-    file.copy(file.path(out_dir, f), file.path(cfg$dir_ol_fig, f), overwrite = TRUE)
-  }
-  cat("Overleaf: copied diagrams to", cfg$dir_ol_fig, "\n")
+# Overleaf mirror — paper versions only (the titled variants stay local).
+if (exists("cfg")) {
+  copied <- overleaf_copy(cfg, file.path(out_dir, c("fig_empirical_approach.pdf", "fig_data_comparison.pdf")))
+  if (length(copied) > 0) cat("Overleaf: copied", length(copied), "diagrams to", cfg$dir_ol_fig, "\n")
 }

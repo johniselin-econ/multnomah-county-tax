@@ -13,9 +13,9 @@ individual-level DiD, specification curves, and a TAXSIM revenue microsimulation
 
 ## Pipeline — three stages, run from the repo root
 
-1. **`00_download_data.R`** — R data pulls (IPUMS ACS, NHGIS, BLS, DOL, Census).
+1. **`00_main.R download`** — R data pulls (IPUMS ACS, NHGIS, BLS, DOL, Census).
 2. **`00_multnomah.do`** — Stata orchestrator: cleaning (`01_*`) → analysis (`02_*`).
-3. **`00_post_stata.R`** — R diagrams + maps (needs Stata's `acs_county_sample.xlsx`).
+3. **`00_main.R post`** — R diagrams + maps (needs Stata's `acs_county_sample.xlsx`).
 
 Stata reads R-produced inputs, so the order matters. The `run_stage1.sh` /
 `run_stage3.sh` wrappers just add env checks around the two R entry points.
@@ -44,10 +44,14 @@ Stata reads R-produced inputs, so the order matters. The `run_stage1.sh` /
 
 - Stata run knobs live in the **RUN-CONTROL FLAGS** panel at the top of
   `00_multnomah.do` (`run_bootstrap`, `bootstrap_reps`, `use_parallel`,
-  `n_clusters`, `resume`, `event_study_mode`). `globals.do` supplies the same
-  defaults for scripts run standalone.
-- Overleaf sync (optional): copy `user_settings.example.{do,R}` →
-  `user_settings.{do,R}` (gitignored) and set `oth_path`. No file ⇒ no sync.
+  `n_clusters`, `resume`, `event_study_mode`, `clean_results`, `paper_only`).
+  `globals.do` supplies the same defaults for scripts run standalone.
+- Overleaf mirror (optional): copy `user_settings.example.do` → `user_settings.do`
+  (gitignored) and set `oth_path`; Stata and R both read that one line. No file
+  ⇒ no mirror. **Every mirror copy goes through `project_save_overleaf`**
+  (R: `overleaf_copy`) — never write to `${ol_fig}`/`${ol_tab}` directly.
+  `PAPER_ONLY=1` restricts the mirror to `resources/paper_manifest.csv`.
+- One-shot cluster run: `full_run.sbatch` (tracked) — see `RUNBOOK.md`.
 
 ## Conventions — follow these
 

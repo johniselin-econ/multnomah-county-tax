@@ -26,5 +26,5 @@ if [[ ! -f "$handoff" ]]; then
 fi
 
 echo "[Stage 3] Starting at $(date)"
-Rscript 00_post_stata.R
+Rscript 00_main.R post
 echo "[Stage 3] Done at $(date)"

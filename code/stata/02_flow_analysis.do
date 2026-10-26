@@ -723,9 +723,7 @@ foreach sample in "acs" "all" {
 
 		graph export "${results}flows/fig_hist_out_`x'`file_suffix'`debug_txt'.png", replace
 
-		if ${overleaf} == 1 & "`debug_txt'" == "" {
-			graph export "${ol_fig}fig_hist_out_`x'`file_suffix'.png", replace
-		}
+		if "`debug_txt'" == "" project_save_overleaf "${results}flows/fig_hist_out_`x'`file_suffix'.png"
 
 		** Plot 2: In-migration coefficient distribution with Multnomah
 		histogram `x'_in if !missing(`x'_in), 									///
@@ -738,9 +736,7 @@ foreach sample in "acs" "all" {
 
 		graph export "${results}flows/fig_hist_in_`x'`file_suffix'`debug_txt'.png", replace
 
-		if ${overleaf} == 1 & "`debug_txt'" == "" {
-			graph export "${ol_fig}fig_hist_in_`x'`file_suffix'.png", replace
-		}
+		if "`debug_txt'" == "" project_save_overleaf "${results}flows/fig_hist_in_`x'`file_suffix'.png"
 
 		** Plot 3: Combined scatter of out vs in coefficients
 		twoway 	(scatter `x'_in `x'_out if multnomah == 0, 						///
@@ -1377,9 +1373,7 @@ foreach sample in "acs" "all" {
 
 		graph export "${results}flows/fig_multnomah_both_`outcome'`file_suffix'.png", replace
 
-		if ${overleaf} == 1 {
-			graph export "${ol_fig}fig_multnomah_both_`outcome'`file_suffix'.png", replace
-		}
+		project_save_overleaf "${results}flows/fig_multnomah_both_`outcome'`file_suffix'.png"
 
 		** Reload main data for next outcome
 		use "${data}working/flow_analysis_data.dta", clear
@@ -1426,11 +1420,7 @@ if `all_present' == 1 {
 		postfoot("\bottomrule" "\end{tabular}")
 	dis "Wrote: ${results}flows/tab_flow_regression`v_suffix'.tex"
 
-	if "${overleaf}" == "1" {
-		copy "${results}flows/tab_flow_regression`v_suffix'.tex" ///
-			"${ol_tab}tab_flow_regression`v_suffix'.tex", replace
-		dis "Synced: ${ol_tab}tab_flow_regression`v_suffix'.tex"
-	}
+	project_save_overleaf "${results}flows/tab_flow_regression`v_suffix'.tex"
 }
 else {
 	dis as error "Skipping flow-regression appendix table: not all 4 AGI estimates are stored."

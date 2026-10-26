@@ -75,14 +75,12 @@ if "${dir}" == "" {
     if regexm("`_cwd'", "(.*)/code/(stata|utils)$") global dir = regexs(1)
     else global dir "`_cwd'"
 }
-
 do "${dir}/code/utils/globals.do"
 do "${code}02_spec_engine.do"
 
 ** Bootstrap-specific globals.
 ** bootstrap_seed_offset lives in globals.do alongside master_seed
 ** so all randomness controls sit in one place.
-if "${bootstrap_reps}" == ""        global bootstrap_reps        = 20
 if "${bootstrap_output}" == ""      global bootstrap_output      "${results}bootstrap/bootstrap_draws.dta"
 
 capture mkdir "${results}bootstrap"

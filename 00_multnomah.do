@@ -8,7 +8,7 @@
 	              migration. Calls data-cleaning scripts (01_*) and analysis
 	              scripts (02_*) in dependency order.
 
-	Prerequisite: Run 00_download_data.R first to download the R-managed
+	Prerequisite: Run `Rscript 00_main.R download' first to download the R-managed
 	              inputs used below.
 
 	Author:       John Iselin (john.iselin@yale.edu)
@@ -76,6 +76,8 @@ global resume                = 0        // 1 to skip bootstrap reps whose draw .
 
 ** Output mode
 global event_study_mode      "all"      // "all" | "main" | "none" -- which event studies the SDID stage runs
+global clean_results         = 0        // 1 to wipe the regenerable results/ subdirs (incl. overleaf_export/) first; incompatible with resume=1
+global paper_only            ""         // 1 to mirror only resources/paper_manifest.csv artifacts to Overleaf; "" takes PAPER_ONLY from the environment (0 if unset)
 
 
 ** ============================================================================
@@ -89,6 +91,9 @@ do "${dir}/code/utils/globals.do"
 
 cd "${dir}"
 log using "${logs}00_log_${pr_name}_${date}", replace text
+
+** Optional fresh start: no stale outputs from earlier code survive the run.
+if ${clean_results} == 1 project_clean_results
 
 ** Reproducible seed + run manifest (records this run's configuration signature)
 project_set_seed, context("00_multnomah.do") offset(0)

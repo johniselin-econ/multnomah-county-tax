@@ -29,5 +29,5 @@ fi
 
 echo "[Stage 1] $(Rscript --version 2>&1 | head -1)"
 echo "[Stage 1] Starting downloads at $(date)"
-Rscript 00_download_data.R
+Rscript 00_main.R download
 echo "[Stage 1] Done at $(date)"

@@ -153,8 +153,6 @@ capture program drop elast_tex_notes_inference
 program define elast_tex_notes_inference
 	syntax, HANDLE(string) [STOCK]
 
-	if "${show_bootstrap_cis}" == "" global show_bootstrap_cis = 0
-	if "${ci_level}" == "" global ci_level = 95
 
 	if ${show_bootstrap_cis} == 1 {
 		file write `handle' "Bracketed values are ${ci_level}\% percentile confidence intervals from a " _n
@@ -540,6 +538,10 @@ program define fit_spec_sdid, rclass
 	qui count if year == 2021 & `in_sample' == 1
 	local tmp_ncounties = r(N)
 	local event_ok = 0
+	** event_rc: why the event study is absent -- 0 when not requested or
+	** OK, else sdid_event's rc, the e(H) read's rc, or 2000 when e(H) held
+	** no usable rows. Callers log it; the estimates themselves are untouched.
+	local event_rc = 0
 
 	if `eventstudy' == 1 {
 		local eventopts "vce(placebo) brep(`reps') placebo(all)"
@@ -593,6 +595,7 @@ program define fit_spec_sdid, rclass
 
 			tempname res event_taus rowmat
 			capture matrix `res' = e(H)[2..`n_eH_rows', 1..`last_col']
+			local event_rc = _rc
 			if _rc == 0 {
 				tempname event_res
 				local posted = 0
@@ -627,6 +630,7 @@ program define fit_spec_sdid, rclass
 				if `posted' == 1 {
 					local event_ok = 1
 				}
+				else local event_rc = 2000
 			}
 		}
 	}
@@ -639,6 +643,8 @@ program define fit_spec_sdid, rclass
 	return scalar pre_mean = `tmp_premean'
 	return scalar n_counties = `tmp_ncounties'
 	return scalar event_ok = `event_ok'
+	return scalar event_rc = `event_rc'
+	return scalar event_requested = `eventstudy'
 	return local sample_data "`sample_data'"
 	return local sample "`sample'"
 	return local outcome "`outcome'"

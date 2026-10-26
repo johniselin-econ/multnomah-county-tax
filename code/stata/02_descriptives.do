@@ -1,8 +1,9 @@
 /*******************************************************************************
 File Name:      02_descriptives.do
 Creator:        John Iselin
-Last Modified:  2026-05-07 (folded former 02_descriptives_supp.do Table 1 build
-                in as a final section; depends on sdid_analysis_data.dta)
+Last Modified:  2026-10-26 (dropped the legacy Table 1 "Portland MSA" and
+                Table 2 "Multnomah + neighbors" writers, superseded by
+                table1_combined.tex and the elasticity tables)
 
 Called by:      00_multnomah.do
 
@@ -10,7 +11,8 @@ Purpose:        Perform descriptive analysis. Two phases:
                   (i)  Pre-SDID descriptives reading raw cleaned inputs
                        (irs_county_gross, acs_county_gross_25plus, etc.) --
                        produces flow comparisons consumed by R/map_code.R,
-                       Table 2 (Multnomah + neighbors), and stringency KDPs.
+                       the county/state migration-comparison tables, and
+                       stringency KDPs.
                   (ii) Table 1 (combined): Multnomah vs. 5 SDID donor pools,
                        reading sdid_analysis_data.dta. Skipped cleanly if
                        that file is missing.
@@ -29,13 +31,6 @@ Outputs:
   - Rate changes (out_rate_change, in_rate_change, net_rate_change)
   - Used by R/map_code.R for the flow-delta, rate-change and directional maps
     (this replaced the former multnomah_flow_comparison_* output)
-
-- table2.xlsx: Migration rates for Multnomah and neighboring counties
-  - Sheet "IRS": IRS-based rates (2016-19 vs 2021-22)
-  - Sheet "ACS": ACS-based rates (2016-19 vs 2021-22 vs 2021-24)
-  - Rows: Multnomah, neighboring OR/WA counties, all other OR/WA combined
-  - Rates: in-migration and out-migration as % of partner county population
-  - Change in net in-migration rate (in_rate - out_rate) from pre to post period
 
 Authors: John Iselin
 
@@ -124,390 +119,9 @@ foreach x in "o" "d" {
 ** programs.do). The data in memory is still acs_county_flow with the tags.
 build_acs_county_sample, saving("${data}working/acs_county_sample.xlsx")
 
-/*******************************************************************************
-SECTION 2: PRE-POST FLOW COMPARISON (2018-2019 vs 2021-2022 / 21-24)
-*******************************************************************************/
-
-** IRS DATA 
-
-** Load gross data to get Multnomah's total population by period
-use "${data}working/irs_county_gross", clear
-
-** Keep only in sample 
-keep if inlist(state_name, "Oregon", "Washington")
-keep if inlist(year, 2018, 2019, 2021, 2022)
-
-** Keep required variables 
-keep year fips state_* county_* 	///
-	*_out_1 *_out_2 *_out_3			///
-	*_in_1 *_in_2 *_in_3 			//
-	
-** Keep only pre and post periods
-gen period = ""
-replace period = "pre" if inlist(year, 2018, 2019)
-replace period = "post_21_22" if inlist(year, 2021, 2022)
-keep if period != ""
-
-** Calculate base population (non-movers + all movers = total filers)
-gen n1_base = n1_out_1 + n1_out_2
-gen n2_base = n2_out_1 + n2_out_2
-gen agi_base = agi_out_1 + agi_out_2
-
-** Create Other Oregon and Other Washington 
-drop county_fips state_fips 
-
-replace county_name = "Other" if state_name == "Oregon" & !inlist(fips, 41051, 41067, 41005, 41047, 41071, 41009)
-replace county_name = "Other" if state_name == "Washington" & !inlist(fips, 53011, 53059)
-
-** Collapse by time 
-collapse (sum) *_base *_out_3 *_in_3, by(state_name county_name period)
-
-** Calculate rates 
-foreach x in "n1" "n2" "agi" {
-	gen `x'_out_rate = `x'_out_3 / `x'_base
-	gen `x'_in_rate = `x'_in_3 / `x'_base
-} // END RATE LOOP 
-
-** Keep final variables 
-keep state_name county_name period *_rate
-
-** Save IRS rates for combined Table 2 generation after ACS data prep
-save "${data}working/table2_irs_rates.dta", replace
-
-clear
-
-** ACS DATA
-
-** Load gross data to get Multnomah's total population by period
-use "${data}working/acs_county_gross_25plus.dta", clear
-
-** Keep only in sample 
-keep if inlist(state_name, "Oregon", "Washington")
-keep if inlist(year, 2018, 2019, 2021, 2022, 2023, 2024)
-
-** Keep required variables 
-keep year fips state_* county_* 	///
-	*_out_1 *_out_2 *_out_3			///
-	*_in_1 *_in_2 *_in_3 			//
-	
-** Keep only pre and post periods
-gen period = ""
-replace period = "pre" if inlist(year, 2018, 2019)
-replace period = "post_21_22" if inlist(year, 2021, 2022)
-replace period = "post_23_24" if inlist(year, 2023, 2024)
-keep if period != ""
-
-** Calculate base population (non-movers + all movers = total filers)
-gen hh_base = households_out_1 + households_out_2
-gen per_base = persons_out_1 + persons_out_2
-gen dol_base = dollars_out_1 + dollars_out_2
-
-** Rename 
-rename households_* hh_* 
-rename persons_* per_* 
-rename dollars_* dol_*
-
-** Create Other Oregon and Other Washington 
-drop county_fips state_fips 
-
-replace county_name = "Other" if state_name == "Oregon" & !inlist(fips, 41051, 41067, 41005, 41047, 41071, 41009)
-replace county_name = "Other" if state_name == "Washington" & !inlist(fips, 53011, 53059)
-
-** Collapse by time 
-collapse (sum) *_base *_out_3 *_in_3, by(state_name county_name period)
-
-** Update period
-gen tmp = inlist(period, "post_21_22", "post_23_24")
-
-** Loop over variables 
-foreach var of varlist hh_* per_* dol_* {
-	
-	bysort state_name county_name tmp: egen total = total(`var')
-	replace `var' = total if period == "post_23_24"
-	drop total 
-
-}
-
-drop tmp 
-replace period = "post_21_24" if period == "post_23_24"
-
-
-** Calculate rates 
-foreach x in "hh" "per" "dol" {
-	gen `x'_out_rate = `x'_out_3 / `x'_base
-	gen `x'_in_rate = `x'_in_3 / `x'_base
-} // END RATE LOOP 
-
-** Keep final variables 
-keep state_name county_name period *_rate
-
-** Save ACS rates for combined Table 2 generation
-save "${data}working/table2_acs_rates.dta", replace
-
-** ---- Generate combined LaTeX Table 2 (IRS + ACS, two panels) ----
-
-** Step 1: Prepare IRS data (reshape wide)
-use "${data}working/table2_irs_rates.dta", clear
-
-** Convert to percentages
-foreach v of varlist *_rate {
-	replace `v' = `v' * 100
-}
-
-** Reshape wide by period
-reshape wide n1_out_rate n1_in_rate n2_out_rate n2_in_rate agi_out_rate agi_in_rate, ///
-	i(state_name county_name) j(period) string
-
-** Rename with irs_ prefix
-foreach v in n1 n2 agi {
-	rename `v'_out_ratepre        irs_`v'_out_pre
-	rename `v'_in_ratepre         irs_`v'_in_pre
-	rename `v'_out_ratepost_21_22 irs_`v'_out_post
-	rename `v'_in_ratepost_21_22  irs_`v'_in_post
-}
-
-tempfile irs_wide
-save `irs_wide'
-
-** Step 2: Prepare ACS data (reshape wide)
-use "${data}working/table2_acs_rates.dta", clear
-
-** Convert to percentages
-foreach v of varlist *_rate {
-	replace `v' = `v' * 100
-}
-
-** Reshape wide by period
-reshape wide hh_out_rate hh_in_rate per_out_rate per_in_rate dol_out_rate dol_in_rate, ///
-	i(state_name county_name) j(period) string
-
-** Rename with acs_ prefix
-foreach v in hh per dol {
-	rename `v'_out_ratepre        acs_`v'_out_pre
-	rename `v'_in_ratepre         acs_`v'_in_pre
-	rename `v'_out_ratepost_21_22 acs_`v'_out_post22
-	rename `v'_in_ratepost_21_22  acs_`v'_in_post22
-	rename `v'_out_ratepost_21_24 acs_`v'_out_post24
-	rename `v'_in_ratepost_21_24  acs_`v'_in_post24
-}
-
-tempfile acs_wide
-save `acs_wide'
-
-** Step 3: Merge IRS and ACS
-use `irs_wide', clear
-merge 1:1 state_name county_name using `acs_wide', nogen
-
-** Step 4: Calculate net rate changes for Panel B
-** IRS
-gen irs_agi_net_chg = (irs_agi_in_post - irs_agi_out_post) - ///
-                      (irs_agi_in_pre - irs_agi_out_pre)
-gen irs_n1_net_chg  = (irs_n1_in_post - irs_n1_out_post) - ///
-                      (irs_n1_in_pre - irs_n1_out_pre)
-** ACS 21-22
-gen acs_dol_net_chg22 = (acs_dol_in_post22 - acs_dol_out_post22) - ///
-                        (acs_dol_in_pre - acs_dol_out_pre)
-gen acs_hh_net_chg22  = (acs_hh_in_post22 - acs_hh_out_post22) - ///
-                        (acs_hh_in_pre - acs_hh_out_pre)
-** ACS 21-24
-gen acs_dol_net_chg24 = (acs_dol_in_post24 - acs_dol_out_post24) - ///
-                        (acs_dol_in_pre - acs_dol_out_pre)
-gen acs_hh_net_chg24  = (acs_hh_in_post24 - acs_hh_out_post24) - ///
-                        (acs_hh_in_pre - acs_hh_out_pre)
-
-** Create row ordering
-gen order = .
-replace order = 1  if county_name == "Multnomah County"
-replace order = 3  if state_name == "Oregon"     & county_name == "Washington County"
-replace order = 4  if state_name == "Oregon"     & county_name == "Clackamas County"
-replace order = 5  if state_name == "Oregon"     & county_name == "Marion County"
-replace order = 6  if state_name == "Oregon"     & county_name == "Yamhill County"
-replace order = 7  if state_name == "Oregon"     & county_name == "Columbia County"
-replace order = 9  if state_name == "Washington" & county_name == "Clark County"
-replace order = 10 if state_name == "Washington" & county_name == "Skamania County"
-replace order = 11 if state_name == "Oregon"     & county_name == "Other"
-replace order = 12 if state_name == "Washington" & county_name == "Other"
-sort order
-
-** Create display labels
-gen label = subinstr(county_name, " County", "", 1)
-replace label = "All other OR counties" if state_name == "Oregon"     & county_name == "Other"
-replace label = "All other WA counties" if state_name == "Washington" & county_name == "Other"
-
-** Step 5: Write combined two-panel LaTeX table
-local nrows = _N
-
-** Save table locally and to Overleaf
-local _dests `""${results}tables/table2.tex""'
-if ${overleaf} == 1 {
-	local _dests `"`_dests' "${ol_tab}table2.tex""'
-}
-
-foreach _outfile of local _dests {
-
-tempname fh
-file open `fh' using "`_outfile'", write replace
-
-file write `fh' "% Table 2: Migration Rates for Multnomah and Neighboring Counties" _n
-file write `fh' "% Generated by 02_descriptives.do (two-panel version: IRS + ACS)" _n
-file write `fh' "% Requires: \usepackage{booktabs, threeparttable}" _n
-file write `fh' `"\begin{table}[htbp]"' _n
-file write `fh' `"\centering"' _n
-file write `fh' `"\caption{Migration Rates for Multnomah County and Neighboring Counties}"' _n
-file write `fh' `"\label{tab:migration_rates}"' _n
-file write `fh' `"\begin{threeparttable}"' _n
-
-** --- Panel A: In- and Out-Migration Rates (AGI) ---
-file write `fh' `"\vspace{0.5em}"' _n
-file write `fh' `"\textit{Panel A: In- and Out-Migration Rates (AGI)}"' _n
-file write `fh' `"\vspace{0.3em}"' _n
-file write `fh' `"{\footnotesize\setlength{\tabcolsep}{3pt}"' _n
-file write `fh' `"\begin{tabular}{l*{10}c}"' _n
-file write `fh' `"\toprule"' _n
-file write `fh' `" & \multicolumn{5}{c}{In-Migration Rate (\%)} & \multicolumn{5}{c}{Out-Migration Rate (\%)} \\"' _n
-file write `fh' `"\cmidrule(lr){2-6} \cmidrule(lr){7-11}"' _n
-file write `fh' `" & \multicolumn{2}{c}{IRS} & \multicolumn{3}{c}{ACS} & \multicolumn{2}{c}{IRS} & \multicolumn{3}{c}{ACS} \\"' _n
-file write `fh' `"\cmidrule(lr){2-3} \cmidrule(lr){4-6} \cmidrule(lr){7-8} \cmidrule(lr){9-11}"' _n
-file write `fh' `"County & 18--19 & 21--22 & 18--19 & 21--22 & 21--24 & 18--19 & 21--22 & 18--19 & 21--22 & 21--24 \\"' _n
-file write `fh' `"\midrule"' _n
-
-forvalues i = 1/`nrows' {
-
-	local lbl = label[`i']
-	local ord = order[`i']
-
-	** Section headers
-	if `ord' == 3 {
-		file write `fh' `"\addlinespace"' _n
-		file write `fh' `"\textit{Neighboring OR counties} & & & & & & & & & & \\"' _n
-	}
-	if `ord' == 9 {
-		file write `fh' `"\addlinespace"' _n
-		file write `fh' `"\textit{Neighboring WA counties} & & & & & & & & & & \\"' _n
-	}
-	if `ord' == 11 {
-		file write `fh' `"\addlinespace"' _n
-	}
-
-	** Format IRS values (always present)
-	local irs_in_pre  = trim(string(irs_agi_in_pre[`i'],  "%9.2f"))
-	local irs_in_post = trim(string(irs_agi_in_post[`i'], "%9.2f"))
-	local irs_out_pre = trim(string(irs_agi_out_pre[`i'],  "%9.2f"))
-	local irs_out_post = trim(string(irs_agi_out_post[`i'], "%9.2f"))
-
-	** Format ACS values (may be missing for small counties)
-	if !missing(acs_dol_in_pre[`i']) {
-		local acs_in_pre    = trim(string(acs_dol_in_pre[`i'],    "%9.2f"))
-		local acs_in_post22 = trim(string(acs_dol_in_post22[`i'], "%9.2f"))
-		local acs_in_post24 = trim(string(acs_dol_in_post24[`i'], "%9.2f"))
-		local acs_out_pre   = trim(string(acs_dol_out_pre[`i'],    "%9.2f"))
-		local acs_out_post22 = trim(string(acs_dol_out_post22[`i'], "%9.2f"))
-		local acs_out_post24 = trim(string(acs_dol_out_post24[`i'], "%9.2f"))
-	}
-	else {
-		local acs_in_pre    = "--"
-		local acs_in_post22 = "--"
-		local acs_in_post24 = "--"
-		local acs_out_pre   = "--"
-		local acs_out_post22 = "--"
-		local acs_out_post24 = "--"
-	}
-
-	** Write row (indent neighboring counties)
-	if inlist(`ord', 3, 4, 5, 6, 7, 9, 10) {
-		file write `fh' `"\quad `lbl' & `irs_in_pre' & `irs_in_post' & `acs_in_pre' & `acs_in_post22' & `acs_in_post24' & `irs_out_pre' & `irs_out_post' & `acs_out_pre' & `acs_out_post22' & `acs_out_post24' \\"' _n
-	}
-	else {
-		file write `fh' `"`lbl' & `irs_in_pre' & `irs_in_post' & `acs_in_pre' & `acs_in_post22' & `acs_in_post24' & `irs_out_pre' & `irs_out_post' & `acs_out_pre' & `acs_out_post22' & `acs_out_post24' \\"' _n
-	}
-}
-
-file write `fh' `"\bottomrule"' _n
-file write `fh' `"\end{tabular}%"' _n
-file write `fh' `"}"' _n
-
-** --- Panel B: Change in Net In-Migration Rate ---
-file write `fh' `"\vspace{1em}"' _n
-file write `fh' `"\textit{Panel B: Change in Net In-Migration Rate (percentage points)}"' _n
-file write `fh' `"\vspace{0.3em}"' _n
-file write `fh' `"{\footnotesize\setlength{\tabcolsep}{4pt}"' _n
-file write `fh' `"\begin{tabular}{l*{6}c}"' _n
-file write `fh' `"\toprule"' _n
-file write `fh' `" & \multicolumn{3}{c}{AGI / Dollars} & \multicolumn{3}{c}{Returns / Households} \\"' _n
-file write `fh' `"\cmidrule(lr){2-4} \cmidrule(lr){5-7}"' _n
-file write `fh' `"County & IRS & ACS (21--22) & ACS (21--24) & IRS & ACS (21--22) & ACS (21--24) \\"' _n
-file write `fh' `"\midrule"' _n
-
-forvalues i = 1/`nrows' {
-
-	local lbl = label[`i']
-	local ord = order[`i']
-
-	** Section headers
-	if `ord' == 3 {
-		file write `fh' `"\addlinespace"' _n
-		file write `fh' `"\textit{Neighboring OR counties} & & & & & & \\"' _n
-	}
-	if `ord' == 9 {
-		file write `fh' `"\addlinespace"' _n
-		file write `fh' `"\textit{Neighboring WA counties} & & & & & & \\"' _n
-	}
-	if `ord' == 11 {
-		file write `fh' `"\addlinespace"' _n
-	}
-
-	** Format IRS values (always present)
-	local irs_agi_chg = trim(string(irs_agi_net_chg[`i'], "%9.2f"))
-	local irs_n1_chg  = trim(string(irs_n1_net_chg[`i'],  "%9.2f"))
-
-	** Format ACS values (may be missing)
-	if !missing(acs_dol_net_chg22[`i']) {
-		local acs_agi_chg22 = trim(string(acs_dol_net_chg22[`i'], "%9.2f"))
-		local acs_agi_chg24 = trim(string(acs_dol_net_chg24[`i'], "%9.2f"))
-		local acs_hh_chg22  = trim(string(acs_hh_net_chg22[`i'],  "%9.2f"))
-		local acs_hh_chg24  = trim(string(acs_hh_net_chg24[`i'],  "%9.2f"))
-	}
-	else {
-		local acs_agi_chg22 = "--"
-		local acs_agi_chg24 = "--"
-		local acs_hh_chg22  = "--"
-		local acs_hh_chg24  = "--"
-	}
-
-	** Write row
-	if inlist(`ord', 3, 4, 5, 6, 7, 9, 10) {
-		file write `fh' `"\quad `lbl' & `irs_agi_chg' & `acs_agi_chg22' & `acs_agi_chg24' & `irs_n1_chg' & `acs_hh_chg22' & `acs_hh_chg24' \\"' _n
-	}
-	else {
-		file write `fh' `"`lbl' & `irs_agi_chg' & `acs_agi_chg22' & `acs_agi_chg24' & `irs_n1_chg' & `acs_hh_chg22' & `acs_hh_chg24' \\"' _n
-	}
-}
-
-file write `fh' `"\bottomrule"' _n
-file write `fh' `"\end{tabular}%"' _n
-file write `fh' `"}"' _n
-
-** Table notes
-file write `fh' `"\begin{tablenotes}[flushleft]"' _n
-file write `fh' `"\small"' _n
-file write `fh' `"\item \textit{Notes:} Panel~A reports in- and out-migration rates (\% of each county's base filing or survey population) by source and period. Panel~B reports the change in net in-migration rate (in minus out, in percentage points) for AGI/dollars and returns/households. Pre-period: 2018--2019. IRS post: 2021--2022. ACS post: 2021--2022 and 2021--2024. ``--'' indicates a county not identified in the ACS. Source: IRS Statistics of Income; American Community Survey."' _n
-file write `fh' `"\end{tablenotes}"' _n
-file write `fh' `"\end{threeparttable}"' _n
-file write `fh' `"\end{table}"' _n
-
-file close `fh'
-
-} // end foreach _outfile (table2)
-dis "Table 2 exported to: ${results}tables/table2.tex"
-
-** Clean up temporary files
-capture erase "${data}working/table2_irs_rates.dta"
-capture erase "${data}working/table2_acs_rates.dta"
-
-clear
 
 /*******************************************************************************
-SECTION 3: PARTNER-COUNTY NORMALIZED FLOW MAPS
+SECTION 2: PARTNER-COUNTY NORMALIZED FLOW MAPS
 Purpose: Create flow data normalized by partner county population (per 100K)
          for directional flow maps showing Multnomah's migration patterns.
 
@@ -750,190 +364,6 @@ dis "Files saved to: ${data}working/multnomah_partner_flows_*.csv"
 
 
 ********************************************************************************
-** TABLE 1: County Characteristics and Tax Rates in the Portland MSA
-********************************************************************************
-
-dis ""
-dis "=============================================="
-dis "Creating Table 1: County Characteristics"
-dis "=============================================="
-
-** Prepare BEA per capita income for 2020
-use ${data}working/bea_economics.dta, clear
-keep if year == 2020
-keep fips per_capita_income
-tempfile bea_2020
-save `bea_2020'
-
-** Load demographics (2020 Census + ACS 2015-19 median income)
-use ${data}working/demographics_2020.dta, clear
-
-** Keep study counties
-** Group 1: Multnomah (41051)
-** Group 2: Washington (41067), Clackamas (41005)
-** Group 3: Marion (41047), Yamhill (41071), Columbia (41009)
-** Group 4: Clark (53011), Skamania (53059)
-keep if inlist(fips, 41051, 41067, 41005, 41047, 41071, 41009, 53011, 53059)
-
-** Merge BEA per capita income (2020)
-merge 1:1 fips using `bea_2020', keep(master match) nogen
-
-** Create group variable
-gen group = .
-replace group = 1 if fips == 41051
-replace group = 2 if inlist(fips, 41067, 41005)
-replace group = 3 if inlist(fips, 41047, 41071, 41009)
-replace group = 4 if inlist(fips, 53011, 53059)
-
-** Create sort order within groups
-gen sort_order = .
-replace sort_order = 1 if fips == 41051
-replace sort_order = 2 if fips == 41067
-replace sort_order = 3 if fips == 41005
-replace sort_order = 4 if fips == 41047
-replace sort_order = 5 if fips == 41071
-replace sort_order = 6 if fips == 41009
-replace sort_order = 7 if fips == 53011
-replace sort_order = 8 if fips == 53059
-
-sort sort_order
-
-** Create short county names (strip " County")
-gen county_short = subinstr(county_name, " County", "", .)
-
-** Compute combined marginal tax rates (single filer, 2021+)
-** Oregon state income tax: 9.9% on income > $125K (single)
-** Metro SHS: 1.0% on income > $125K (single) — Multnomah, Washington, Clackamas
-** PFA bracket 1: 1.5% on income > $125K (single) — Multnomah only
-** PFA bracket 2: 3.0% on income > $250K (single; ${pfa_thresh2_single}) — Multnomah only
-
-** Tax rate at $150K (single): above all $125K thresholds, below the $250K PFA bracket 2
-gen tax_150k = 0
-replace tax_150k = 9.9 						if group <= 3  		// OR state
-replace tax_150k = tax_150k + 1.0 				if group <= 2  		// Metro SHS
-replace tax_150k = tax_150k + 1.5 				if group == 1  		// PFA bracket 1
-
-** Tax rate at $300K (single): above all thresholds including PFA bracket 2
-gen tax_300k = 0
-replace tax_300k = 9.9 						if group <= 3		// OR state
-replace tax_300k = tax_300k + 1.0 				if group <= 2		// Metro SHS
-replace tax_300k = tax_300k + 3.0 				if group == 1		// PFA bracket 2
-
-** Display for verification
-list county_short population median_income per_capita_income ///
-	tax_150k tax_300k, sep(0)
-
-** ---- Export LaTeX Table 1 ----
-** Note: In Stata compound double quotes, \$ is consumed to $.
-** Use char(92)+char(36) to write literal \$ to LaTeX output.
-local dsign = char(92) + char(36)
-local d125 = char(92) + char(36) + "125K"
-local d200 = char(92) + char(36) + "200K"
-** Single-filer PFA bracket-2 threshold from globals.do (250000 -> "$250K"); the
-** note used to hardcode $200K, which is the JOINT bracket-1 threshold
-local d_thr2_single = char(92) + char(36) + string(${pfa_thresh2_single} / 1000, "%3.0f") + "K"
-local d400 = char(92) + char(36) + "400K"
-
-** Save table locally and to Overleaf
-local _dests `""${results}tables/table1.tex""'
-if ${overleaf} == 1 {
-	local _dests `"`_dests' "${ol_tab}table1.tex""'
-}
-
-foreach _outfile of local _dests {
-
-tempname fh
-file open `fh' using "`_outfile'", write replace
-
-file write `fh' "% Table 1: County Characteristics and Tax Rates" _n
-file write `fh' "% Generated by 02_descriptives.do" _n
-file write `fh' "% Requires: \usepackage{booktabs, threeparttable}" _n
-file write `fh' `"\begin{table}[htbp]"' _n
-file write `fh' `"\centering"' _n
-file write `fh' `"\caption{County Characteristics and Tax Rates in the Portland MSA}"' _n
-file write `fh' `"\label{tab:county_chars}"' _n
-file write `fh' `"\begin{threeparttable}"' _n
-file write `fh' `"{\footnotesize\setlength{\tabcolsep}{4pt}"' _n
-file write `fh' `"\begin{tabular}{lrrccc}"' _n
-file write `fh' `"\toprule"' _n
-file write `fh' `" & & Median HH & Per Capita & \multicolumn{2}{c}{Marginal Tax Rate} \\"' _n
-file write `fh' `"\cmidrule(lr){5-6}"' _n
-file write `fh' `"County & Population & Income & Income & `dsign'150K & `dsign'300K \\"' _n
-file write `fh' `"\midrule"' _n
-
-** Loop over counties in sort order
-forvalues i = 1/8 {
-
-	** Get values for this row
-	local cname = county_short[`i']
-	local pop_raw = population[`i']
-	local medinc_raw = median_income[`i']
-	local pci_raw = per_capita_income[`i']
-	local t150 = tax_150k[`i']
-	local t300 = tax_300k[`i']
-	local g = group[`i']
-
-	** Format population with commas
-	local pop : di %12.0fc `pop_raw'
-	local pop = strtrim("`pop'")
-
-	** Format median income with commas (no dollar sign — unit in header)
-	local medinc : di %12.0fc `medinc_raw'
-	local medinc = strtrim("`medinc'")
-
-	** Format per capita income with commas (no dollar sign — unit in header)
-	local pci : di %12.0fc `pci_raw'
-	local pci = strtrim("`pci'")
-
-	** Format tax rates
-	local t150_fmt : di %4.1f `t150'
-	local t300_fmt : di %4.1f `t300'
-	local t150_str = strtrim("`t150_fmt'") + "\%"
-	local t300_str = strtrim("`t300_fmt'") + "\%"
-
-	** Handle zero tax (WA counties)
-	if `t150' == 0 {
-		local t150_str "---"
-		local t300_str "---"
-	}
-
-	** Write group headers before first county in each group
-	if `i' == 1 {
-		file write `fh' `"\textit{Multnomah County (State + Metro + PFA)} & & & & & \\"' _n
-	}
-	if `i' == 2 {
-		file write `fh' `"\addlinespace"' _n
-		file write `fh' `"\textit{Metro counties (State + Metro)} & & & & & \\"' _n
-	}
-	if `i' == 4 {
-		file write `fh' `"\addlinespace"' _n
-		file write `fh' `"\textit{Other Oregon counties (State only)} & & & & & \\"' _n
-	}
-	if `i' == 7 {
-		file write `fh' `"\addlinespace"' _n
-		file write `fh' `"\textit{Washington State counties (no income tax)} & & & & & \\"' _n
-	}
-
-	** Write data row
-	file write `fh' `"\quad `cname' & `pop' & `medinc' & `pci' & `t150_str' & `t300_str' \\"' _n
-}
-
-file write `fh' `"\bottomrule"' _n
-file write `fh' `"\end{tabular}%"' _n
-file write `fh' `"}"' _n
-file write `fh' `"\begin{tablenotes}[flushleft]"' _n
-file write `fh' `"\small"' _n
-file write `fh' `"\item \textit{Notes:} Population from 2020 Decennial Census. Median household income from ACS 2015--2019 5-year estimates. Per capita income from BEA CAINC1 (2020). Marginal tax rates shown for a single filer at the indicated income level (2021+). Oregon state income tax: 9.9\% on income above `d125'. Metro Supportive Housing Services tax: 1\% on income above `d125' (Multnomah, Washington, Clackamas counties). Preschool for All (PFA) tax: 1.5\% on income above `d125', rising to 3\% above `d_thr2_single' (Multnomah County only). Married filing jointly thresholds are `d200' (Metro, PFA bracket 1) and `d400' (PFA bracket 2). Washington State has no personal income tax."' _n
-file write `fh' `"\end{tablenotes}"' _n
-file write `fh' `"\end{threeparttable}"' _n
-file write `fh' `"\end{table}"' _n
-
-file close `fh'
-
-} // end foreach _outfile (table1)
-dis "Table 1 exported to: ${results}tables/table1.tex"
-
-********************************************************************************
 ** TABLE: County-Level Migration Comparison (Multnomah vs Distribution)
 ********************************************************************************
 
@@ -1080,9 +510,7 @@ foreach x in "n1" "n2" "agi" {
 
 	graph export "${results}flows/fig_strip_`x'_mult.png", replace
 
-	if ${overleaf} == 1 {
-		graph export "${ol_fig}fig_strip_`x'_mult.png", replace
-	}
+	project_save_overleaf "${results}flows/fig_strip_`x'_mult.png"
 
 	** ---- Version B: All counties (grey dots) + Multnomah overlay ----
 	twoway ///
@@ -1109,9 +537,7 @@ foreach x in "n1" "n2" "agi" {
 
 	graph export "${results}flows/fig_strip_`x'_all.png", replace
 
-	if ${overleaf} == 1 {
-		graph export "${ol_fig}fig_strip_`x'_all.png", replace
-	}
+	project_save_overleaf "${results}flows/fig_strip_`x'_all.png"
 
 	** Clean up for next measure
 	drop p25 p50 p75 lo_adj hi_adj in_fence tag
@@ -1139,9 +565,6 @@ foreach x in "n1" "n2" "agi" {
 
 ** Save table locally and to Overleaf
 local _dests `""${results}tables/table_migration_county.tex""'
-if ${overleaf} == 1 {
-	local _dests `"`_dests' "${ol_tab}table_migration_county.tex""'
-}
 
 foreach _outfile of local _dests {
 
@@ -1206,6 +629,7 @@ file write `fh' `"\end{table}"' _n
 file close `fh'
 
 } // end foreach _outfile (table_migration_county)
+project_save_overleaf "${results}tables/table_migration_county.tex"
 dis "Migration county table exported to: ${results}tables/table_migration_county.tex"
 
 clear
@@ -1357,9 +781,7 @@ foreach x in "n1" "n2" "agi" {
 
 	graph export "${results}flows/fig_strip_`x'_state_mult.png", replace
 
-	if ${overleaf} == 1 {
-		graph export "${ol_fig}fig_strip_`x'_state_mult.png", replace
-	}
+	project_save_overleaf "${results}flows/fig_strip_`x'_state_mult.png"
 
 	** ---- Version B: All states (grey dots) + Oregon overlay ----
 	twoway ///
@@ -1386,9 +808,7 @@ foreach x in "n1" "n2" "agi" {
 
 	graph export "${results}flows/fig_strip_`x'_state_all.png", replace
 
-	if ${overleaf} == 1 {
-		graph export "${ol_fig}fig_strip_`x'_state_all.png", replace
-	}
+	project_save_overleaf "${results}flows/fig_strip_`x'_state_all.png"
 
 	** Clean up for next measure
 	drop p25 p50 p75 lo_adj hi_adj in_fence tag
@@ -1414,9 +834,6 @@ foreach x in "n1" "n2" "agi" {
 
 ** Save table locally and to Overleaf
 local _dests `""${results}tables/table_migration_state.tex""'
-if ${overleaf} == 1 {
-	local _dests `"`_dests' "${ol_tab}table_migration_state.tex""'
-}
 
 foreach _outfile of local _dests {
 
@@ -1480,6 +897,7 @@ file write `fh' `"\end{table}"' _n
 file close `fh'
 
 } // end foreach _outfile (table_migration_state)
+project_save_overleaf "${results}tables/table_migration_state.tex"
 dis "Migration state table exported to: ${results}tables/table_migration_state.tex"
 
 
@@ -1773,9 +1191,6 @@ restore
 
 ** ---- Write LaTeX table ----
 local _dests `""${results}tables/table1_combined.tex""'
-if ${overleaf} == 1 {
-    local _dests `"`_dests' "${ol_tab}table1_combined.tex""'
-}
 
 foreach _outfile of local _dests {
 
@@ -1857,6 +1272,7 @@ file close `fh'
 dis "Wrote `_outfile'"
 
 }
+project_save_overleaf "${results}tables/table1_combined.tex"
 
 dis "Table 1 build complete."
 

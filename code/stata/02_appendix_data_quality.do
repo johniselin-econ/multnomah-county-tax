@@ -168,9 +168,7 @@ twoway ///
 	graphregion(color(white))
 
 graph export "${results}appx_irs_data/fig_dq_timeseries_out.png", replace width(2400)
-if ${overleaf} == 1 {
-	graph export "${ol_fig}fig_dq_timeseries_out.png", replace width(2400)
-}
+project_save_overleaf "${results}appx_irs_data/fig_dq_timeseries_out.png"
 
 ** --- Panel (b): In-migration ---
 twoway ///
@@ -188,9 +186,7 @@ twoway ///
 	graphregion(color(white))
 
 graph export "${results}appx_irs_data/fig_dq_timeseries_in.png", replace width(2400)
-if ${overleaf} == 1 {
-	graph export "${ol_fig}fig_dq_timeseries_in.png", replace width(2400)
-}
+project_save_overleaf "${results}appx_irs_data/fig_dq_timeseries_in.png"
 
 ********************************************************************************
 ** STEP 6: Compute Year-over-Year Changes in County-Level Rates
@@ -290,9 +286,7 @@ foreach measure in "n1" "agi" {
 		graphregion(color(white))
 
 	graph export "${results}appx_irs_data/`fig_file'.png", replace width(3000)
-	if ${overleaf} == 1 {
-		graph export "${ol_fig}`fig_file'.png", replace width(3000)
-	}
+	project_save_overleaf "${results}appx_irs_data/`fig_file'.png"
 
 	** Repeat for in-migration
 	local glist ""
@@ -345,9 +339,7 @@ foreach measure in "n1" "agi" {
 		graphregion(color(white))
 
 	graph export "${results}appx_irs_data/`fig_file'_in.png", replace width(3000)
-	if ${overleaf} == 1 {
-		graph export "${ol_fig}`fig_file'_in.png", replace width(3000)
-	}
+	project_save_overleaf "${results}appx_irs_data/`fig_file'_in.png"
 
 } // END MEASURE LOOP
 
@@ -509,9 +501,7 @@ twoway ///
 	graphregion(color(white))
 
 graph export "${results}appx_irs_data/fig_dq_acs_timeseries_out.png", replace width(2400)
-if ${overleaf} == 1 {
-	graph export "${ol_fig}fig_dq_acs_timeseries_out.png", replace width(2400)
-}
+project_save_overleaf "${results}appx_irs_data/fig_dq_acs_timeseries_out.png"
 
 ** --- Panel (b): In-migration ---
 twoway ///
@@ -528,9 +518,7 @@ twoway ///
 	graphregion(color(white))
 
 graph export "${results}appx_irs_data/fig_dq_acs_timeseries_in.png", replace width(2400)
-if ${overleaf} == 1 {
-	graph export "${ol_fig}fig_dq_acs_timeseries_in.png", replace width(2400)
-}
+project_save_overleaf "${results}appx_irs_data/fig_dq_acs_timeseries_in.png"
 
 ********************************************************************************
 ** STEP 13: Compute ACS Year-over-Year Changes
@@ -628,9 +616,7 @@ foreach measure in "hh" "dollars" {
 			graphregion(color(white))
 
 		graph export "${results}appx_irs_data/`fig_file'.png", replace width(3000)
-		if ${overleaf} == 1 {
-			graph export "${ol_fig}`fig_file'.png", replace width(3000)
-		}
+		project_save_overleaf "${results}appx_irs_data/`fig_file'.png"
 	}
 
 	** Repeat for in-migration
@@ -692,9 +678,7 @@ foreach measure in "hh" "dollars" {
 			graphregion(color(white))
 
 		graph export "${results}appx_irs_data/`fig_file'_in.png", replace width(3000)
-		if ${overleaf} == 1 {
-			graph export "${ol_fig}`fig_file'_in.png", replace width(3000)
-		}
+		project_save_overleaf "${results}appx_irs_data/`fig_file'_in.png"
 	}
 
 } // END MEASURE LOOP

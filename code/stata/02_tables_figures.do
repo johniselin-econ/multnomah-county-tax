@@ -43,13 +43,9 @@ Outputs:        ${results}elasticities/
                 ${results}sdid/preferred_overlays/
                     fig_overlay_donorpool_<sdtag>_<migr>_eventstudy.{pdf,jpg}   (12 figs)
                     fig_overlay_dataset_<scope>_<migr>_eventstudy.{pdf,jpg}    (6 figs)
-                ${ol_tab}/, ${ol_fig}/ if ${overleaf}==1 (copies)
+                Overleaf mirror via project_save_overleaf if ${overleaf}==1
 
 Authors: John Iselin
-
-TODO: 
-1) Check to be sure revenue figures are annual!
-2) Check color alignment of figures - make sure dashed lines are colored / labeled correctly
 
 For more information, contact john.iselin@yale.edu
 *******************************************************************************/
@@ -87,7 +83,6 @@ project_set_seed, context("02_tables_figures.do") offset(60)
 **                                       serial when use_parallel=0)
 **   do "${code}02_bootstrap_tables.do"
 ** ------------------------------------------------------------------
-if "${show_bootstrap_cis}" == "" global show_bootstrap_cis = 0
 if ${show_bootstrap_cis} == 1 {
 	capture confirm file "${results}bootstrap/bootstrap_cis.dta"
 	if _rc != 0 {
@@ -452,17 +447,6 @@ if _rc != 0 {
 	dis as error "ERROR: spec_results.dta not found. Run 02_post_spec.do first."
 	log close log_02tf
 	error 601
-}
-
-** Overleaf globals check (matches pattern from 02_post_spec.do's predecessor)
-if "${overleaf}" == "1" {
-	foreach g in ol_fig ol_tab {
-		if "${`g'}" == "" {
-			dis as error "ERROR: \${overleaf}=1 but \${`g'} is unset."
-			log close log_02tf
-			error 198
-		}
-	}
 }
 
 capture mkdir "${results}elasticities"
@@ -945,18 +929,13 @@ file close `fh_sdid'
 restore
 dis "Wrote: ${results}sdid/tab_sdid_preferred.tex"
 
-** ---- Copy LaTeX tables to Overleaf ----
-if "${overleaf}" == "1" {
-	foreach f in tbl_elasticities tbl_elasticities_stock_compare ///
-		tbl_elasticities_inout tbl_elasticities_shs ///
-		tbl_elasticities_stock_compare_shs tbl_elasticities_inout_shs {
-		copy "${results}elasticities/`f'.tex" "${ol_tab}`f'.tex", replace
-	}
-	capture confirm file "${results}sdid/tab_sdid_preferred.tex"
-	if _rc == 0 {
-		copy "${results}sdid/tab_sdid_preferred.tex" "${ol_tab}tab_sdid_preferred.tex", replace
-	}
+** ---- Mirror LaTeX tables to Overleaf ----
+foreach f in tbl_elasticities tbl_elasticities_stock_compare ///
+	tbl_elasticities_inout tbl_elasticities_shs ///
+	tbl_elasticities_stock_compare_shs tbl_elasticities_inout_shs {
+	project_save_overleaf "${results}elasticities/`f'.tex"
 }
+project_save_overleaf "${results}sdid/tab_sdid_preferred.tex", optional
 
 ********************************************************************************
 ** SECTION 2: Excel workbook
@@ -1530,34 +1509,24 @@ foreach migr in in out {
 ** fig_elasticity_dist_net.pdf alias (now sourced from the new spec-curve
 ** β-net file) so manuscript \includegraphics paths that still reference the
 ** old name continue to resolve.
-if "${overleaf}" == "1" {
-	foreach base in ///
-		fig_speccurve_elast_beta_net fig_speccurve_elast_beta_in fig_speccurve_elast_beta_out ///
-		fig_speccurve_elast_beta_net_shs fig_speccurve_elast_beta_in_shs fig_speccurve_elast_beta_out_shs ///
-		fig_speccurve_elast_beta_net_outstate fig_speccurve_elast_beta_in_outstate fig_speccurve_elast_beta_out_outstate ///
-		fig_speccurve_elast_beta_net_outstate_shs fig_speccurve_elast_beta_in_outstate_shs fig_speccurve_elast_beta_out_outstate_shs ///
-		fig_speccurve_elast_flow_in fig_speccurve_elast_flow_out ///
-		fig_speccurve_elast_flow_in_shs fig_speccurve_elast_flow_out_shs ///
-		fig_speccurve_elast_flow_in_outstate fig_speccurve_elast_flow_out_outstate ///
-		fig_speccurve_elast_flow_in_outstate_shs fig_speccurve_elast_flow_out_outstate_shs ///
-		fig_speccurve_elast_stock fig_speccurve_elast_stock_shs ///
-		fig_speccurve_elast_stock_outstate fig_speccurve_elast_stock_outstate_shs ///
-		fig_speccurve_elast_stock_in fig_speccurve_elast_stock_out ///
-		fig_speccurve_elast_stock_in_shs fig_speccurve_elast_stock_out_shs ///
-		fig_speccurve_elast_stock_in_outstate fig_speccurve_elast_stock_out_outstate ///
-		fig_speccurve_elast_stock_in_outstate_shs fig_speccurve_elast_stock_out_outstate_shs {
-		capture confirm file "${results}elasticities/`base'.pdf"
-		if _rc == 0 {
-			copy "${results}elasticities/`base'.pdf" ///
-				"${ol_fig}`base'.pdf", replace
-		}
-	}
-	capture confirm file "${results}elasticities/fig_speccurve_elast_beta_net.pdf"
-	if _rc == 0 {
-		copy "${results}elasticities/fig_speccurve_elast_beta_net.pdf" ///
-			"${ol_fig}fig_elasticity_dist_net.pdf", replace
-	}
+foreach base in ///
+	fig_speccurve_elast_beta_net fig_speccurve_elast_beta_in fig_speccurve_elast_beta_out ///
+	fig_speccurve_elast_beta_net_shs fig_speccurve_elast_beta_in_shs fig_speccurve_elast_beta_out_shs ///
+	fig_speccurve_elast_beta_net_outstate fig_speccurve_elast_beta_in_outstate fig_speccurve_elast_beta_out_outstate ///
+	fig_speccurve_elast_beta_net_outstate_shs fig_speccurve_elast_beta_in_outstate_shs fig_speccurve_elast_beta_out_outstate_shs ///
+	fig_speccurve_elast_flow_in fig_speccurve_elast_flow_out ///
+	fig_speccurve_elast_flow_in_shs fig_speccurve_elast_flow_out_shs ///
+	fig_speccurve_elast_flow_in_outstate fig_speccurve_elast_flow_out_outstate ///
+	fig_speccurve_elast_flow_in_outstate_shs fig_speccurve_elast_flow_out_outstate_shs ///
+	fig_speccurve_elast_stock fig_speccurve_elast_stock_shs ///
+	fig_speccurve_elast_stock_outstate fig_speccurve_elast_stock_outstate_shs ///
+	fig_speccurve_elast_stock_in fig_speccurve_elast_stock_out ///
+	fig_speccurve_elast_stock_in_shs fig_speccurve_elast_stock_out_shs ///
+	fig_speccurve_elast_stock_in_outstate fig_speccurve_elast_stock_out_outstate ///
+	fig_speccurve_elast_stock_in_outstate_shs fig_speccurve_elast_stock_out_outstate_shs {
+	project_save_overleaf "${results}elasticities/`base'.pdf", optional
 }
+project_save_overleaf "${results}elasticities/fig_speccurve_elast_beta_net.pdf", name(fig_elasticity_dist_net.pdf) optional
 
 ********************************************************************************
 ** SECTION 4: Revenue-distribution figures
@@ -1621,15 +1590,9 @@ else {
 }
 restore
 
-** Overleaf copy for revenue spec-curve figures.
-if "${overleaf}" == "1" {
-	foreach base in fig_speccurve_revenue_pfa fig_speccurve_revenue_oregon {
-		capture confirm file "${results}revenue/`base'.pdf"
-		if _rc == 0 {
-			copy "${results}revenue/`base'.pdf" ///
-				"${ol_fig}`base'.pdf", replace
-		}
-	}
+** Overleaf mirror for revenue spec-curve figures (oregon is conditional).
+foreach base in fig_speccurve_revenue_pfa fig_speccurve_revenue_oregon {
+	project_save_overleaf "${results}revenue/`base'.pdf", optional
 }
 
 ********************************************************************************
@@ -1825,10 +1788,7 @@ file close `fh'
 dis "Wrote: `tex_path'"
 
 ** Overleaf sync (matches the tab_flow_regression pattern).
-if "${overleaf}" == "1" {
-	copy "`tex_path'" "${ol_tab}tbl_revenue_decomposition.tex", replace
-	dis "Synced: ${ol_tab}tbl_revenue_decomposition.tex"
-}
+project_save_overleaf "`tex_path'"
 
 ********************************************************************************
 ** SECTION 5: Preferred-spec event-study overlays
@@ -1961,9 +1921,7 @@ foreach sd in irs_full_16_22 acs_16_24_col irs_outstate_full_16_22 acs_outstate_
 		local fbase "${results}sdid/preferred_overlays/fig_overlay_donorpool_`sdtag'_`migr'_eventstudy"
 		graph export "`fbase'.pdf", replace
 		graph export "`fbase'.jpg", as(jpg) quality(100) replace
-		if "${overleaf}" == "1" {
-			copy "`fbase'.pdf" "${ol_fig}fig_overlay_donorpool_`sdtag'_`migr'_eventstudy.pdf", replace
-		}
+		project_save_overleaf "`fbase'.pdf"
 		dis as text "  Set 1: wrote `sdtag' / `migr'"
 
 		restore

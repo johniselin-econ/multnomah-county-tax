@@ -4,6 +4,11 @@
 #
 # Functions:
 #   read_api_key(api_codes_path, label) — Parse API key from CSV file
+#   load_user_settings(project_root)    — user_settings.R into its own env
+#   resolve_oth_path(settings, root)    — Overleaf folder (R or Stata settings)
+#   resolve_paper_only()                — PAPER_ONLY environment switch
+#   load_paper_manifest(project_root)   — basenames in resources/paper_manifest.csv
+#   overleaf_copy(cfg, files)           — the one Overleaf mirror for R outputs
 # =============================================================================
 
 #' Read an API key from a CSV file
@@ -64,16 +69,66 @@ load_user_settings <- function(project_root) {
 #' Resolve the Overleaf folder used for figure/table sync
 #'
 #' Precedence: the OVERLEAF_PATH environment variable, then `oth_path` from
-#' user_settings.R, else "" (sync off).
+#' user_settings.R, then `global oth_path "..."` in user_settings.do (so one
+#' Stata-side setting serves both languages), else "" (sync off). A relative
+#' path is taken from the repo root, matching globals.do.
 #'
 #' @param settings Environment from load_user_settings()
-#' @return Character path or ""
-resolve_oth_path <- function(settings) {
-  env_path <- Sys.getenv("OVERLEAF_PATH", "")
-  if (nzchar(env_path)) return(env_path)
-  if (exists("oth_path", envir = settings, inherits = FALSE)) {
-    p <- get("oth_path", envir = settings)
-    if (is.character(p) && length(p) == 1 && nzchar(p)) return(p)
+#' @param project_root Repo root (for relative paths and user_settings.do)
+#' @return Character path (with trailing slash) or ""
+resolve_oth_path <- function(settings, project_root = getwd()) {
+  p <- Sys.getenv("OVERLEAF_PATH", "")
+  if (!nzchar(p) && exists("oth_path", envir = settings, inherits = FALSE)) {
+    q <- get("oth_path", envir = settings)
+    if (is.character(q) && length(q) == 1 && nzchar(q)) p <- q
   }
-  ""
+  if (!nzchar(p)) {
+    do_path <- file.path(project_root, "user_settings.do")
+    if (file.exists(do_path)) {
+      hit <- regmatches(readLines(do_path, warn = FALSE),
+                        regexpr('^\\s*global\\s+oth_path\\s+"[^"]+"', readLines(do_path, warn = FALSE)))
+      if (length(hit) >= 1) p <- sub('^\\s*global\\s+oth_path\\s+"([^"]+)"', "\\1", hit[1])
+    }
+  }
+  if (!nzchar(p)) return("")
+  p <- gsub("\\\\", "/", p)
+  if (!grepl("^(/|[A-Za-z]:)", p)) p <- file.path(project_root, p)
+  sub("/*$", "/", p)
+}
+
+#' PAPER_ONLY switch: mirror only the paper's registered artifacts
+#'
+#' The same environment variable drives Stata (globals.do) and R, so one
+#' setting on the launcher reaches both. "1" turns it on; anything else is off.
+resolve_paper_only <- function() identical(Sys.getenv("PAPER_ONLY", ""), "1")
+
+#' Basenames registered in resources/paper_manifest.csv
+load_paper_manifest <- function(project_root) {
+  path <- file.path(project_root, "resources", "paper_manifest.csv")
+  if (!file.exists(path)) stop("Paper manifest not found: ", path, call. = FALSE)
+  m <- read.csv(path, stringsAsFactors = FALSE)
+  if (!"artifact_basename" %in% names(m)) stop("paper_manifest.csv needs an artifact_basename column", call. = FALSE)
+  unique(m$artifact_basename)
+}
+
+#' Mirror R outputs to Overleaf (figures/ for images, tables/ for .tex)
+#'
+#' The R counterpart of Stata's project_save_overleaf: a no-op unless
+#' cfg$overleaf is TRUE; with cfg$paper_only only manifest basenames are
+#' copied; a missing source file is an error.
+#'
+#' @param cfg List from multnomah_r_init() (overleaf, dir_ol_fig, dir_ol_tab,
+#'   paper_only, paper_artifacts)
+#' @param files Character vector of source paths
+#' @return Invisibly, the basenames copied
+overleaf_copy <- function(cfg, files) {
+  if (!isTRUE(cfg$overleaf)) return(invisible(character()))
+  missing_src <- files[!file.exists(files)]
+  if (length(missing_src) > 0) stop("Overleaf copy: source not found: ", paste(missing_src, collapse = ", "), call. = FALSE)
+  if (isTRUE(cfg$paper_only)) files <- files[basename(files) %in% cfg$paper_artifacts]
+  for (f in files) {
+    dest_dir <- if (grepl("\\.tex$", f)) cfg$dir_ol_tab else cfg$dir_ol_fig
+    file.copy(f, file.path(dest_dir, basename(f)), overwrite = TRUE)
+  }
+  invisible(basename(files))
 }

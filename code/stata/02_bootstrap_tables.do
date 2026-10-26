@@ -67,10 +67,8 @@ if "${dir}" == "" {
     if regexm("`_cwd'", "(.*)/code/(stata|utils)$") global dir = regexs(1)
     else global dir "`_cwd'"
 }
-
 do "${dir}/code/utils/globals.do"
 
-if "${ci_level}" == "" global ci_level = 95
 if !inlist(${ci_level}, 90, 95, 99) {
 	dis as error "02_bootstrap_tables: ci_level must be 90, 95, or 99 (got: ${ci_level})"
 	exit 198

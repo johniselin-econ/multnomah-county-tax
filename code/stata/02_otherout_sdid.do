@@ -11,6 +11,14 @@ Purpose: Perform synthetic difference-in-difference estimation on non-migration
 
          Supports both sequential and parallel processing modes.
 
+         Donor pools: the five pools of the main SDID (all, urban top-5%,
+         COVID k-means, demographic k-means, stringency k-means) are rebuilt
+         here from the IRS county panel with the main script's constructions.
+         The narrow pool (resources/narrow_pool_fips.csv) is intentionally
+         NOT carried over: it is a migration-specific robustness pool and the
+         paper's non-migration tables report the five pools only. Extending
+         it would add a sixth column to every tab_otherout_* table.
+
          Designed for extensibility — additional datasets (e.g., unemployment,
          birth rates) can be added by following the template block below.
 
@@ -490,6 +498,10 @@ if ${use_parallel} == 1 {
 
 				local event_rc = _rc
 				restore
+				if `event_rc' != 0 {
+					sdid_log_failure, rc(`event_rc') script("02_otherout_sdid.do") tableid("`table_id'") ///
+						outcome("`out'") c(`c') exl(`exl') samp("`samp_var'") context("sdid_event failed; event-study figure not written")
+				}
 
 				if `event_rc' == 0 {
 
@@ -500,13 +512,12 @@ if ${use_parallel} == 1 {
 					qui summ year if multnomah == 1 & Treated == 0 & sample == 1
 					local last_pre_yr = r(max)
 
-					** Extract matrix
-					qui count if multnomah == 1 & sample == 1
-					local ct = r(N)
-					local ct = `ct' + 1
-
-					capture mat res = e(H)[2..`ct',1..5]
+					** Extract matrix (read e(H)'s own shape, as fit_spec_sdid does)
+					local n_eH_rows = rowsof(e(H))
+					capture mat res = e(H)[2..`n_eH_rows',1..5]
 					if _rc != 0 {
+						sdid_log_failure, rc(`=_rc') script("02_otherout_sdid.do") tableid("`table_id'") ///
+							outcome("`out'") c(`c') exl(`exl') samp("`samp_var'") context("e(H) extraction failed; event-study figure not written")
 						continue
 					}
 
@@ -557,9 +568,6 @@ if ${use_parallel} == 1 {
 		if `exl' == 1 local tabfname "tab_otherout_`samp_var'_excl2020.tex"
 
 		local _dests `""`results_path'sdid/otherout/`tabfname'""'
-		if ${overleaf} == 1 {
-			local _dests `"`_dests' "${ol_tab}`tabfname'""'
-		}
 
 		** Build dynamic esttab model list
 		local est_list ""
@@ -574,6 +582,8 @@ if ${use_parallel} == 1 {
 		}
 
 		foreach _outfile of local _dests {
+		** A failed esttab must not leave last run's table looking current
+		capture erase "`_outfile'"
 		capture noisily {
 			esttab `est_list'	///
 				using "`_outfile'",								///
@@ -586,7 +596,13 @@ if ${use_parallel} == 1 {
 				fmt(%9.0fc %9.3fc) 							///
 				labels("Number of Counties" "Pre-treatment mean"))
 		}
+		if _rc != 0 {
+			sdid_log_failure, rc(`=_rc') script("02_otherout_sdid.do") tableid("`table_id'") ///
+				outcome("esttab") c(-1) exl(`exl') samp("`samp_var'") context("esttab failed; table not written")
+		}
 		} // end foreach _outfile (tab_otherout)
+		** optional: a logged esttab failure above means there is no table to mirror
+		project_save_overleaf "`results_path'sdid/otherout/`tabfname'", optional
 
 		dis "Completed table `table_id': `samp_var' / excl=`exl'"
 
@@ -748,11 +764,16 @@ if ${use_parallel} == 1 {
 	timer clear 2
 	timer on 2
 
-	parallel, prog(parallel_otherout_wrapper run_otherout_table sdid_log_failure ///
-		sdid_event_row_year): parallel_otherout_wrapper
+	capture noisily parallel, prog(parallel_otherout_wrapper run_otherout_table sdid_log_failure ///
+		sdid_event_row_year project_save_overleaf): parallel_otherout_wrapper
+	local parallel_rc = _rc
 
 	timer off 2
 	timer list 2
+	if `parallel_rc' != 0 {
+		dis as error "Parallel otherout estimation failed with rc=`parallel_rc'. Skipping combine/export to avoid overwriting outputs."
+		exit `parallel_rc'
+	}
 	dis "Parallel otherout estimation completed at $S_TIME"
 
 	** Combine all treatment effect results
@@ -888,6 +909,11 @@ else {
 					local tmp_event_ok  = r(event_ok)
 					tempname _evres
 					if `tmp_event_ok' == 1 matrix `_evres' = r(event_res)
+					if r(event_requested) == 1 & `tmp_event_ok' == 0 {
+						sdid_log_failure, rc(`=r(event_rc)') script("02_otherout_sdid") ///
+							tableid("otherout") outcome("`out'") c(`c') exl(`exl') ///
+							samp("`samp'") context("event study failed; no event-study rows or figure")
+					}
 
 					local tmp_pval  = 2 * (1 - normal(abs(`tmp_tau'/`tmp_se')))
 					local tmp_ci_lo = `tmp_tau' - 1.96 * `tmp_se'
@@ -961,7 +987,6 @@ else {
 			if `exl' == 0 local tabfname "tab_otherout_`samp'.tex"
 			if `exl' == 1 local tabfname "tab_otherout_`samp'_excl2020.tex"
 			local _dests `""${results}sdid/otherout/`tabfname'""'
-			if ${overleaf} == 1 local _dests `"`_dests' "${ol_tab}`tabfname'""'
 
 			local taurow  "PFA effect"
 			local serow   ""
@@ -1025,6 +1050,7 @@ else {
 				file write `th' "\end{tabular}" _n
 				file close `th'
 			}
+			project_save_overleaf "${results}sdid/otherout/`tabfname'"
 		}
 	}
 	restore
@@ -1233,9 +1259,7 @@ foreach out of local outcomes {
 	** Export figure
 	graph export "${results}sdid/otherout/fig_speccurve_otherout_`out'.pdf", replace
 	graph export "${results}sdid/otherout/fig_speccurve_otherout_`out'.jpg", as(jpg) quality(100) replace
-	if ${overleaf} == 1 {
-		graph export "${ol_fig}fig_speccurve_otherout_`out'.pdf", replace
-	}
+	project_save_overleaf "${results}sdid/otherout/fig_speccurve_otherout_`out'.pdf"
 
 	** Clean up
 	graph drop speccurve_`out'

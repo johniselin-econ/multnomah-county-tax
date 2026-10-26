@@ -55,6 +55,23 @@ if "${n_clusters}" == "" global n_clusters = 4
 if "${resume}" == ""     global resume = 0
 if "${run_cleaning}" == ""       global run_cleaning = 1
 if "${run_indiv_analysis}" == "" global run_indiv_analysis = 1
+if "${clean_results}" == ""      global clean_results = 0
+** Bootstrap-CI rendering + bootstrap size. Same defaults as the orchestrator
+** panel so a standalone 02_tables_figures.do / 02_spec_engine.do run writes
+** the same tables; bootstrap_reps alone stays at the smoke size (a standalone
+** 02_bootstrap.do should never start a multi-day run by accident).
+if "${show_bootstrap_cis}" == ""  global show_bootstrap_cis = 1
+if "${ci_level}" == ""            global ci_level = 95
+if "${bootstrap_reps}" == ""      global bootstrap_reps = 20
+
+** paper_only: mirror only the artifacts registered in
+** resources/paper_manifest.csv to Overleaf (project_save_overleaf). Falls
+** back to the PAPER_ONLY environment variable so one setting reaches both
+** Stata and the R stages (see full_run.sbatch); 0 if unset.
+if "${paper_only}" == "" {
+    local _env_paper_only : environment PAPER_ONLY
+    global paper_only = ("`_env_paper_only'" == "1")
+}
 
 ** Event-study COMPUTATION mode: "all" runs event studies for every SDID spec
 ** (needed for the full stock-elasticity distribution in 02_post_spec.do that
@@ -92,6 +109,12 @@ global ol_fig ""
 global ol_tab ""
 capture do "${dir}/user_settings.do"
 if "${oth_path}" != "" {
+    ** A relative oth_path (e.g. "results/overleaf_export/", the cluster
+    ** staging convention) is taken from the repo root.
+    local _oth = subinstr("${oth_path}", "\", "/", .)
+    if substr("`_oth'", 1, 1) != "/" & substr("`_oth'", 2, 1) != ":" local _oth "${dir}/`_oth'"
+    if substr("`_oth'", -1, 1) != "/" local _oth "`_oth'/"
+    global oth_path "`_oth'"
     global ol_fig "${oth_path}figures/"
     global ol_tab "${oth_path}tables/"
     global overleaf = 1
@@ -106,7 +129,7 @@ if "${oth_path}" != "" {
     mata: st_local("ol_tab_ok", strofreal(direxists("${ol_tab}")))
     if "`ol_fig_ok'" != "1" | "`ol_tab_ok'" != "1" {
         di as error "oth_path = ${oth_path} is not a usable directory: could not create ${ol_fig} / ${ol_tab}."
-        di as error "Fix oth_path in user_settings.do / profile.do, or leave it unset to disable the Overleaf mirror."
+        di as error "Fix oth_path in user_settings.do, or leave it unset to disable the Overleaf mirror."
         exit 601
     }
 }
@@ -144,9 +167,12 @@ if "${cpi_u_2022_annual}" == ""    global cpi_u_2022_annual    = 292.655
 if "${cpi_2019_to_2022}" == ""     global cpi_2019_to_2022     = ${cpi_u_2022_annual} / ${cpi_u_2019_annual}
 
 ** Output directories (created here so standalone callees have them too).
-foreach d in "" "tables" "figures" "sdid" "flows" "did" "individual" ///
-             "maps" "elasticities" "revenue" "bootstrap" "stringency"  ///
-             "appx_irs_data" "_runs" {
+** results_subdirs is the regenerable set: project_clean_results wipes
+** exactly these; _runs (manifest archive) is kept across runs.
+global results_subdirs "tables figures sdid flows did individual maps elasticities revenue bootstrap stringency appx_irs_data overleaf_export"
+capture mkdir "${results}"
+local _results_dirs ${results_subdirs} _runs
+foreach d of local _results_dirs {
     capture mkdir "${results}`d'"
 }
 capture mkdir "${logs}"
@@ -202,3 +228,7 @@ foreach pkg in parallel taxsimlocal35 {
 ** parameters, AND all programs in one step.
 ** ------------------------------------------------------------------
 do "${utils}programs.do"
+
+** Registry of the paper's artifacts -> ${paper_artifacts} (used by
+** project_save_overleaf when paper_only = 1).
+project_load_paper_manifest

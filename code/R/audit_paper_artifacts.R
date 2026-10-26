@@ -12,7 +12,7 @@
 #   - DEAD       on disk but not in manifest and not cited by .tex
 #   - DRIFT      cited by .tex but not in manifest (or vice versa)
 #
-# Writes two CSV reports under results/ and prints a one-line summary.
+# Writes dated CSV reports under results/_runs/ and prints a summary.
 # Run standalone:  Rscript code/R/audit_paper_artifacts.R
 # =============================================================================
 
@@ -37,18 +37,23 @@ results_dir   <- file.path(repo_root, "results")
 
 # Overleaf .tex lives outside the repo: OVERLEAF_TEX wins; otherwise it is
 # <Overleaf folder>/Conway_Iselin_Rork_2026.tex, with the folder taken from
-# OVERLEAF_PATH or oth_path in user_settings.R through the pipeline's own
-# resolver (code/R/utils.R), so the two cannot disagree. No reachable .tex is
-# a hard stop: without one, every artifact the paper cites but the manifest
-# lacks would be labelled DEAD, inviting deletion of live figures.
+# the pipeline's own resolver (code/R/utils.R: OVERLEAF_PATH, user_settings.R,
+# user_settings.do), so the two cannot disagree.
+#
+# Without a reachable .tex (the cluster case, where oth_path is the
+# results/overleaf_export/ staging folder) the audit runs in MANIFEST-ONLY
+# mode: it checks manifest -> results/ and manifest -> the Overleaf mirror,
+# and skips the disk -> manifest DEAD / DRIFT reports, which need the .tex to
+# be trustworthy. AUDIT_REQUIRE_TEX=1 makes a missing .tex a hard stop.
 source(file.path(repo_root, "code", "R", "utils.R"))
-oth_path    <- resolve_oth_path(load_user_settings(repo_root))
-tex_default <- if (nzchar(oth_path)) file.path(oth_path, "Conway_Iselin_Rork_2026.tex") else ""
+oth_path    <- resolve_oth_path(load_user_settings(repo_root), repo_root)
+tex_default <- if (nzchar(oth_path)) paste0(oth_path, "Conway_Iselin_Rork_2026.tex") else ""
 tex_path    <- Sys.getenv("OVERLEAF_TEX", unset = tex_default)
-if (!nzchar(tex_path) || !file.exists(tex_path)) {
+tex_available <- nzchar(tex_path) && file.exists(tex_path)
+if (!tex_available && identical(Sys.getenv("AUDIT_REQUIRE_TEX", ""), "1")) {
   stop("Overleaf .tex not found (",
        if (nzchar(tex_path)) tex_path else "no path configured",
-       "). Set OVERLEAF_TEX, OVERLEAF_PATH, or oth_path in user_settings.R.",
+       "). Set OVERLEAF_TEX, OVERLEAF_PATH, or oth_path in user_settings.do / user_settings.R.",
        call. = FALSE)
 }
 
@@ -109,18 +114,21 @@ parse_tex_includes <- function(tex_path) {
   )
 }
 
-tex_refs <- parse_tex_includes(tex_path)
-tex_available <- nrow(tex_refs) > 0
+tex_refs <- if (tex_available) parse_tex_includes(tex_path) else tibble(tex_basename = character(), tex_line = integer())
+tex_available <- tex_available && nrow(tex_refs) > 0
 
 # ---- 4. Reconcile -----------------------------------------------------------
-# Manifest -> disk
+# Manifest -> disk, and -> the Overleaf mirror when one is configured
+mirror_files <- if (nzchar(oth_path)) basename(list.files(oth_path, recursive = TRUE)) else character()
 manifest_status <- manifest |>
   mutate(
-    on_disk = artifact_basename %in% disk$disk_basename,
-    in_tex  = if (tex_available) artifact_basename %in% tex_refs$tex_basename
-              else NA,
+    on_disk   = artifact_basename %in% disk$disk_basename,
+    in_mirror = if (nzchar(oth_path)) artifact_basename %in% mirror_files else NA,
+    in_tex    = if (tex_available) artifact_basename %in% tex_refs$tex_basename
+                else NA,
     status = case_when(
       !on_disk                            ~ "MISSING",
+      nzchar(oth_path) & !in_mirror       ~ "MISSING_IN_OVERLEAF",
       tex_available & !in_tex             ~ "DRIFT_NOT_IN_TEX",
       TRUE                                ~ "OK"
     )
@@ -156,15 +164,17 @@ tex_status <- if (tex_available) {
 } else NULL
 
 # ---- 5. Write reports -------------------------------------------------------
-manifest_out <- file.path(results_dir,
+report_dir   <- file.path(results_dir, "_runs")
+dir.create(report_dir, showWarnings = FALSE, recursive = TRUE)
+manifest_out <- file.path(report_dir,
                           sprintf("paper_manifest_audit_%s_manifest.csv", today))
-disk_out     <- file.path(results_dir,
+disk_out     <- file.path(report_dir,
                           sprintf("paper_manifest_audit_%s_disk.csv", today))
 
 write_csv(manifest_status, manifest_out)
-write_csv(disk_status,     disk_out)
+if (tex_available) write_csv(disk_status, disk_out)
 if (tex_available) {
-  tex_out <- file.path(results_dir,
+  tex_out <- file.path(report_dir,
                        sprintf("paper_manifest_audit_%s_tex.csv", today))
   write_csv(tex_status, tex_out)
 }
@@ -182,9 +192,12 @@ cat("Manifest -> disk:\n")
 print(summarize_status(manifest_status), row.names = FALSE)
 cat("\n")
 
-cat("Disk -> manifest:\n")
-print(summarize_status(disk_status), row.names = FALSE)
-cat("\n")
+if (tex_available) {
+  cat("Disk -> manifest:\n")
+  print(summarize_status(disk_status), row.names = FALSE)
+  cat("\n")
+}
+if (nzchar(oth_path)) cat("Overleaf mirror checked: ", oth_path, "\n\n", sep = "")
 
 if (tex_available) {
   cat("Tex -> manifest:\n")
@@ -196,15 +209,17 @@ if (tex_available) {
 
 cat("Reports written:\n")
 cat("  ", manifest_out, "\n", sep = "")
-cat("  ", disk_out, "\n", sep = "")
+if (tex_available) cat("  ", disk_out, "\n", sep = "")
 if (tex_available) cat("  ", tex_out, "\n", sep = "")
 
-# Hard fail if anything in the manifest is missing on disk — that's a real
-# build break. Drift warnings are exit 0.
-n_missing <- sum(manifest_status$status == "MISSING")
+# Hard fail if anything in the manifest is missing on disk or from the
+# Overleaf mirror — that's a real build break. Drift warnings are exit 0.
+n_missing <- sum(manifest_status$status %in% c("MISSING", "MISSING_IN_OVERLEAF"))
 if (n_missing > 0) {
   cat("\nFAIL: ", n_missing,
-      " manifest row(s) have no on-disk artifact.\n", sep = "")
+      " manifest row(s) missing from results/ or the Overleaf mirror:\n", sep = "")
+  print(manifest_status |> filter(status %in% c("MISSING", "MISSING_IN_OVERLEAF")) |>
+          select(artifact_basename, status, source_script), n = Inf)
   quit(status = 1)
 }
 

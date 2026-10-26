@@ -179,10 +179,7 @@ file write `fh' "\end{tabular}" _n
 file close `fh'
 
 ** Overleaf copy
-if ${overleaf} == 1 {
-    copy "${results}tables/diagnostics_obs_counts_supp.tex" ///
-        "${ol_tab}diagnostics_obs_counts_supp.tex", replace
-}
+project_save_overleaf "${results}tables/diagnostics_obs_counts_supp.tex"
 
 dis _n "Supplemental diagnostics table saved to:"
 dis "  ${results}tables/diagnostics_obs_counts_supp.csv"

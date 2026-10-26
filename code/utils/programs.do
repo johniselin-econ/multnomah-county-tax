@@ -6,7 +6,9 @@
 *                lb_move_type, lb_agi (labels)
 *                make_fips, unsuppress, setup_parallel,
 *                acs_make_gross_migration, label_irs_migration_vars,
-*                sdid_log_failure, sdid_consolidate_failures (programs)
+*                sdid_log_failure, sdid_consolidate_failures,
+*                project_load_paper_manifest, project_save_overleaf,
+*                project_clean_results (programs)
 ******************************************************************************/
 
 //--------------------------------------------------
@@ -992,4 +994,107 @@ program define project_mark_preferred_main
         inlist(sample, "sample_all", "sample_stringency", "sample_narrow") &    ///
         controls == 1 &                                                         ///
         exclusion == 1
+end
+
+
+//--------------------------------------------------
+// Overleaf mirror, paper manifest, results hygiene
+//--------------------------------------------------
+
+** project_load_paper_manifest: read resources/paper_manifest.csv (the
+** registry of every figure/table the paper cites) into ${paper_artifacts},
+** a space-separated list of basenames, without touching the data in memory.
+** globals.do calls this so every entry script has the list.
+capture program drop project_load_paper_manifest
+program define project_load_paper_manifest
+    local manifest "${dir}/resources/paper_manifest.csv"
+    capture confirm file "`manifest'"
+    if _rc {
+        di as error "project_load_paper_manifest: `manifest' not found."
+        exit 601
+    }
+    tempname fh
+    file open `fh' using "`manifest'", read text
+    file read `fh' line
+    if substr(`"`line'"', 1, 17) != "artifact_basename" {
+        di as error "project_load_paper_manifest: first column of `manifest' must be artifact_basename."
+        exit 459
+    }
+    local artifacts ""
+    local n = 0
+    file read `fh' line
+    while r(eof) == 0 {
+        local line = subinstr(`"`line'"', char(13), "", .)
+        if strpos(`"`line'"', ",") > 1 {
+            local base = substr(`"`line'"', 1, strpos(`"`line'"', ",") - 1)
+            if `: list base in artifacts' == 0 {
+                local artifacts `artifacts' `base'
+                local ++n
+            }
+        }
+        file read `fh' line
+    }
+    file close `fh'
+    if `n' == 0 {
+        di as error "project_load_paper_manifest: no artifact rows in `manifest'."
+        exit 459
+    }
+    global paper_artifacts   "`artifacts'"
+    global paper_artifacts_n = `n'
+end
+
+** project_save_overleaf: the ONE Overleaf mirror. Copies a results file to
+** ${ol_tab} (.tex) or ${ol_fig} (everything else) under its basename.
+** No-op unless ${overleaf} == 1. With ${paper_only} == 1 only basenames in
+** resources/paper_manifest.csv are copied, so the mirror holds exactly the
+** paper's artifact set. A missing source is an error unless `optional' is
+** given (for outputs that are legitimately conditional).
+**     project_save_overleaf "${results}tables/table1_combined.tex"
+**     project_save_overleaf "${results}elasticities/x.pdf", name(as_cited.pdf)
+**     project_save_overleaf "${results}revenue/fig.pdf", optional
+capture program drop project_save_overleaf
+program define project_save_overleaf
+    syntax anything(name=src id="source file") [, NAME(string) OPTional]
+    if "${overleaf}" != "1" exit
+    local src : subinstr local src `"""' "", all
+    local src = subinstr(`"`src'"', "\", "/", .)
+    if "`name'" == "" local name = substr("`src'", strrpos("`src'", "/") + 1, .)
+    local ext = lower(substr("`name'", strrpos("`name'", ".") + 1, .))
+    if "`ext'" == "tex" local dest "${ol_tab}`name'"
+    else                local dest "${ol_fig}`name'"
+    if "${paper_only}" == "1" {
+        if "${paper_artifacts}" == "" {
+            di as error "project_save_overleaf: paper_only=1 but the paper manifest is not loaded (globals.do)."
+            exit 459
+        }
+        local registry "${paper_artifacts}"
+        if `: list name in registry' == 0 exit
+    }
+    capture confirm file "`src'"
+    if _rc {
+        if "`optional'" != "" exit
+        di as error "project_save_overleaf: source not found: `src'"
+        exit 601
+    }
+    copy "`src'" "`dest'", replace
+end
+
+** project_clean_results: wipe and recreate the regenerable results/
+** subdirectories (${results_subdirs}, incl. the overleaf_export/ staging
+** folder) so a run leaves no stale outputs from earlier code. Leaves
+** results/_runs/ (the manifest archive) alone. Called by 00_multnomah.do
+** when ${clean_results} == 1.
+capture program drop project_clean_results
+program define project_clean_results
+    if "${resume}" == "1" {
+        di as error "clean_results=1 wipes results/bootstrap/temp_draws/, which resume=1 relies on. Set one of them to 0."
+        exit 459
+    }
+    foreach d of global results_subdirs {
+        project_rm_dir, path("${results}`d'")
+        mkdir "${results}`d'"
+    }
+    mkdir "${results}overleaf_export/figures"
+    mkdir "${results}overleaf_export/tables"
+    di as text "clean_results: wiped and recreated results/{${results_subdirs}}."
 end

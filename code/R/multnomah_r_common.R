@@ -65,16 +65,22 @@ multnomah_r_init <- function(script_label = "R pipeline") {
   # the Overleaf folder. One loader (utils.R) serves this and the audit script.
   settings <- load_user_settings(project_root)
 
-  # Overleaf sync (optional) — mirrors the Stata user_settings.do convention
-  overleaf   <- FALSE
-  dir_ol_fig <- ""
-  dir_ol_tab <- ""
-  oth_path   <- resolve_oth_path(settings)
+  # Overleaf sync (optional). One setting serves both languages: oth_path in
+  # user_settings.do (or user_settings.R / OVERLEAF_PATH); see utils.R.
+  # PAPER_ONLY=1 in the environment restricts the mirror to the artifacts in
+  # resources/paper_manifest.csv, exactly as Stata's project_save_overleaf.
+  overleaf        <- FALSE
+  dir_ol_fig      <- ""
+  dir_ol_tab      <- ""
+  paper_only      <- resolve_paper_only()
+  paper_artifacts <- load_paper_manifest(project_root)
+  oth_path        <- resolve_oth_path(settings, project_root)
   if (nzchar(oth_path)) {
-    dir_ol_fig <- file.path(oth_path, "figures")
-    dir_ol_tab <- file.path(oth_path, "tables")
+    dir_ol_fig <- paste0(oth_path, "figures")   # oth_path carries its trailing slash
+    dir_ol_tab <- paste0(oth_path, "tables")
+    for (d in c(oth_path, dir_ol_fig, dir_ol_tab)) dir.create(d, showWarnings = FALSE, recursive = TRUE)
     overleaf   <- TRUE
-    cat("Overleaf sync ON:", oth_path, "\n\n")
+    cat("Overleaf sync ON:", oth_path, if (paper_only) "(paper-only)" else "", "\n\n")
   }
 
   # ---- ACS data source -------------------------------------------------------
@@ -103,6 +109,8 @@ multnomah_r_init <- function(script_label = "R pipeline") {
     overleaf = overleaf,
     dir_ol_fig = dir_ol_fig,
     dir_ol_tab = dir_ol_tab,
+    paper_only = paper_only,
+    paper_artifacts = paper_artifacts,
     acs_source = acs_source,
     acs_shared_root = acs_shared_root
   )
