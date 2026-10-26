@@ -97,3 +97,10 @@ fig_dq_acs_dist_hh.png,figure,fig:dq_acs_dist,C5,appendix_C,02_appendix_data_qua
 fig_dq_acs_dist_hh_in.png,figure,fig:dq_acs_dist,C5,appendix_C,02_appendix_data_quality.do
 fig_dq_acs_dist_dollars.png,figure,fig:dq_acs_dist,C5,appendix_C,02_appendix_data_quality.do
 fig_dq_acs_dist_dollars_in.png,figure,fig:dq_acs_dist,C5,appendix_C,02_appendix_data_quality.do
+fig_cat_ftotinc_1.pdf,figure,slides:condmean_income,slides,slides,02_indiv_analysis.do
+fig_cat_married_1.pdf,figure,slides:condmean_extra,slides,slides,02_indiv_analysis.do
+fig_cat_sex_1.pdf,figure,slides:condmean_extra,slides,slides,02_indiv_analysis.do
+map_directional_n1_out_orwa.png,figure,slides:flow_maps_n1,slides,slides,code/R/map_code.R
+map_directional_n1_in_orwa.png,figure,slides:flow_maps_n1,slides,slides,code/R/map_code.R
+fig_es_agepost_out_migration.png,figure,slides:did_out_age_only,slides,slides,02_did_analysis.do
+fig_es_agepost_out_state_migration.png,figure,slides:did_out_age_only,slides,slides,02_did_analysis.do
