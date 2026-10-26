@@ -1759,7 +1759,7 @@ file open `fh' using "`tex_path'", write replace text
 ** math toggle), so build the two characters explicitly: char(92)=backslash,
 ** char(36)=dollar. Same idiom as 02_descriptives.do. Note line below keeps the
 ** math-mode "\$...\$" for $\hat\tau$, $X$, $R_m$ — those ARE meant to be math.
-local dol = char(92) + char(36)
+local dol = char(92) + char(92) + char(36)   // two backslashes: the local is re-expanded inside the file write string, which eats one
 file write `fh' "\begin{tabular}{l*{9}{c}}" _n
 file write `fh' "\toprule" _n
 file write `fh' " & \$\hat\tau\$ & Scale & \$X\$ & \$R_m\$ & Baseline & Dynamic & \$R_m/\$dyn & Actual & Implied \\" _n
