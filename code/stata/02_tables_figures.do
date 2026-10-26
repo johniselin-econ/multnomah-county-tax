@@ -1961,6 +1961,9 @@ foreach sd in irs_full_16_22 acs_16_24_col irs_outstate_full_16_22 acs_outstate_
 		local fbase "${results}sdid/preferred_overlays/fig_overlay_donorpool_`sdtag'_`migr'_eventstudy"
 		graph export "`fbase'.pdf", replace
 		graph export "`fbase'.jpg", as(jpg) quality(100) replace
+		if "${overleaf}" == "1" {
+			copy "`fbase'.pdf" "${ol_fig}fig_overlay_donorpool_`sdtag'_`migr'_eventstudy.pdf", replace
+		}
 		dis as text "  Set 1: wrote `sdtag' / `migr'"
 
 		restore
