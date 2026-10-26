@@ -76,7 +76,7 @@ global resume                = 0        // 1 to skip bootstrap reps whose draw .
 
 ** Output mode
 global event_study_mode      "all"      // "all" | "main" | "none" -- which event studies the SDID stage runs
-global clean_results         = 0        // 1 to wipe the regenerable results/ subdirs (incl. overleaf_export/) first; incompatible with resume=1
+global clean_results         = 1        // 1 to wipe the regenerable results/ subdirs (incl. overleaf_export/) first; incompatible with resume=1
 global paper_only            ""         // 1 to mirror only resources/paper_manifest.csv artifacts to Overleaf; "" takes PAPER_ONLY from the environment (0 if unset)
 
 
