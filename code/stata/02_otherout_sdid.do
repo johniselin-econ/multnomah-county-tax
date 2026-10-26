@@ -748,7 +748,8 @@ if ${use_parallel} == 1 {
 	timer clear 2
 	timer on 2
 
-	parallel, prog(parallel_otherout_wrapper run_otherout_table sdid_log_failure): parallel_otherout_wrapper
+	parallel, prog(parallel_otherout_wrapper run_otherout_table sdid_log_failure ///
+		sdid_event_row_year): parallel_otherout_wrapper
 
 	timer off 2
 	timer list 2
