@@ -726,7 +726,7 @@ elast_main_net_panel, handle(`fh_shs') ///
 
 elast_tex_notes_open, handle(`fh_shs')
 file write `fh_shs' "$\hat{\tau}$ is the SDID coefficient on the AGI net migration rate (percentage points). " _n
-file write `fh_shs' "Semi-elasticity $\varepsilon_{\text{semi}} = (\hat{\tau}/100)/\Delta\ln(1-\tau_\text{total})$ and stock elasticity $\varepsilon_{\text{stock},H} = \Delta\ln S_H / \Delta\ln(1-\tau_\text{total})$, where $S_H$ is the cumulative AGI stock at horizon $H$, are computed against the joint PFA + Metro SHS rate change; both took effect January~1, 2021. " _n
+file write `fh_shs' "Semi-elasticity $\varepsilon_{\text{semi}} = (\hat{\tau}/100)/\Delta\ln(1-\tau_\text{total})$ and stock elasticity $\varepsilon_{\text{stock},H} = \Delta\ln S_H / \Delta\ln(1-\tau_\text{total})$, where \$S_H\$ is the cumulative AGI stock at horizon \$H\$, are computed against the joint PFA + Metro SHS rate change; both took effect January~1, 2021. " _n
 file write `fh_shs' "Average total marginal rate on impacted filers: `total_shs_pct'\% (federal + Oregon state + FICA-employee + PFA + SHS). " _n
 file write `fh_shs' "The stock object is the 2-year cumulative AGI-stock change on the total AGI base; see Appendix~\ref{sec:appb_elast} for the recursion and Appendix Table~\ref{tab:elasticities_pfa_only} for a PFA-only-denominator sensitivity. " _n
 file write `fh_shs' "Gross out- and in-migration semi-elasticities are in Appendix Table~\ref{tab:elasticities_inout}. " _n
