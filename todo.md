@@ -1,10 +1,11 @@
 # TODO - Multnomah County Tax
 
-Three active workstreams:
+Four active workstreams:
 
 1. **Paper revision** — DONE; Phase 4 visual review of compiled PDF pending.
 2. **Bootstrap implementation** — V4 (500 reps) publication run is the final release blocker.
 3. **Pipeline hygiene** (added 2026-05-16) — findings from the critical-code-reviewer pipeline pass.
+4. **October 2026 rerun follow-ups** (added 2026-10-26) — what to change and re-run on the server after the `October-revised` full run; see the bottom of this file.
 
 ---
 
@@ -747,3 +748,70 @@ did not. The recent narrow-pool addition required hand-bumping every
   640, 818). `sample_narrow` is not extended to non-migration outcomes.
   Decision needed: extend, or document as intentional and stop tagging
   these tables for Overleaf.
+
+---
+
+# Workstream 4: October 2026 rerun follow-ups (added 2026-10-26)
+
+Context: the full run on McCleary from `origin/October-revised` (18 commits, 2026-10-24..26)
+finished and its `results/overleaf_export/` (627 files, all 98 manifest artifacts) was copied to
+the Overleaf Dropbox folder on 2026-10-26. Two more commits were made on the laptop the same day
+(`31f1b6e`, `3eebbff`), both Stata dollar-sign escaping bugs in `02_tables_figures.do`. The
+manuscript text was updated to the new numbers except where noted below. Comparison against the
+September PFR submission archive: `Documents/Multnomah (2026) - PFR archive`.
+
+## Section A - Code to push and re-run on the server
+
+* [ ] **Push `October-revised`** from the laptop (2 commits ahead: `31f1b6e` Table 2 note
+  `$S_H$`/`$H$` escapes; `3eebbff` revenue-header `(\$B)`/`(\$M)` local). Pull on the cluster.
+* [ ] **Re-run `02_tables_figures.do`** on the cluster so `tbl_elasticities_shs.tex` and
+  `tbl_revenue_decomposition.tex` are regenerated correctly (the Overleaf copies were hand-patched
+  on 2026-10-26 and will be overwritten by the mirror; confirm the mirrored versions are right).
+* [ ] **Recompute the PPML placebo shares** for Section 5.2 (share of placebo out-migration
+  coefficients / t-stats larger than Multnomah's; share of in-migration ones smaller). The text
+  still says 5.1% (6.5%) and 15.7% (8.0%) from the pre-zero-flow run; flagged with a `% TODO`
+  comment in the tex. Source: the placebo output of `02_flow_analysis.do` (`results/flows/`).
+* [ ] **Recompute the revenue spec-curve summary** for Section 6 (PFA loss center and IQR, Oregon
+  center; text still says $16M, $10-22M, $79M). Signed losses (`462a80a`) un-fold the distribution.
+  Source: the revenue spec grid from `02_post_spec.do` / `02_tables_figures.do`. Flagged with a
+  `% TODO` comment in the tex.
+* [ ] **Run `code/R/audit_paper_artifacts.R`** against the edited `Conway_Iselin_Rork_2026.tex`
+  and the new export (every cited artifact present and fresh).
+* [ ] **Decide on the figure font.** The regenerated DiD and PPML figures (`fig_es_*.png`,
+  `fig_multnomah_both_*.png`) switched from serif to sans-serif between the September archive
+  and this run; the SDID/spec-curve PDFs did not. Pick one scheme and re-export the odd ones.
+* [ ] **Merge `October-revised` into `main`** once the above is verified (main is a strict
+  ancestor; fast-forward). Then update CLAUDE.md/README if the laptop `user_settings.R` needs
+  `acs_source <- "local"` documented for off-cluster Stage 1.
+
+## Section B - Manuscript / submission artifacts
+
+* [ ] **Regenerate `manuscript_anon.tex`** from the main file after the TODO numbers are filled
+  (the 2026-10-26 edits were applied to both copies in the Overleaf folder, but the archived
+  submission version also rewires figures to the `_combined` multi-page PDFs).
+* [ ] **Rebuild the `fig_*_combined.pdf` multi-page figures** used by the PFR submission
+  (35 files in the archive). No script in the repo produces them; either script the assembly
+  (PyMuPDF/qpdf from the manifest's per-label file lists) under `other/` or document the manual
+  steps, then rebuild from the new figures.
+* [ ] **Phase 4 visual review** (carried over from Workstream 1): compile in Overleaf and check
+  the regenerated tables (Table 1 note now reads "IRS-389"; Table A2 gained unique-county
+  columns; Table A3 rates are lower after the 2020 exclusion and same_county definition).
+* [ ] **Review the new by-age DiD pre-trend**: the 45-64 college group has a positive 2017
+  coefficient in `fig_es_age_out_migration.png`. Consider the `cat_educ#cat_age` alternative
+  noted in commit `075dfc6` as a robustness check.
+* [ ] **Co-author email**: draft at `drafts/2026-10-26_coauthor_email_results_update.md`; send
+  after the two TODO numbers are recomputed (or send now and follow up).
+* [ ] **Slide deck**: `Conway_Iselin_Rork_2026_slides.tex` at the Overleaf project root (set as
+  main file in Overleaf to compile) and `drafts/Conway-Iselin-Rork-2026-10-26-slides.pdf`.
+  Placebo shares and revenue spec-curve summary are marked "[to recompute]" there too.
+
+## Section C - Server gotchas recorded this round
+
+* The laptop cannot ssh/scp to any YCRC host (no registered key); move artifacts via a zip
+  download from Open OnDemand (what worked 2026-10-26) or a GitHub branch.
+* Git Bash rewrites Stata's `/e` flag into the path `E:/`; launch batch Stata from PowerShell
+  (`Start-Process StataMP-64.exe -ArgumentList '/e','do','file.do' -Wait`).
+* Stata string escaping, verified by batch test: a literal `\$X\$` in a double-quoted
+  `file write` string prints `$X$`; a local holding `\$` followed by a letter is re-expanded and
+  prints `\`; a local holding `\\$` prints `\$`; `\$150K` is safe because a digit cannot start a
+  global name.
