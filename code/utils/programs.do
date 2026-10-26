@@ -795,10 +795,14 @@ program define build_acs_county_sample
     preserve
     keep if (multnomah_o == 1 | multnomah_d == 1) & fips_o != fips_d
     drop if county_fips_o == 0 | county_fips_d == 0
-    gen long   fips         = cond(multnomah_o == 1, fips_d, fips_o)
+    // acs_county_flow already carries a `fips' column (from the ids merge in
+    // 01e_acs.do), so build the partner id under its own name and rename after
+    // the collapse, which drops the original.
+    gen long   partner_fips = cond(multnomah_o == 1, fips_d, fips_o)
     gen double migrants_out = cond(multnomah_o == 1, persons, 0)
     gen double migrants_in  = cond(multnomah_d == 1, persons, 0)
-    collapse (sum) migrants_in migrants_out, by(fips)
+    collapse (sum) migrants_in migrants_out, by(partner_fips)
+    rename partner_fips fips
     foreach var of varlist migrants_in migrants_out {
         sort `var' fips
         gen double `var'_cum = sum(`var')
