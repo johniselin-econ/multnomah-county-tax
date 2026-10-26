@@ -7,8 +7,9 @@
 *.log
 __pll*
 
-# SLURM job scripts (recreate locally from RUNBOOK.md) + logs
+# SLURM: full_run.sbatch is the tracked one-shot launcher; other job scripts and logs stay local
 *.sbatch
+!full_run.sbatch
 slurm-*.log
 slurm-*.out
 
@@ -46,8 +47,8 @@ data/irs/*.csv
 data/working/
 data/demographic/CAINC1/
 data/demographic/bls/
-data/qcew/
-data/qwi/
+data/demographic/dol/
+data/covid/
 
 # ========================================
 # Results: all generated from code
