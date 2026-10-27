@@ -223,6 +223,9 @@ A full first run downloads ~5 GB of raw data (13 years of ACS microdata plus IRS
 3. Run `Rscript 00_main.R download` (data downloads)
 4. Run `00_multnomah.do` (data cleaning + all analysis)
 5. Run `Rscript 00_main.R post` (maps + diagrams)
+6. Check `results/paper_numbers.csv` (every number the paper quotes in prose
+   rather than in a table or figure; `Rscript code/R/audit_paper_numbers.R`
+   checks the manuscript against it)
 
 **Optional / non-blocking:**
 

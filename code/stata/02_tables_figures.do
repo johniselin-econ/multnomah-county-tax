@@ -470,6 +470,36 @@ scalar delta_t = avg_mt_rate
 ** Load spec_results.dta — everything below operates on this in-memory.
 ** ------------------------------------------------------------------
 use "${results}elasticities/spec_results.dta", clear
+
+** Register the narrow-pool attenuation quoted in Section 7 (paper_numbers.csv):
+** preferred all-counties vs narrow-pool tau, in-state net and out-migration,
+** by data type; attenuation = 100 * (1 - tau_narrow / tau_all).
+preserve
+keep if preferred == 1 & outstate == 0 & inlist(migration, "net", "out") ///
+	& inlist(sample, "sample_all", "sample_narrow")
+keep data_type migration sample tau
+qui count
+if r(N) > 0 {
+	** capture: a non-unique preferred row would break the reshape, and this
+	** register entry must never abort the tables build.
+	capture noisily reshape wide tau, i(data_type migration) j(sample) string
+	if _rc == 0 capture confirm variable tausample_all tausample_narrow
+	if _rc == 0 {
+		gen double atten_pct = 100 * (1 - tausample_narrow / tausample_all)
+		forvalues i = 1/`=_N' {
+			local dt_key = lower(subinstr(data_type[`i'], " ", "_", .))
+			local migr   = migration[`i']
+			local a_val  = atten_pct[`i']
+			project_log_number, key(sdid_narrow_attenuation_pct_`dt_key'_`migr') value(`a_val') fmt(%4.1f) unit(percent) ///
+				source(02_tables_figures.do) note("Narrow-pool attenuation of the preferred SDID tau: 100 * (1 - tau_narrow / tau_all), `migr' migration, `=data_type[`i']'")
+		}
+		qui summ atten_pct
+		local atten_max = r(max)
+		project_log_number, key(sdid_narrow_attenuation_pct_max) value(`atten_max') fmt(%3.0f) unit(percent) ///
+			source(02_tables_figures.do) note("Largest narrow-pool attenuation across preferred in-state net/out specs (the 'up to roughly 40%' in Section 7)")
+	}
+}
+restore
 dis "Loaded " _N " spec rows."
 
 ** ------------------------------------------------------------------
@@ -1560,6 +1590,20 @@ if r(N) > 0 {
 	dis "PFA implied loss distribution ($ millions), " _N " specs:"
 	summ pfa_loss, detail
 
+	** Register the spec-curve summary quoted in Section 6 (paper_numbers.csv)
+	local spec_n   = r(N)
+	local spec_p50 = r(p50)
+	local spec_p25 = r(p25)
+	local spec_p75 = r(p75)
+	project_log_number, key(revenue_pfa_loss_spec_n) value(`spec_n') fmt(%9.0f) unit(specs) ///
+		source(02_tables_figures.do) note("Net-domestic specifications in the PFA revenue specification curve")
+	project_log_number, key(revenue_pfa_loss_spec_median) value(`spec_p50') fmt(%4.1f) unit(usd_millions) ///
+		source(02_tables_figures.do) note("Median implied PFA revenue loss across the specification curve")
+	project_log_number, key(revenue_pfa_loss_spec_p25) value(`spec_p25') fmt(%4.1f) unit(usd_millions) ///
+		source(02_tables_figures.do) note("25th percentile of the implied PFA revenue loss across the specification curve")
+	project_log_number, key(revenue_pfa_loss_spec_p75) value(`spec_p75') fmt(%4.1f) unit(usd_millions) ///
+		source(02_tables_figures.do) note("75th percentile of the implied PFA revenue loss across the specification curve")
+
 	elast_speccurve_plot, var(pfa_loss) ///
 		ytitle("Implied PFA Revenue Loss ($ millions)") ///
 		file("${results}revenue/fig_speccurve_revenue_pfa") ///
@@ -1579,6 +1623,20 @@ if r(N) > 0 {
 	dis ""
 	dis "Oregon implied loss distribution ($ millions), " _N " specs:"
 	summ state_loss, detail
+
+	** Register the spec-curve summary quoted in Section 6 (paper_numbers.csv)
+	local spec_n   = r(N)
+	local spec_p50 = r(p50)
+	local spec_p25 = r(p25)
+	local spec_p75 = r(p75)
+	project_log_number, key(revenue_oregon_loss_spec_n) value(`spec_n') fmt(%9.0f) unit(specs) ///
+		source(02_tables_figures.do) note("Net-outstate specifications in the Oregon revenue specification curve")
+	project_log_number, key(revenue_oregon_loss_spec_median) value(`spec_p50') fmt(%4.1f) unit(usd_millions) ///
+		source(02_tables_figures.do) note("Median implied Oregon revenue loss across the specification curve")
+	project_log_number, key(revenue_oregon_loss_spec_p25) value(`spec_p25') fmt(%4.1f) unit(usd_millions) ///
+		source(02_tables_figures.do) note("25th percentile of the implied Oregon revenue loss across the specification curve")
+	project_log_number, key(revenue_oregon_loss_spec_p75) value(`spec_p75') fmt(%4.1f) unit(usd_millions) ///
+		source(02_tables_figures.do) note("75th percentile of the implied Oregon revenue loss across the specification curve")
 
 	elast_speccurve_plot, var(state_loss) ///
 		ytitle("Implied Oregon Revenue Loss from Multnomah Out-Migration ($ millions)") ///

@@ -73,6 +73,13 @@ Stata reads R-produced inputs, so the order matters. The `run_stage1.sh` /
 spec change should change it on purpose. Use this as the regression gate after any
 setup/plumbing edit.
 
+**In-text numbers register.** Any number the paper quotes in prose that is not
+read off a table or figure is logged where it is computed with
+`project_log_number, key() value() fmt() unit() source() note()` (programs.do) and
+lands in `results/paper_numbers.csv`. `code/R/audit_paper_numbers.R` checks the
+Overleaf tex for each formatted value. Add a key when you add such a number to
+the text; pick `fmt` to match how the paper writes it.
+
 ## Gotchas
 
 - **Windows + `core.autocrlf=true`.** Working tree is CRLF, repo stores LF (git

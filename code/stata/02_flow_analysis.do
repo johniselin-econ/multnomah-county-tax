@@ -837,6 +837,46 @@ foreach sample in "acs" "all" {
 		local n_worse_both_sig = r(N)
 	}
 
+	** Same extremity counts on the t-statistics (the paper quotes both)
+	if missing(`m_t_out') {
+		local n_larger_out_t = .
+	}
+	else {
+		qui count if t_out > `m_t_out' & !missing(t_out)
+		local n_larger_out_t = r(N)
+	}
+	if missing(`m_t_in') {
+		local n_smaller_in_t = .
+	}
+	else {
+		qui count if t_in < `m_t_in' & !missing(t_in)
+		local n_smaller_in_t = r(N)
+	}
+
+	** Register the placebo shares quoted in Section 5.2 (paper_numbers.csv).
+	** Denominator = placebo counties, i.e. counties with an estimate other
+	** than Multnomah. Keys carry the sample/version suffix of the figure
+	** files ("" = all counties excl. 2020, the version the text quotes).
+	if "`debug_txt'" == "" {
+		local n_placebo_out = `n_counties_out' - 1
+		local n_placebo_in  = `n_counties_in'  - 1
+		project_log_number, key(ppml_placebo_n_counties`file_suffix') ///
+			value(`n_placebo_out') fmt(%9.0f) unit(counties) source(02_flow_analysis.do) ///
+			note("Placebo counties in the PPML county-by-county re-estimation, out-migration (`v_label', sample `sample')")
+		project_log_number, key(ppml_placebo_pct_out_coef_larger`file_suffix') ///
+			value(100 * `n_larger_out' / `n_placebo_out') fmt(%4.1f) unit(percent) source(02_flow_analysis.do) ///
+			note("Share of placebo out-migration coefficients larger than Multnomah's (`v_label', sample `sample')")
+		project_log_number, key(ppml_placebo_pct_out_tstat_larger`file_suffix') ///
+			value(100 * `n_larger_out_t' / `n_placebo_out') fmt(%4.1f) unit(percent) source(02_flow_analysis.do) ///
+			note("Share of placebo out-migration t-statistics larger than Multnomah's (`v_label', sample `sample')")
+		project_log_number, key(ppml_placebo_pct_in_coef_smaller`file_suffix') ///
+			value(100 * `n_smaller_in' / `n_placebo_in') fmt(%4.1f) unit(percent) source(02_flow_analysis.do) ///
+			note("Share of placebo in-migration coefficients smaller (more negative) than Multnomah's (`v_label', sample `sample')")
+		project_log_number, key(ppml_placebo_pct_in_tstat_smaller`file_suffix') ///
+			value(100 * `n_smaller_in_t' / `n_placebo_in') fmt(%4.1f) unit(percent) source(02_flow_analysis.do) ///
+			note("Share of placebo in-migration t-statistics smaller (more negative) than Multnomah's (`v_label', sample `sample')")
+	}
+
 	** Distribution statistics for out-migration
 	summ b_out, detail
 	local dist_out_mean = r(mean)

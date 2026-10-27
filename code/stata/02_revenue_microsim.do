@@ -767,12 +767,16 @@ dis "=============================================="
 gen double wtd_pfa = pfa_tax * cal_wt
 qui summ wtd_pfa
 scalar baseline_pfa_revenue = r(sum)
+project_log_number, key(revenue_baseline_pfa_musd) value(`=scalar(baseline_pfa_revenue) / 1e6') fmt(%6.0f) unit(usd_millions) ///
+	source(02_revenue_microsim.do) note("Static pre-migration PFA revenue baseline, simulated (Section 6 model validation; Appendix C.8)")
 dis "Baseline PFA revenue: $" %15.0fc baseline_pfa_revenue
 
 ** Baseline Oregon state income tax
 gen double wtd_siitax = siitax * cal_wt
 qui summ wtd_siitax
 scalar baseline_state_revenue = r(sum)
+project_log_number, key(revenue_baseline_state_musd) value(`=scalar(baseline_state_revenue) / 1e6') fmt(%6.0f) unit(usd_millions) ///
+	source(02_revenue_microsim.do) note("Static Oregon state income tax baseline (TAXSIM siitax), Multnomah scope, simulated (Section 6; Appendix C.8)")
 dis "Baseline Oregon state income tax revenue: $" %15.0fc baseline_state_revenue
 
 ** Flag impacted (subject to PFA tax)
@@ -1042,6 +1046,16 @@ scalar avg_total_rate_with_shs         = avg_total_rate         + avg_shs_rate
 scalar avg_total_rate_pre_with_shs     = avg_total_rate_pre
 scalar avg_total_rate_col_with_shs     = avg_total_rate_college + avg_shs_rate_college
 scalar avg_total_rate_pre_col_with_shs = avg_total_rate_pre_college
+
+** Register the rate algebra quoted in Appendix C.10 (paper_numbers.csv):
+** the impacted average total rate, the net-of-tax rate 1 - tau, and the
+** multiplier 1 / (1 - tau) relating epsilon_semi to the pp-per-pp response.
+project_log_number, key(avg_total_rate_with_shs_pct) value(`=100 * scalar(avg_total_rate_with_shs)') fmt(%4.1f) unit(percent) ///
+	source(02_revenue_microsim.do) note("Average total tax rate on impacted filers (total tax / AGI), headline PFA+SHS convention")
+project_log_number, key(elast_net_of_tax_rate_shs) value(`=1 - scalar(avg_total_rate_with_shs)') fmt(%4.2f) unit(share) ///
+	source(02_revenue_microsim.do) note("1 - tau_total at the impacted average rate: Delta ln(1 - tau) per pp of rate change, approximately")
+project_log_number, key(elast_net_of_tax_multiplier_shs) value(`=1 / (1 - scalar(avg_total_rate_with_shs))') fmt(%4.2f) unit(ratio) ///
+	source(02_revenue_microsim.do) note("1 / (1 - tau_total): epsilon_semi relative to the naive pp-per-pp migration response")
 
 dis "Average SHS rate on impacted:          " %6.4f avg_shs_rate ///
 	" (" %5.2f avg_shs_rate*100 "%)"

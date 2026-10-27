@@ -1078,7 +1078,6 @@ if ${use_parallel} == 1 {
 	save "${results}sdid/sdid_results.dta", replace
 	project_write_manifest using "${results}sdid/sdid_results_manifest.dta", ///
 		artifact("sdid_results") script("02_sdid_analysis.do")
-	export excel using "${results}sdid/sdid_results.xlsx", firstrow(variables) replace
 
 	** Clean up temp directory
 	project_rm_dir, path("${results}sdid/temp_results")
@@ -1486,7 +1485,6 @@ else {
 	use "${results}sdid/sdid_results.dta", clear
 	project_write_manifest using "${results}sdid/sdid_results_manifest.dta", ///
 		artifact("sdid_results") script("02_sdid_analysis.do")
-	export excel using "${results}sdid/sdid_results.xlsx", firstrow(variables) replace
 
 	** Combine event-study results
 	clear
@@ -1582,6 +1580,41 @@ project_mark_preferred_main
 ** Display count of preferred specifications
 dis "Number of preferred specifications: "
 count if preferred == 1
+
+********************************************************************************
+** Register the specification-curve summaries quoted in Section 5.1
+** (paper_numbers.csv): AGI outcomes, in-state data types (the main plot set).
+********************************************************************************
+preserve
+keep if outcome_type == "agi"
+qui count if migration == "out"
+project_log_number, key(sdid_n_specs_per_outcome) value(`r(N)') fmt(%9.0f) unit(specs) ///
+	source(02_sdid_analysis.do) note("SDID specifications estimated per outcome variable (AGI out-migration, all data types)")
+drop if inlist(data_type, "IRS (Out-of-State)", "IRS (389, Out-of-State)", ///
+					 "ACS All (Out-of-State)", "ACS College (Out-of-State)")
+qui summ tau if migration == "out"
+local tau_out_mean = r(mean)
+qui summ tau if migration == "in"
+local tau_in_mean = r(mean)
+qui summ tau if migration == "net", detail
+local n_net       = r(N)
+local tau_net_p10 = r(p10)
+local tau_net_p90 = r(p90)
+qui count if migration == "net" & inrange(tau, -4, -1)
+local n_net_band = r(N)
+project_log_number, key(sdid_agi_out_mean_tau) value(`tau_out_mean') fmt(%5.2f) unit(pp) ///
+	source(02_sdid_analysis.do) note("Mean SDID tau across the AGI out-migration spec curve (in-state data types)")
+project_log_number, key(sdid_agi_in_mean_tau) value(`tau_in_mean') fmt(%5.2f) unit(pp) ///
+	source(02_sdid_analysis.do) note("Mean SDID tau across the AGI in-migration spec curve (in-state data types)")
+project_log_number, key(sdid_agi_out_in_mean_tau_ratio) value(abs(`tau_out_mean') / abs(`tau_in_mean')) fmt(%4.2f) unit(ratio) ///
+	source(02_sdid_analysis.do) note("Out- vs in-migration mean |tau|, AGI spec curves (the 'about double' in Section 5.1)")
+project_log_number, key(sdid_agi_net_tau_p10) value(`tau_net_p10') fmt(%4.1f) unit(pp) ///
+	source(02_sdid_analysis.do) note("10th percentile of SDID tau across the AGI net-migration spec curve")
+project_log_number, key(sdid_agi_net_tau_p90) value(`tau_net_p90') fmt(%4.1f) unit(pp) ///
+	source(02_sdid_analysis.do) note("90th percentile of SDID tau across the AGI net-migration spec curve")
+project_log_number, key(sdid_agi_net_pct_between_m4_m1) value(100 * `n_net_band' / `n_net') fmt(%4.1f) unit(percent) ///
+	source(02_sdid_analysis.do) note("Share of AGI net-migration specs with tau between -4 and -1 pp ('most estimates' in Section 5.1)")
+restore
 
 ********************************************************************************
 ** CREATE SPECIFICATION CURVE PLOTS
@@ -1929,6 +1962,24 @@ foreach otype in "n1" "n2" "agi" {
 					robust
 		estimates store meta_full
 
+		** Register the meta-regression coefficients quoted in Section 5.1
+		** (paper_numbers.csv): AGI, out-of-county, every spec indicator.
+		if "`otype'" == "agi" & `geo' == 0 {
+			local meta_terms "2.donor_pool 3.donor_pool 4.donor_pool 5.donor_pool 6.donor_pool 2.data_src 3.data_src 4.data_src period_1624 controls exclusion"
+			local meta_names "urban95 covid_match demog_match stringency narrow irs_389 acs_all acs_college period_16_24 covars excl2020"
+			local n_terms : word count `meta_terms'
+			forvalues i = 1/`n_terms' {
+				local term : word `i' of `meta_terms'
+				local meta_b_`i' = _b[`term']
+			}
+			forvalues i = 1/`n_terms' {
+				local term  : word `i' of `meta_terms'
+				local tname : word `i' of `meta_names'
+				project_log_number, key(sdid_meta_agi_`migr'_`tname') value(`meta_b_`i'') fmt(%5.2f) unit(pp) ///
+					source(02_sdid_analysis.do) note("Meta-regression of SDID tau on spec indicators, AGI `migr_label' (out-of-county): coefficient on `term' (base: all counties, IRS full)")
+			}
+		}
+
 		** Panel 1: donor-pool choices
 		coefplot meta_full, drop(_cons) noomitted 					///
 			keep(2.donor_pool 3.donor_pool 4.donor_pool 5.donor_pool 6.donor_pool) ///
@@ -2012,7 +2063,6 @@ dis "=============================================="
 dis "Parallel mode: ${use_parallel}"
 dis "Results saved to:"
 dis "  - ${results}sdid/sdid_results.dta"
-dis "  - ${results}sdid/sdid_results.xlsx"
 dis "  - ${results}sdid/*/tab_sdid_*.tex (tables)"
 dis "  - ${results}sdid/fig_speccurve_*.pdf"
 dis "  - ${results}sdid/fig_sdid_influence_*.pdf"

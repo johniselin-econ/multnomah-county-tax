@@ -99,6 +99,11 @@ if ${clean_results} == 1 project_clean_results
 project_set_seed, context("00_multnomah.do") offset(0)
 project_export_run_manifest
 
+** In-text numbers register (results/paper_numbers.csv): scripts call
+** project_log_number for every number the paper quotes in prose; start
+** empty so nothing survives from earlier code (kept when resume=1).
+project_paper_numbers_init
+
 
 ** ============================================================================
 ** STAGE 1: DATA CLEANING

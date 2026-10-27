@@ -1065,11 +1065,6 @@ else {
 } // END SEQUENTIAL/PARALLEL BRANCH
 
 
-** Export results
-use "${results}sdid/otherout/otherout_sdid_results.dta", clear
-export excel using "${results}sdid/otherout/otherout_sdid_results.xlsx", firstrow(variables) replace
-
-
 ********************************************************************************
 ** SPECIFICATION CURVE ANALYSIS
 ********************************************************************************

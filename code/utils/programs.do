@@ -8,7 +8,8 @@
 *                acs_make_gross_migration, label_irs_migration_vars,
 *                sdid_log_failure, sdid_consolidate_failures,
 *                project_load_paper_manifest, project_save_overleaf,
-*                project_clean_results (programs)
+*                project_clean_results, project_log_number,
+*                project_paper_numbers_init (programs)
 ******************************************************************************/
 
 //--------------------------------------------------
@@ -1097,4 +1098,88 @@ program define project_clean_results
     mkdir "${results}overleaf_export/figures"
     mkdir "${results}overleaf_export/tables"
     di as text "clean_results: wiped and recreated results/{${results_subdirs}}."
+end
+
+** ------------------------------------------------------------------
+** Paper numbers: the register of in-text numbers
+** ------------------------------------------------------------------
+** project_log_number: register one number that the manuscript quotes in
+** prose rather than reading off a table or figure, so a replication can
+** check it. Each call upserts one row, keyed by `key`, in
+** ${results}paper_numbers.dta and re-exports ${results}paper_numbers.csv,
+** so the CSV is always current (standalone stage runs included).
+**
+**     project_log_number, key(ppml_placebo_share_out_coef) value(`share') ///
+**         fmt(%4.1f) unit(percent) source(02_flow_analysis.do)           ///
+**         note("Share of placebo counties with a larger out-migration coefficient")
+**
+** key:     snake_case, unique across the pipeline (re-logging replaces the row)
+** value:   a number or a numeric expression, evaluated here; missing is
+**          allowed (written as ".") but warned about
+** fmt:     display format for the `formatted` column (default %12.4g). Pick
+**          it to match how the paper writes the number: the audit
+**          (code/R/audit_paper_numbers.R) searches the .tex for that string.
+** The register is cleared by project_paper_numbers_init at the start of an
+** orchestrated run (00_multnomah.do) unless resume=1.
+capture program drop project_log_number
+program define project_log_number
+    syntax, KEY(string) VALUE(string) SOURCE(string) [FMT(string) UNIT(string) NOTE(string)]
+
+    if !regexm("`key'", "^[a-z][a-z0-9_]*$") {
+        di as error "project_log_number: key must be snake_case (got `key')."
+        exit 198
+    }
+    capture local v = `value'
+    if _rc | "`v'" == "" {
+        di as error "project_log_number: value(`value') is not a numeric expression (key `key')."
+        exit 198
+    }
+    if missing(`v') di as error "WARNING: paper_number `key' is missing."
+    if "`fmt'" == "" local fmt "%12.4g"
+    local formatted = trim(string(`v', "`fmt'"))
+
+    preserve
+    capture use "${results}paper_numbers.dta", clear
+    if _rc {
+        clear
+        gen str80  key           = ""
+        gen double value         = .
+        gen str40  formatted     = ""
+        gen str40  unit          = ""
+        gen str80  source_script = ""
+        gen str244 note          = ""
+        gen str20  run_date      = ""
+        gen str20  run_time      = ""
+    }
+    drop if key == "`key'"
+    local n = _N + 1
+    set obs `n'
+    replace key           = "`key'"             in `n'
+    replace value         = `v'                 in `n'
+    replace formatted     = "`formatted'"       in `n'
+    replace unit          = "`unit'"            in `n'
+    replace source_script = "`source'"          in `n'
+    replace note          = `"`note'"'          in `n'
+    replace run_date      = "${date}"           in `n'
+    replace run_time      = "`c(current_time)'" in `n'
+    sort source_script key
+    save "${results}paper_numbers.dta", replace
+    export delimited using "${results}paper_numbers.csv", replace quote
+    restore
+
+    di as text "paper_number: `key' = `formatted' `unit'"
+end
+
+** project_paper_numbers_init: start an orchestrated run with an empty
+** register so keys no script logs any more cannot survive from an earlier
+** run. Kept when resume=1 (a resumed run re-logs only what it re-runs).
+capture program drop project_paper_numbers_init
+program define project_paper_numbers_init
+    if "${resume}" == "1" {
+        di as text "paper_numbers: resume=1, keeping the existing register."
+        exit
+    }
+    capture erase "${results}paper_numbers.dta"
+    capture erase "${results}paper_numbers.csv"
+    di as text "paper_numbers: register cleared (${results}paper_numbers.csv)."
 end

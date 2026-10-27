@@ -237,6 +237,9 @@ use "${data}working/acs_county_gross_25plus", clear
 keep fips
 duplicates drop
 gen byte acs_identified = 1
+qui count
+project_log_number, key(acs_n_counties_identified_any_year) value(`r(N)') fmt(%9.0f) unit(counties) ///
+	source(02_diagnostics.do) note("Counties appearing in the ACS 25+ county panel in any year (Table C1 step 6)")
 tempfile acs_id
 save `acs_id'
 
@@ -262,6 +265,12 @@ keep if _ny == r(max)              // ACS-and-BEA-matched every year = balanced
 keep fips
 duplicates drop
 gen byte acs_balanced = 1
+qui count
+local n_acs_balanced = r(N)
+project_log_number, key(acs_n_counties_balanced_panel) value(`n_acs_balanced') fmt(%9.0f) unit(counties) ///
+	source(02_diagnostics.do) note("ACS-identified counties present every year 2016-2024 (the 389 the text quotes; Appendix C.1)")
+project_log_number, key(acs_n_counties_balanced_excl_multnomah) value(`n_acs_balanced' - 1) fmt(%9.0f) unit(counties) ///
+	source(02_diagnostics.do) note("Balanced ACS counties other than Multnomah (in-migration panel destinations; Appendix C.7)")
 tempfile acs_bal
 save `acs_bal'
 
@@ -522,10 +531,6 @@ list approach n_counties n_orig n_dest n_years n_obs, sep(0) noobs
 capture mkdir "${results}"
 capture mkdir "${results}tables"
 
-export delimited using "${results}tables/diagnostics_obs_counts.csv", replace
-export excel using "${results}tables/diagnostics_obs_counts.xlsx", ///
-	firstrow(variables) replace
-
 ** LaTeX tabular fragment
 tempname fh
 file open `fh' using "${results}tables/diagnostics_obs_counts.tex", write replace
@@ -566,8 +571,6 @@ sort step
 
 dis _n "==== SDID sample-construction funnel (residence counties) ===="
 list step label n_cty, sep(0) noobs
-
-export delimited using "${results}tables/sdid_sample_funnel.csv", replace
 
 tempname fh2
 file open `fh2' using "${results}tables/sdid_sample_funnel.tex", write replace

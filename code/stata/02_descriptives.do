@@ -63,57 +63,13 @@ local col_in   "213 94 0"     // vermillion (p6) — in-migration
 local col_mult "230 159 0"    // orangebrown (p8) — Multnomah/Oregon highlight
 local col_ref  "153 153 153"  // gs10 (p2) — reference lines
 
-** Determine set of common in- and out-migration counties for Multnomah
-use ${data}working/irs_county_flow.dta, clear
-
-** Tag Multnomah
-gen multnomah_o = (state_fips_o == 41 & county_fips_o == 51)
-gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
-
-** Loop over samples 
-foreach x in "o" "d" {
-	
-	** Preserve 
-	preserve 
-	
-	** Keep Multnomah
-	keep if multnomah_`x' == 1 
-	
-	** Export data
-	export excel using "${results}tables/multnomah_flow_counties.xlsx", 	///
-		sheet(irs_`x', replace ) firstrow(variables)
-
-	** Clear and restore
-	clear
-	restore
-
-} // END ORIGIN-DESTINATION LOOP
-
-** Determine set of common in- and out-migration counties for Multnomah
+** ACS county flows tagged for Multnomah: build_acs_county_sample (below)
+** reads them from memory.
 use ${data}working/acs_county_flow.dta, clear
 
 ** Tag Multnomah
 gen multnomah_o = (state_fips_o == 41 & county_fips_o == 51)
 gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
-
-** Loop over samples 
-foreach x in "o" "d" {
-	
-	** Preserve 
-	preserve 
-	
-	** Keep Multnomah
-	keep if multnomah_`x' == 1 
-	
-	** Export data
-	export excel using "${results}tables/multnomah_flow_counties.xlsx", 	///
-		sheet(acs_`x', replace ) firstrow(variables)
-		
-	** Clear and restore 
-	clear 
-	restore
-		
-} // END ORIGIN-DESTINATION LOOP
 
 ** County flags for R/map_code.R's US pool map (build_acs_county_sample in
 ** programs.do). The data in memory is still acs_county_flow with the tags.
@@ -994,7 +950,6 @@ dis "Stringency kernel density plots saved to: ${results}stringency/"
 **
 ** Inputs:  ${data}working/sdid_analysis_data.dta (built by 02_sdid_analysis.do)
 ** Outputs: ${results}tables/table1_combined.tex
-**          ${results}tables/table1_combined.csv  (QA)
 **          ${ol_tab}table1_combined.tex          (if ${overleaf}==1)
 
 dis ""
@@ -1151,43 +1106,6 @@ mat list `M_IRS'
 mat list `M_IRS_389'
 mat list `M_ACS1'
 mat list `M_ACS2'
-
-** ---- CSV export for QA (28 rows = 4 panels x 7 pools) ----
-preserve
-clear
-set obs 28
-gen str10 panel    = ""
-gen str40 pool     = ""
-gen long  N        = .
-gen double out_pre = .
-gen double out_post = .
-gen double in_pre  = .
-gen double in_post = .
-gen double net_pre = .
-gen double net_post = .
-gen double net_chg = .
-
-local p_off = 0
-foreach panel_pair in "IRS M_IRS" "IRS_389 M_IRS_389" "ACS M_ACS1" "ACS_College M_ACS2" {
-    local plabel : word 1 of `panel_pair'
-    local pmat   : word 2 of `panel_pair'
-    forvalues r = 1/7 {
-        local rr = `r' + `p_off'
-        replace panel    = "`plabel'" in `rr'
-        replace pool     = `"`pool_label_`: word `r' of `pool_list'''"' in `rr'
-        replace N        = ``pmat''[`r', 1] in `rr'
-        replace out_pre  = ``pmat''[`r', 2] in `rr'
-        replace out_post = ``pmat''[`r', 3] in `rr'
-        replace in_pre   = ``pmat''[`r', 4] in `rr'
-        replace in_post  = ``pmat''[`r', 5] in `rr'
-        replace net_pre  = ``pmat''[`r', 6] in `rr'
-        replace net_post = ``pmat''[`r', 7] in `rr'
-        replace net_chg  = ``pmat''[`r', 8] in `rr'
-    }
-    local p_off = `p_off' + 7
-}
-export delimited "${results}tables/table1_combined.csv", replace
-restore
 
 ** ---- Write LaTeX table ----
 local _dests `""${results}tables/table1_combined.tex""'

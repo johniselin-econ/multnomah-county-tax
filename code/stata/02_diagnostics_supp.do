@@ -3,8 +3,6 @@
 * Purpose:     Supplemental observation counts for Other-Outcome SDID analysis
 * Called by:   00_multnomah.do (optional, after 02_otherout_sdid has run)
 * Outputs:     ${results}tables/diagnostics_obs_counts_supp.tex
-*              ${results}tables/diagnostics_obs_counts_supp.xlsx
-*              ${results}tables/diagnostics_obs_counts_supp.csv
 *
 * Note:        Companion to 02_diagnostics.do. Kept separate because it runs
 *              after 02_otherout_sdid.do has produced its working datasets.
@@ -139,13 +137,6 @@ list approach n_counties n_orig n_dest n_years n_obs, sep(0) noobs
 capture mkdir "${results}"
 capture mkdir "${results}tables"
 
-** Export to CSV
-export delimited using "${results}tables/diagnostics_obs_counts_supp.csv", replace
-
-** Export to Excel
-export excel using "${results}tables/diagnostics_obs_counts_supp.xlsx", ///
-    firstrow(variables) replace
-
 ** Export to LaTeX (tabular fragment — wrapper in main.tex)
 tempname fh
 file open `fh' using "${results}tables/diagnostics_obs_counts_supp.tex", write replace
@@ -182,8 +173,6 @@ file close `fh'
 project_save_overleaf "${results}tables/diagnostics_obs_counts_supp.tex"
 
 dis _n "Supplemental diagnostics table saved to:"
-dis "  ${results}tables/diagnostics_obs_counts_supp.csv"
-dis "  ${results}tables/diagnostics_obs_counts_supp.xlsx"
 dis "  ${results}tables/diagnostics_obs_counts_supp.tex"
 
 clear

@@ -333,6 +333,15 @@ preserve
 		replace `v' = 0 if year == 2019
 	}
 
+	** Register the post-PFA coefficient range quoted in Section 5.3 (paper_numbers.csv)
+	qui summ out_coef if year >= 2021
+	local es_min = r(min)
+	local es_max = r(max)
+	project_log_number, key(did_es_out_college_post_min) value(`es_min') fmt(%4.1f) unit(pp) ///
+		source(02_did_analysis.do) note("Smallest College x Year coefficient, out-migration event study, 2021-2024 (Figure 8 Panel A)")
+	project_log_number, key(did_es_out_college_post_max) value(`es_max') fmt(%4.1f) unit(pp) ///
+		source(02_did_analysis.do) note("Largest College x Year coefficient, out-migration event study, 2021-2024 (Figure 8 Panel A)")
+
 	** Offset years slightly for visibility
 	gen year_out = year - 0.2
 	gen year_out_state = year - 0.07
@@ -578,6 +587,15 @@ estimates store es_age_out_state
 			}
 		}
 	}
+
+	** Register the 45-64 post-2022 coefficient range quoted in Section 5.3 (paper_numbers.csv)
+	qui summ out_coef_age2 if year >= 2022
+	local es_min = r(min)
+	local es_max = r(max)
+	project_log_number, key(did_es_out_college_age45_64_post22_min) value(`es_min') fmt(%4.1f) unit(pp) ///
+		source(02_did_analysis.do) note("Smallest College x Year coefficient for ages 45-64, out-migration by age, 2022-2024 (Figure 8 Panel B)")
+	project_log_number, key(did_es_out_college_age45_64_post22_max) value(`es_max') fmt(%4.1f) unit(pp) ///
+		source(02_did_analysis.do) note("Largest College x Year coefficient for ages 45-64, out-migration by age, 2022-2024 (Figure 8 Panel B)")
 
 	** Offset years slightly for visibility across age groups
 	gen year_age1 = year - 0.15

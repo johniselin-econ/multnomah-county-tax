@@ -20,12 +20,23 @@ except where noted below. Comparison archive for the September PFR submission:
 - [ ] **Recompute the PPML placebo shares** for Section 5.2 (share of placebo
   out-migration coefficients / t-stats larger than Multnomah's; share of
   in-migration ones smaller). The text still says 5.1% (6.5%) and 15.7% (8.0%)
-  from the pre-zero-flow run; flagged with a `% TODO` in the tex. Source: the
-  placebo output of `02_flow_analysis.do` (`results/flows/`).
+  from the pre-zero-flow run; flagged with a `% TODO` in the tex. Source after
+  the next run: `results/paper_numbers.csv`, keys `ppml_placebo_pct_*` (the
+  unsuffixed keys are the all-counties, excl.-2020 version the text quotes).
 - [ ] **Recompute the revenue spec-curve summary** for Section 6 (PFA loss
   center and IQR, Oregon center; text still says $16M, $10-22M, $79M). Signed
   losses (`462a80a`) un-fold the distribution. Source: the revenue spec grid
   from `02_post_spec.do` / `02_tables_figures.do`. Flagged with a `% TODO`.
+  Source after the next run: `results/paper_numbers.csv`, keys
+  `revenue_{pfa,oregon}_loss_spec_{median,p25,p75,n}`.
+- [ ] **Run the in-text numbers audit after the rerun** (laptop:
+  `Rscript code/R/audit_paper_numbers.R`; the register is
+  `results/paper_numbers.csv`, written by `project_log_number` calls in seven
+  `02_*.do` scripts) and fix every NOT_FOUND row in the tex. Known stale
+  already: Appendix C.8 baselines ($189M / $2,886M vs Table 3's $192.0M /
+  $2,910.2M); intro says county revenue loss "5 and 9 percent" vs abstract
+  "5 and 10"; "389 ACS-identified counties" (balanced panel) vs Table C1
+  step 6 = 415 (any year) share one label; keys `acs_n_counties_*` separate them.
 - [ ] **Re-sync the Overleaf folder** from `results/overleaf_export/` after the
   2026-10-26 table-note fixes (`31f1b6e`, `3eebbff`) were regenerated on the
   cluster: `tbl_elasticities_shs.tex` and `tbl_revenue_decomposition.tex` were

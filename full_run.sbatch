@@ -100,5 +100,6 @@ fi
 # ---- Audit: every paper artifact exists (and is in the Overleaf mirror) -----
 echo "=== Audit  $(date)"
 Rscript code/R/audit_paper_artifacts.R
+Rscript code/R/audit_paper_numbers.R
 
 echo "=== SUCCESS  $(date)   elapsed $(( ($(date +%s) - start_epoch) / 60 )) min"

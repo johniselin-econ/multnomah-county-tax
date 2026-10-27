@@ -479,6 +479,18 @@ if _rc == 0 {
 	label var dln_college_shs "Delta-ln(1-tau_total), headline college denominator"
 	order outcome b se semi_elast semi_elast_se dln_college_shs n
 	save "${results}did/did_elasticities.dta", replace
+
+	** Register the DiD-implied semi-elasticities quoted in Section 5.3
+	** (paper_numbers.csv); outcome names map to the four DiD regressions.
+	local did_keys "did_out:out_county did_out_state:out_state did_in_west:in_west did_in_48:in_48"
+	foreach pair of local did_keys {
+		local est  = substr("`pair'", 1, strpos("`pair'", ":") - 1)
+		local kname = substr("`pair'", strpos("`pair'", ":") + 1, .)
+		qui summ semi_elast if outcome == "`est'"
+		local se_val = r(mean)
+		project_log_number, key(did_semi_elast_`kname') value(`se_val') fmt(%5.2f) unit(elasticity) ///
+			source(02_post_spec.do) note("DiD-implied semi-elasticity from the College x Post coefficient (`est'), headline PFA+SHS college denominator")
+	}
 	dis ""
 	dis "--- DiD-implied semi-elasticities (headline PFA+SHS, college denominator) ---"
 	list outcome b se semi_elast semi_elast_se, noobs sep(0) abbreviate(20)
