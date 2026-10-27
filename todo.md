@@ -37,6 +37,20 @@ except where noted below. Comparison archive for the September PFR submission:
   $2,910.2M); intro says county revenue loss "5 and 9 percent" vs abstract
   "5 and 10"; "389 ACS-identified counties" (balanced panel) vs Table C1
   step 6 = 415 (any year) share one label; keys `acs_n_counties_*` separate them.
+- [ ] **Register / prose fixes: on hold until the full run is in** (Slurm job
+  30912814, queued 2026-10-26, still pending 2026-10-27). No more register or
+  prose tweaks until its numbers land; then decide on the new numbers:
+  - "About double" (§5.1, key `sdid_agi_out_in_mean_tau_ratio`: mean |tau|
+    out / in across the AGI SDID spec curve). On the 2026-10-26 results no
+    reasonable definition gives ~2: in-state data types 3.82 (median 3.68),
+    preferred in-state specs 2.72, all data types 3.04, out-of-state data
+    types 2.30. Either rewrite the prose ("nearly four times", and set
+    `fmt(%3.1f)`) or point the key at the out-of-state specs if that is what
+    the sentence means.
+  - DiD in-migration semi-elasticities (§5.3, keys
+    `did_semi_elast_in_{west,48}`, ~0.002 / ~0.001) now log at three decimals
+    in `02_post_spec.do` (2026-10-27) instead of a meaningless `0.00`. Confirm
+    the tex writes them that way, or drop the keys if it says "essentially zero".
 - [ ] **Re-sync the Overleaf folder** from `results/overleaf_export/` after the
   2026-10-26 table-note fixes (`31f1b6e`, `3eebbff`) were regenerated on the
   cluster: `tbl_elasticities_shs.tex` and `tbl_revenue_decomposition.tex` were

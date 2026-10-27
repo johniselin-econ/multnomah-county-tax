@@ -482,13 +482,17 @@ if _rc == 0 {
 
 	** Register the DiD-implied semi-elasticities quoted in Section 5.3
 	** (paper_numbers.csv); outcome names map to the four DiD regressions.
-	local did_keys "did_out:out_county did_out_state:out_state did_in_west:in_west did_in_48:in_48"
-	foreach pair of local did_keys {
-		local est  = substr("`pair'", 1, strpos("`pair'", ":") - 1)
-		local kname = substr("`pair'", strpos("`pair'", ":") + 1, .)
+	** Each entry is outcome:key:fmt. The in-migration values are ~0.001-0.002,
+	** so they take three decimals (two would print an uninformative 0.00).
+	local did_keys "did_out:out_county:%5.2f did_out_state:out_state:%5.2f did_in_west:in_west:%6.3f did_in_48:in_48:%6.3f"
+	foreach entry of local did_keys {
+		local parts = subinstr("`entry'", ":", " ", .)
+		local est   : word 1 of `parts'
+		local kname : word 2 of `parts'
+		local kfmt  : word 3 of `parts'
 		qui summ semi_elast if outcome == "`est'"
 		local se_val = r(mean)
-		project_log_number, key(did_semi_elast_`kname') value(`se_val') fmt(%5.2f) unit(elasticity) ///
+		project_log_number, key(did_semi_elast_`kname') value(`se_val') fmt(`kfmt') unit(elasticity) ///
 			source(02_post_spec.do) note("DiD-implied semi-elasticity from the College x Post coefficient (`est'), headline PFA+SHS college denominator")
 	}
 	dis ""
