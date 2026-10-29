@@ -8,7 +8,12 @@ October rerun follow-ups (merged in from `aba1ca7`).
 Context for the paper items: the `October-revised` full run finished on the
 cluster 2026-10-26 and its `results/overleaf_export/` was copied to the Overleaf
 Dropbox folder the same day. The manuscript text was updated to the new numbers
-except where noted below. Comparison archive for the September PFR submission:
+except where noted below. A second full run (Slurm job 30912814, 500-rep
+bootstrap) finished 2026-10-29 00:14; its `results/overleaf_export/` and
+`results/paper_numbers.csv` are now tracked in git (`git pull` on the laptop),
+and the numbers below come from that run. Its "TAXSIM fell back" warning was a
+false positive (the check matched the echoed source line; fixed in
+`full_run.sbatch`) — TAXSIM ran normally. Comparison archive for the September PFR submission:
 `Documents/Multnomah (2026) - PFR archive`.
 
 ## Paper (blocking for submission)
@@ -20,15 +25,16 @@ except where noted below. Comparison archive for the September PFR submission:
 - [ ] **Recompute the PPML placebo shares** for Section 5.2 (share of placebo
   out-migration coefficients / t-stats larger than Multnomah's; share of
   in-migration ones smaller). The text still says 5.1% (6.5%) and 15.7% (8.0%)
-  from the pre-zero-flow run; flagged with a `% TODO` in the tex. Source after
-  the next run: `results/paper_numbers.csv`, keys `ppml_placebo_pct_*` (the
-  unsuffixed keys are the all-counties, excl.-2020 version the text quotes).
+  from the pre-zero-flow run; flagged with a `% TODO` in the tex. The 2026-10-29
+  run (unsuffixed `ppml_placebo_pct_*` keys: all counties, excl. 2020): out-
+  migration coefficients 6.5%, t-stats 4.8%; in-migration coefficients 16.6%,
+  t-stats 3.3%. Check which of coefficient / t-stat the text's "X (Y)" means.
 - [ ] **Recompute the revenue spec-curve summary** for Section 6 (PFA loss
   center and IQR, Oregon center; text still says $16M, $10-22M, $79M). Signed
   losses (`462a80a`) un-fold the distribution. Source: the revenue spec grid
   from `02_post_spec.do` / `02_tables_figures.do`. Flagged with a `% TODO`.
-  Source after the next run: `results/paper_numbers.csv`, keys
-  `revenue_{pfa,oregon}_loss_spec_{median,p25,p75,n}`.
+  The 2026-10-29 run (keys `revenue_{pfa,oregon}_loss_spec_*`, 144 specs each):
+  PFA median $10.6M, IQR $9.3-13.4M; Oregon median $58.6M, IQR $49.5-66.8M.
 - [ ] **Run the in-text numbers audit after the rerun** (laptop:
   `Rscript code/R/audit_paper_numbers.R`; the register is
   `results/paper_numbers.csv`, written by `project_log_number` calls in seven
@@ -37,23 +43,23 @@ except where noted below. Comparison archive for the September PFR submission:
   $2,910.2M); intro says county revenue loss "5 and 9 percent" vs abstract
   "5 and 10"; "389 ACS-identified counties" (balanced panel) vs Table C1
   step 6 = 415 (any year) share one label; keys `acs_n_counties_*` separate them.
-- [ ] **Register / prose fixes: on hold until the full run is in** (Slurm job
-  30912814, queued 2026-10-26, still pending 2026-10-27). No more register or
-  prose tweaks until its numbers land; then decide on the new numbers:
+- [ ] **Register / prose fixes on the 2026-10-29 numbers** (the full run they
+  were waiting on is in):
   - "About double" (§5.1, key `sdid_agi_out_in_mean_tau_ratio`: mean |tau|
-    out / in across the AGI SDID spec curve). On the 2026-10-26 results no
+    out / in across the AGI SDID spec curve). The 2026-10-29 run logs 3.82.
+    On the 2026-10-26 results no
     reasonable definition gives ~2: in-state data types 3.82 (median 3.68),
     preferred in-state specs 2.72, all data types 3.04, out-of-state data
     types 2.30. Either rewrite the prose ("nearly four times", and set
     `fmt(%3.1f)`) or point the key at the out-of-state specs if that is what
     the sentence means.
   - DiD in-migration semi-elasticities (§5.3, keys
-    `did_semi_elast_in_{west,48}`, ~0.002 / ~0.001) now log at three decimals
-    in `02_post_spec.do` (2026-10-27) instead of a meaningless `0.00`. Confirm
+    `did_semi_elast_in_{west,48}`) now log at three decimals in
+    `02_post_spec.do`; the 2026-10-29 run gives 0.002 / 0.001. Confirm
     the tex writes them that way, or drop the keys if it says "essentially zero".
-- [ ] **Re-sync the Overleaf folder** from `results/overleaf_export/` after the
-  2026-10-26 table-note fixes (`31f1b6e`, `3eebbff`) were regenerated on the
-  cluster: `tbl_elasticities_shs.tex` and `tbl_revenue_decomposition.tex` were
+- [ ] **Re-sync the Overleaf folder** from `results/overleaf_export/` (now
+  tracked: `git pull`, then rsync per `RUNBOOK.md`). The 2026-10-29 run carries
+  the 2026-10-26 table-note fixes (`31f1b6e`, `3eebbff`): `tbl_elasticities_shs.tex` and `tbl_revenue_decomposition.tex` were
   hand-patched in Overleaf and the mirror now overwrites them. Prefer
   `PAPER_ONLY=1` so only the paper's 98 artifacts land there.
 - [ ] **Run the audit against the `.tex`** on the laptop
@@ -116,9 +122,10 @@ except where noted below. Comparison archive for the September PFR submission:
 
 ## Notes — laptop / server gotchas (recorded 2026-10-26)
 
-- The laptop cannot ssh/scp to any YCRC host (no registered key); move
-  artifacts via a zip download from Open OnDemand (what worked 2026-10-26) or
-  a GitHub branch.
+- The laptop cannot ssh/scp to any YCRC host (no registered key); paper
+  artifacts now travel via git (tracked `results/overleaf_export/` +
+  `results/paper_numbers.csv`). For anything else, a zip download from Open
+  OnDemand (what worked 2026-10-26).
 - Git Bash rewrites Stata's `/e` flag into the path `E:/`; launch batch Stata
   from PowerShell (`Start-Process StataMP-64.exe -ArgumentList '/e','do','file.do' -Wait`).
 - Stata string escaping, verified by batch test: a literal `\$X\$` in a

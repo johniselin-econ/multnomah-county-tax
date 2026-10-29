@@ -79,7 +79,7 @@ for f in results/run_manifest_latest.csv results/sdid/sdid_results.dta \
     if [ ! -f "$f" ]; then echo "ERROR: expected artifact missing: $f"; exit 1; fi
     if [ "$(stat -c %Y "$f")" -lt "$start_epoch" ]; then echo "ERROR: artifact not refreshed by this run: $f"; exit 1; fi
 done
-if grep -q 'FALLBACK: using taxsim_fallback_calc' "$stata_log"; then
+if grep -q '^FALLBACK: using taxsim_fallback_calc' "$stata_log"; then
     echo "WARNING: TAXSIM fell back to taxsim_fallback_calc (taxsim_fallback_used=1); avg_total_rate* are approximations"
 fi
 if ls code/stata/logs/sdid_failures_*.csv >/dev/null 2>&1; then
