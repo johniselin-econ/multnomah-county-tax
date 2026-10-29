@@ -3,7 +3,10 @@
 #
 # Cross-check the paper-artifact registry against three sources:
 #   1. resources/paper_manifest.csv     (what the paper SHOULD include)
-#   2. The compiled .tex                 (what the paper ACTUALLY cites)
+#   2. The paper and slide-deck .tex     (what they ACTUALLY cite; rows with
+#                                         location = slides are checked
+#                                         against the deck, the rest against
+#                                         the paper)
 #   3. results/                          (what the pipeline produced)
 #
 # Reports three statuses per artifact:
@@ -35,10 +38,10 @@ repo_root <- if (!is.null(script_dir)) normalizePath(file.path(script_dir, "..",
 manifest_path <- file.path(repo_root, "resources", "paper_manifest.csv")
 results_dir   <- file.path(repo_root, "results")
 
-# Overleaf .tex lives outside the repo: OVERLEAF_TEX wins; otherwise it is
-# <Overleaf folder>/Conway_Iselin_Rork_2026.tex, with the folder taken from
-# the pipeline's own resolver (code/R/utils.R: OVERLEAF_PATH, user_settings.R,
-# user_settings.do), so the two cannot disagree.
+# Overleaf .tex files live outside the repo: OVERLEAF_TEX / OVERLEAF_SLIDES_TEX
+# win; otherwise <Overleaf folder>/Conway_Iselin_Rork_2026{,_slides}.tex, with
+# the folder taken from the pipeline's own resolver (code/R/utils.R:
+# audit_tex_paths, resolve_oth_path), so the two cannot disagree.
 #
 # Without a reachable .tex (the cluster case, where oth_path is the
 # results/overleaf_export/ staging folder) the audit runs in MANIFEST-ONLY
@@ -47,14 +50,12 @@ results_dir   <- file.path(repo_root, "results")
 # be trustworthy. AUDIT_REQUIRE_TEX=1 makes a missing .tex a hard stop.
 source(file.path(repo_root, "code", "R", "utils.R"))
 oth_path    <- resolve_oth_path(load_user_settings(repo_root), repo_root)
-tex_default <- if (nzchar(oth_path)) paste0(oth_path, "Conway_Iselin_Rork_2026.tex") else ""
-tex_path    <- Sys.getenv("OVERLEAF_TEX", unset = tex_default)
-tex_available <- nzchar(tex_path) && file.exists(tex_path)
+tex_paths   <- audit_tex_paths(oth_path)
+tex_path    <- tex_paths[["paper"]]
+tex_available <- nzchar(tex_path)
 if (!tex_available && identical(Sys.getenv("AUDIT_REQUIRE_TEX", ""), "1")) {
-  stop("Overleaf .tex not found (",
-       if (nzchar(tex_path)) tex_path else "no path configured",
-       "). Set OVERLEAF_TEX, OVERLEAF_PATH, or oth_path in user_settings.do / user_settings.R.",
-       call. = FALSE)
+  stop("Overleaf .tex not found. Set OVERLEAF_TEX, OVERLEAF_PATH, or oth_path ",
+       "in user_settings.do / user_settings.R.", call. = FALSE)
 }
 
 stopifnot(file.exists(manifest_path))
@@ -114,22 +115,33 @@ parse_tex_includes <- function(tex_path) {
   )
 }
 
-tex_refs <- if (tex_available) parse_tex_includes(tex_path) else tibble(tex_basename = character(), tex_line = integer())
-tex_available <- tex_available && nrow(tex_refs) > 0
+# One row per reference, tagged with the document (paper / slides) it is in
+tex_refs <- imap_dfr(tex_paths[nzchar(tex_paths)],
+                     function(p, doc) parse_tex_includes(p) |> mutate(tex_doc = doc))
+if (nrow(tex_refs) == 0) tex_refs <- tibble(tex_basename = character(), tex_line = integer(),
+                                            tex_doc = character())
+tex_available <- tex_available && any(tex_refs$tex_doc == "paper")
+slides_available <- any(tex_refs$tex_doc == "slides")
 
 # ---- 4. Reconcile -----------------------------------------------------------
 # Manifest -> disk, and -> the Overleaf mirror when one is configured
 mirror_files <- if (nzchar(oth_path)) basename(list.files(oth_path, recursive = TRUE)) else character()
+paper_refs  <- tex_refs$tex_basename[tex_refs$tex_doc == "paper"]
+slides_refs <- tex_refs$tex_basename[tex_refs$tex_doc == "slides"]
 manifest_status <- manifest |>
   mutate(
     on_disk   = artifact_basename %in% disk$disk_basename,
     in_mirror = if (nzchar(oth_path)) artifact_basename %in% mirror_files else NA,
-    in_tex    = if (tex_available) artifact_basename %in% tex_refs$tex_basename
-                else NA,
+    # Checked against the document the row belongs to; NA when it is unreachable
+    in_tex    = case_when(
+      location == "slides" & slides_available ~ artifact_basename %in% slides_refs,
+      location != "slides" & tex_available    ~ artifact_basename %in% paper_refs,
+      TRUE                                    ~ NA
+    ),
     status = case_when(
       !on_disk                            ~ "MISSING",
       nzchar(oth_path) & !in_mirror       ~ "MISSING_IN_OVERLEAF",
-      tex_available & !in_tex             ~ "DRIFT_NOT_IN_TEX",
+      !is.na(in_tex) & !in_tex            ~ "DRIFT_NOT_IN_TEX",
       TRUE                                ~ "OK"
     )
   )
@@ -150,7 +162,7 @@ disk_status <- disk |>
 # .tex -> manifest (find references with no registry entry)
 tex_status <- if (tex_available) {
   tex_refs |>
-    distinct(tex_basename, .keep_all = TRUE) |>
+    distinct(tex_doc, tex_basename, .keep_all = TRUE) |>
     mutate(
       in_manifest = tex_basename %in% manifest$artifact_basename,
       on_disk     = tex_basename %in% disk$disk_basename,
@@ -204,7 +216,10 @@ if (tex_available) {
   print(summarize_status(tex_status), row.names = FALSE)
   cat("\n")
 } else {
-  cat("Tex audit SKIPPED (file unreachable: ", tex_path, ")\n\n", sep = "")
+  cat("Tex audit SKIPPED (paper .tex unreachable)\n\n")
+}
+if (tex_available && !slides_available) {
+  cat("Slides .tex unreachable: location = slides rows not checked against the deck.\n\n")
 }
 
 cat("Reports written:\n")

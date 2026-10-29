@@ -78,9 +78,12 @@ setup/plumbing edit.
 **In-text numbers register.** Any number the paper quotes in prose that is not
 read off a table or figure is logged where it is computed with
 `project_log_number, key() value() fmt() unit() source() note()` (programs.do) and
-lands in `results/paper_numbers.csv`. `code/R/audit_paper_numbers.R` checks the
-Overleaf tex for each formatted value. Add a key when you add such a number to
-the text; pick `fmt` to match how the paper writes it.
+lands in `results/paper_numbers.csv` and in the macro file `paper_numbers.tex`
+(mirrored to the Overleaf `tables/` folder). The paper and slides write
+`\pn{<key>}` instead of the number; an unknown key prints **??**.
+`code/R/audit_paper_numbers.R` reports every `\pn{}` use in either .tex against
+the register (USED / UNKNOWN_KEY / UNUSED). Add a key when you add such a number
+to the text; pick `fmt` to match how the paper writes it.
 
 ## Gotchas
 

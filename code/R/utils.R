@@ -6,6 +6,7 @@
 #   read_api_key(api_codes_path, label) — Parse API key from CSV file
 #   load_user_settings(project_root)    — user_settings.R into its own env
 #   resolve_oth_path(settings, root)    — Overleaf folder (R or Stata settings)
+#   audit_tex_paths(oth_path)           — paper + slides .tex the audits read
 #   resolve_paper_only()                — PAPER_ONLY environment switch
 #   load_paper_manifest(project_root)   — basenames in resources/paper_manifest.csv
 #   overleaf_copy(cfg, files)           — the one Overleaf mirror for R outputs
@@ -94,6 +95,24 @@ resolve_oth_path <- function(settings, project_root = getwd()) {
   p <- gsub("\\\\", "/", p)
   if (!grepl("^(/|[A-Za-z]:)", p)) p <- file.path(project_root, p)
   sub("/*$", "/", p)
+}
+
+#' Manuscript and slide-deck .tex files the audits read
+#'
+#' OVERLEAF_TEX / OVERLEAF_SLIDES_TEX win; otherwise both sit at the root of
+#' the Overleaf folder. An entry is "" when its file is not reachable (the
+#' cluster case, where oth_path is the results/overleaf_export/ staging folder).
+#'
+#' @param oth_path Overleaf folder from resolve_oth_path()
+#' @return Named character vector: paper, slides
+audit_tex_paths <- function(oth_path) {
+  default <- function(f) if (nzchar(oth_path)) paste0(oth_path, f) else ""
+  paths <- c(
+    paper  = Sys.getenv("OVERLEAF_TEX",        unset = default("Conway_Iselin_Rork_2026.tex")),
+    slides = Sys.getenv("OVERLEAF_SLIDES_TEX", unset = default("Conway_Iselin_Rork_2026_slides.tex"))
+  )
+  paths[!(nzchar(paths) & file.exists(paths))] <- ""
+  paths
 }
 
 #' PAPER_ONLY switch: mirror only the paper's registered artifacts

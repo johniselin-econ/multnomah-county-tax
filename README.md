@@ -224,8 +224,9 @@ A full first run downloads ~5 GB of raw data (13 years of ACS microdata plus IRS
 4. Run `00_multnomah.do` (data cleaning + all analysis)
 5. Run `Rscript 00_main.R post` (maps + diagrams)
 6. Check `results/paper_numbers.csv` (every number the paper quotes in prose
-   rather than in a table or figure; `Rscript code/R/audit_paper_numbers.R`
-   checks the manuscript against it)
+   rather than in a table or figure). The manuscript and slides print these
+   through `\pn{<key>}` macros from the generated `paper_numbers.tex`;
+   `Rscript code/R/audit_paper_numbers.R` checks every use against the register
 
 **Optional / non-blocking:**
 

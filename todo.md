@@ -35,10 +35,17 @@ false positive (the check matched the echoed source line; fixed in
   from `02_post_spec.do` / `02_tables_figures.do`. Flagged with a `% TODO`.
   The 2026-10-29 run (keys `revenue_{pfa,oregon}_loss_spec_*`, 144 specs each):
   PFA median $10.6M, IQR $9.3-13.4M; Oregon median $58.6M, IQR $49.5-66.8M.
-- [ ] **Run the in-text numbers audit after the rerun** (laptop:
-  `Rscript code/R/audit_paper_numbers.R`; the register is
-  `results/paper_numbers.csv`, written by `project_log_number` calls in seven
-  `02_*.do` scripts) and fix every NOT_FOUND row in the tex. Known stale
+- [ ] **Convert the prose to `\pn{}` macros** (decided 2026-10-29). The
+  pipeline now writes `tables/paper_numbers.tex` (one macro per register key).
+  In both the paper and the slides: `\input{tables/paper_numbers}` in the
+  preamble, then replace each registered number with `\pn{<key>}` (wrap in
+  `$...$` where a negative needs a math minus). Then run
+  `OVERLEAF_TEX=... OVERLEAF_SLIDES_TEX=... Rscript code/R/audit_paper_numbers.R`:
+  fix every UNKNOWN_KEY; for each UNUSED key, convert the literal it lists or
+  drop the key (e.g. the 33 `sdid_meta_*` keys if they are table-only). Watch
+  `fmt` mismatches, e.g. `revenue_baseline_state_musd` logs "2911" but the text
+  writes $2,910.2M. Upload both .tex files to the cluster (`drafts/`) so the
+  manifest / register fixes can be checked there. Known stale
   already: Appendix C.8 baselines ($189M / $2,886M vs Table 3's $192.0M /
   $2,910.2M); intro says county revenue loss "5 and 9 percent" vs abstract
   "5 and 10"; "389 ACS-identified counties" (balanced panel) vs Table C1

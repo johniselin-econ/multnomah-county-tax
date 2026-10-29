@@ -7,14 +7,19 @@
 #                               (written by project_log_number in Stata)
 #   <Overleaf>/Conway_Iselin_Rork_2026.tex   the manuscript
 #
-# For every registered key, searches the .tex for the `formatted` string (tex
-# escapes such as \% and \$ stripped first; a thousands-separated variant is
-# also tried) and reports:
-#   - FOUND          the string occurs at least once (line numbers listed)
-#   - NOT_FOUND      it does not: the prose is stale, or rounded differently
+# The paper and the slides quote these numbers through the macro file the
+# pipeline writes next to the register (results/paper_numbers.tex, mirrored to
+# the Overleaf tables/ folder): \pn{<key>} prints the formatted value. For
+# every \pn{} use in either .tex, and every registered key, reports:
+#   - USED           registered and used (doc / line numbers listed)
+#   - UNKNOWN_KEY    used in a .tex but not registered: prints ?? in the PDF
+#   - UNUSED         registered but quoted nowhere through \pn{}. If the
+#                    formatted string still appears as a literal number, the
+#                    `literal_lines` column lists where (a candidate to convert;
+#                    a chance match is possible); otherwise the key is either
+#                    diagnostic-only or should be dropped
 #   - MISSING_VALUE  the pipeline logged a missing value
-# Informational: exits 0 either way. A chance match elsewhere in the text is
-# possible, so read the matched lines, not just the status.
+# Informational: exits 0 either way.
 #
 # Writes results/_runs/paper_numbers_audit_<date>.csv and prints a summary.
 # Run standalone:  Rscript code/R/audit_paper_numbers.R
@@ -40,9 +45,8 @@ report_dir    <- file.path(repo_root, "results", "_runs")
 
 source(file.path(repo_root, "code", "R", "utils.R"))
 oth_path    <- resolve_oth_path(load_user_settings(repo_root), repo_root)
-tex_default <- if (nzchar(oth_path)) paste0(oth_path, "Conway_Iselin_Rork_2026.tex") else ""
-tex_path    <- Sys.getenv("OVERLEAF_TEX", unset = tex_default)
-tex_available <- nzchar(tex_path) && file.exists(tex_path)
+tex_paths <- audit_tex_paths(oth_path)
+tex_paths <- tex_paths[nzchar(tex_paths)]
 
 if (!file.exists(register_path)) {
   cat("paper_numbers audit: no register at", register_path,
@@ -58,61 +62,77 @@ stopifnot(all(c("key", "value", "formatted", "source_script") %in% names(registe
 cat("paper_numbers audit:", nrow(register), "registered numbers from",
     n_distinct(register$source_script), "scripts\n")
 
-if (!tex_available) {
-  cat("Tex not reachable (", if (nzchar(tex_path)) tex_path else "no path configured",
-      "): printing the register only.\n", sep = "")
+if (length(tex_paths) == 0) {
+  cat("No .tex reachable (set OVERLEAF_TEX / OVERLEAF_SLIDES_TEX): printing the register only.\n")
   print(register |> select(key, formatted, unit, source_script), n = Inf)
   quit(status = 0)
 }
 
-# ---- Normalise the tex so prose spellings match the register ----------------
-# Trailing % comments dropped first (a stale value parked in a `% TODO` tail
-# must not count as present), then \% -> %, \$ -> $, \, (thin space)
-# removed, ~ -> space; --- and -- kept.
-tex_lines <- readLines(tex_path, warn = FALSE, encoding = "UTF-8") |>
-  str_replace_all("(?<!\\\\)%.*$", "") |>
-  str_replace_all("\\\\%", "%") |>
-  str_replace_all("\\\\\\$", "$") |>
-  str_replace_all("\\\\,", "") |>
-  str_replace_all("~", " ")
-is_comment <- str_detect(tex_lines, "^\\s*%")
+# Trailing % comments dropped first (a value parked in a `% TODO` tail must
+# not count), then \% -> %, \$ -> $, \, (thin space) removed, ~ -> space.
+read_tex <- function(path) {
+  readLines(path, warn = FALSE, encoding = "UTF-8") |>
+    str_replace_all("(?<!\\\\)%.*$", "") |>
+    str_replace_all("\\\\%", "%") |>
+    str_replace_all("\\\\\\$", "$") |>
+    str_replace_all("\\\\,", "") |>
+    str_replace_all("~", " ")
+}
+tex <- imap(tex_paths, function(p, doc) read_tex(p))
 
-# Spellings to try for one registered number: the formatted string as logged,
-# and the same with thousands separators when the magnitude calls for it.
+# "<doc>:<line>" for every line matching `pattern`
+where <- function(pattern) {
+  imap(tex, function(lines, doc) {
+    hits <- which(str_detect(lines, pattern))
+    if (length(hits)) paste0(doc, ":", hits) else character()
+  }) |> unlist(use.names = FALSE) |> paste(collapse = ";")
+}
+
+# ---- Macro uses -------------------------------------------------------------
+uses <- imap_dfr(tex, function(lines, doc) {
+  m <- str_match_all(lines, "\\\\pn\\{([^}]+)\\}")
+  imap_dfr(m, function(x, ln) if (nrow(x)) tibble(key = x[, 2], doc = doc, line = ln))
+})
+if (nrow(uses) == 0) uses <- tibble(key = character(), doc = character(), line = integer())
+use_lines <- uses |>
+  group_by(key) |>
+  summarise(n_uses = n(), use_lines = paste0(doc, ":", line, collapse = ";"), .groups = "drop")
+
+# ---- Literal (hand-typed) occurrences of an unused key's value ---------------
+# The formatted string, and the same with thousands separators when the
+# magnitude calls for it, as a number token not glued to another digit or a
+# decimal point that continues into a digit (so 5.1 misses 5.1.3 and 15.1).
 spellings <- function(formatted, value) {
   out <- formatted
   if (!is.na(value) && abs(value) >= 1000) {
-    digits <- str_count(str_replace(formatted, "^.*\\.", ""), "[0-9]")
-    if (!str_detect(formatted, "\\.")) digits <- 0
+    digits <- if (str_detect(formatted, "\\.")) str_count(str_replace(formatted, "^.*\\.", ""), "[0-9]") else 0
     out <- c(out, formatC(value, format = "f", big.mark = ",", digits = digits))
   }
   unique(out)
 }
-
-# A number token: not glued to another digit, or a decimal point that continues
-# into a digit, on either side (so 5.1 does not match inside 5.1.3 or 15.1).
 token_regex <- function(s) {
-  regex(paste0("(?<![0-9.])", str_replace_all(s, "([.+*?^$()\\[\\]{}|\\\\-])", "\\\\\\1"), "(?!\\.?[0-9])"))
+  paste0("(?<![0-9.])", str_replace_all(s, "([.+*?^$()\\[\\]{}|\\\\-])", "\\\\\\1"), "(?!\\.?[0-9])")
+}
+literal_lines <- function(formatted, value) {
+  if (is.na(value) || formatted %in% c("", ".")) return("")
+  where(paste(map_chr(spellings(formatted, value), token_regex), collapse = "|"))
 }
 
-audit_one <- function(key, value, formatted) {
-  if (is.na(value) || formatted %in% c("", ".")) {
-    return(tibble(status = "MISSING_VALUE", n_matches = 0L, lines = ""))
-  }
-  hits <- map(spellings(formatted, value), function(s) {
-    which(str_detect(tex_lines, token_regex(s)) & !is_comment)
-  }) |> unlist() |> unique() |> sort()
-  tibble(
-    status    = if (length(hits) > 0) "FOUND" else "NOT_FOUND",
-    n_matches = length(hits),
-    lines     = paste(hits, collapse = ";")
-  )
-}
-
-audit <- register |>
-  mutate(res = pmap(list(key, value, formatted), audit_one)) |>
-  tidyr::unnest(res) |>
-  select(key, value, formatted, unit, source_script, status, n_matches, lines, note)
+audit <- full_join(register, use_lines, by = "key") |>
+  mutate(
+    n_uses = coalesce(n_uses, 0L),
+    status = case_when(
+      is.na(source_script)                        ~ "UNKNOWN_KEY",
+      is.na(value) | formatted %in% c("", ".")    ~ "MISSING_VALUE",
+      n_uses > 0                                  ~ "USED",
+      TRUE                                        ~ "UNUSED"
+    ),
+    literal_lines = if_else(status == "UNUSED",
+                            map2_chr(formatted, value, literal_lines), "")
+  ) |>
+  select(key, value, formatted, unit, source_script, status, n_uses, use_lines,
+         literal_lines, note) |>
+  arrange(factor(status, c("UNKNOWN_KEY", "MISSING_VALUE", "UNUSED", "USED")), key)
 
 # ---- Report -----------------------------------------------------------------
 dir.create(report_dir, showWarnings = FALSE, recursive = TRUE)
@@ -123,10 +143,11 @@ write_csv(audit, report_out)
 cat("\nStatus counts:\n")
 print(audit |> count(status), n = Inf)
 
-not_found <- audit |> filter(status != "FOUND")
-if (nrow(not_found) > 0) {
-  cat("\nNot found in the tex (stale prose, different rounding, or missing value):\n")
-  print(not_found |> select(key, formatted, unit, source_script, status), n = Inf)
+cat("Read:", paste(names(tex_paths), tex_paths, sep = " = ", collapse = "; "), "\n")
+flagged <- audit |> filter(status != "USED")
+if (nrow(flagged) > 0) {
+  cat("\nNot used through \\pn{} (UNKNOWN_KEY prints ?? in the PDF):\n")
+  print(flagged |> select(key, formatted, status, use_lines, literal_lines), n = Inf)
 }
 
 cat("\nReport:", report_out, "\n")
