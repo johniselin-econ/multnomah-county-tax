@@ -232,14 +232,17 @@ program define funnel_post
 end
 
 ** ACS reference sets (built once for the funnel) --------------------------
+** Both sets drop county_fips == 0: the ACS codes residents of unidentified
+** counties as a "rest of state" bucket (one per state), which is not a county.
 ** acs_identified: counties appearing in the ACS 25+ panel (any year).
 use "${data}working/acs_county_gross_25plus", clear
+drop if county_fips == 0
 keep fips
 duplicates drop
 gen byte acs_identified = 1
 qui count
 project_log_number, key(acs_n_counties_identified_any_year) value(`r(N)') fmt(%9.0f) unit(counties) ///
-	source(02_diagnostics.do) note("Counties appearing in the ACS 25+ county panel in any year (Table C1 step 6)")
+	source(02_diagnostics.do) note("Counties the ACS public-use microdata identify in any year 2012-2024 (both PUMA vintages; before state drops)")
 tempfile acs_id
 save `acs_id'
 
@@ -256,6 +259,7 @@ save `acs_id'
 ** with the raw-ACS balance (build_acs_balanced_set, used for the flow sample).
 ** If BEA covers every ACS county-year this is identical to the raw-ACS balance.
 use "${data}working/acs_county_gross_25plus", clear
+drop if county_fips == 0
 keep year fips
 keep if inrange(year, 2016, 2024)
 merge 1:1 year fips using "${data}working/bea_economics", keep(match) gen(_mbea)
@@ -268,7 +272,7 @@ gen byte acs_balanced = 1
 qui count
 local n_acs_balanced = r(N)
 project_log_number, key(acs_n_counties_balanced_panel) value(`n_acs_balanced') fmt(%9.0f) unit(counties) ///
-	source(02_diagnostics.do) note("ACS-identified counties present every year 2016-2024 (the 389 the text quotes; Appendix C.1)")
+	source(02_diagnostics.do) note("ACS-identified counties present every year 2016-2024, before state drops (balanced ACS panel; Appendix C.1)")
 project_log_number, key(acs_n_counties_balanced_excl_multnomah) value(`n_acs_balanced' - 1) fmt(%9.0f) unit(counties) ///
 	source(02_diagnostics.do) note("Balanced ACS counties other than Multnomah (in-migration panel destinations; Appendix C.7)")
 tempfile acs_bal

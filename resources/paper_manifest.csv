@@ -113,4 +113,5 @@ map_directional_n1_out_orwa.png,figure,slides:flow_maps_n1,slides,slides,code/R/
 map_directional_n1_in_orwa.png,figure,slides:flow_maps_n1,slides,slides,code/R/map_code.R
 fig_es_agepost_out_migration.png,figure,slides:did_out_age_only,slides,slides,02_did_analysis.do
 fig_es_agepost_out_state_migration.png,figure,slides:did_out_age_only,slides,slides,02_did_analysis.do
+tbl_revenue_decomposition_slides.tex,table,slides:revenue_table,slides,slides,02_tables_figures.do
 paper_numbers.tex,numbers,pn_macros,,main,programs.do

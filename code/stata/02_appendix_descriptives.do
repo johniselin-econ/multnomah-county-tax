@@ -144,6 +144,20 @@ foreach pool of local pool_list {
 }
 restore
 
+** County counts for the table note: the balanced ACS panel before state drops,
+** and the ACS SDID estimation sample after them (Multnomah + all-counties donors)
+preserve
+tempfile acs_balanced_note
+build_acs_balanced_set, saving(`acs_balanced_note')
+local n_acs_balanced = _N
+restore
+local n_acs_donors = `M_SDID_ACS1'[2, 1]
+local n_acs_sdid   = `M_SDID_ACS1'[1, 1] + `n_acs_donors'
+project_log_number, key(acs_n_counties_sdid_sample) value(`n_acs_sdid') fmt(%9.0f) unit(counties) ///
+	source(02_appendix_descriptives.do) note("ACS SDID estimation sample: balanced ACS counties surviving the state drops, incl. Multnomah (Table A1 Panels B-D; Table C1 step 7)")
+project_log_number, key(acs_n_counties_sdid_donors) value(`n_acs_donors') fmt(%9.0f) unit(counties) ///
+	source(02_appendix_descriptives.do) note("ACS SDID all-counties donor pool (estimation sample excl. Multnomah; Table A1 Panels B-D)")
+
 ** ---- IRS panels (all-counties + ACS-restricted): time-pooled means
 **      2018-2022 (excluding 2020). Fills M_SDID_IRS and M_SDID_IRS_389
 **      in one pass; same IRS data, different county filter.
@@ -261,7 +275,7 @@ file write `fh' `"\bottomrule"' _n
 file write `fh' `"\end{tabular}"' _n
 file write `fh' `"\begin{tablenotes}[flushleft]"' _n
 file write `fh' `"\setstretch{1}\footnotesize"' _n
-file write `fh' `"\item \textit{Notes:} Time-pooled means of AGI migration rates (\% of county base population) for the IRS and ACS SDID samples, averaged over in-sample years (2020 excluded). County-level migration is any county-to-county move; out-of-state restricts to interstate moves. Donor-pool means exclude Multnomah, reported separately. Panels~B--D restrict to the balanced ACS panel (IRS-389, ACS-25+, and ACS-college estimation samples): of the 389 ACS-identified counties, 337 (336 donors $+$ Multnomah) survive the balanced-panel and state-drop restrictions. See Appendix~\ref{sec:appendixb} for donor-pool construction (including the narrow similar-cities pool) and Appendix~\ref{sec:appb_college} for the college subsample."' _n
+file write `fh' `"\item \textit{Notes:} Time-pooled means of AGI migration rates (\% of county base population) for the IRS and ACS SDID samples, averaged over in-sample years (2020 excluded). County-level migration is any county-to-county move; out-of-state restricts to interstate moves. Donor-pool means exclude Multnomah, reported separately. Panels~B--D restrict to the balanced ACS panel (IRS-389, ACS-25+, and ACS-college estimation samples): of the `n_acs_balanced' counties the ACS public-use microdata identify in every year 2016--2024, `n_acs_sdid' (`n_acs_donors' donors $+$ Multnomah) survive the state-drop restrictions. See Appendix~\ref{sec:appendixb} for donor-pool construction (including the narrow similar-cities pool) and Appendix~\ref{sec:appb_college} for the college subsample."' _n
 file write `fh' `"\item Source: IRS SOI county-to-county migration flows (Panels~A and~B); ACS microdata, all 25+ (Panel~C) and college-educated (Panel~D) subsamples."' _n
 file write `fh' `"\end{tablenotes}"' _n
 file write `fh' `"\end{threeparttable}"' _n

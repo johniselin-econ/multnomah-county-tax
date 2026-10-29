@@ -151,3 +151,16 @@ overleaf_copy <- function(cfg, files) {
   }
   invisible(basename(files))
 }
+
+#' One value from the in-text numbers register (results/paper_numbers.csv)
+#'
+#' Written by Stata's project_log_number, so Stage 2 must have run. A missing
+#' key is an error, not a fallback.
+read_paper_number <- function(project_root, key) {
+  path <- file.path(project_root, "results", "paper_numbers.csv")
+  if (!file.exists(path)) stop("Paper-numbers register not found: ", path, call. = FALSE)
+  register <- read.csv(path, stringsAsFactors = FALSE)
+  value <- register$value[register$key == key]
+  if (length(value) != 1 || is.na(value)) stop("Register key missing or not unique: ", key, call. = FALSE)
+  value
+}

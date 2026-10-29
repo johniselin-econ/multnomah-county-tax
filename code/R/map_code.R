@@ -350,19 +350,20 @@ save_map(map2_minimal, filepath2_minimal, width = 10, height = 8)
 save_map(map2_full, filepath2_full, width = 10, height = 8)
 
 # ============================================================
-# MAP 2 (TAX) — Border close-up shaded by Table 1 average tax rate
-#   Rate = mean of the $150K and $300K marginal-tax-rate columns in
-#   Table 1 (02_descriptives.do). Two overlapping geographies drive
-#   the mix: county (PFA is Multnomah-wide) and Metro district (SHS
-#   applies only inside the Metro polygon). Every county that
-#   straddles Metro is split along that boundary:
+# MAP 2 (TAX) — Border close-up shaded by average marginal tax rate
+#   Rate = mean of the single-filer marginal rates at $150K and $300K,
+#   logged to the register by 02_revenue_microsim.do (map_tax_rate_*).
+#   Two overlapping geographies drive the mix: county (PFA is
+#   Multnomah-wide) and Metro district (SHS applies only inside the
+#   Metro polygon). Every county that straddles Metro is split along
+#   that boundary (values under the 2022 parameters):
 #
-#     Multnomah  INSIDE Metro (state + Metro + PFA): 13.15
-#     Multnomah  OUTSIDE Metro (state + PFA):        12.15
-#     Wash-OR / Clackamas INSIDE Metro (state+Metro): 10.90
-#     Wash-OR / Clackamas OUTSIDE Metro (state):      9.90
-#     Other OR counties (state only):                 9.90
-#     Washington State counties (no income tax):      0.00
+#     Multnomah  INSIDE Metro (state + Metro + PFA): 13.15  mult_metro
+#     Multnomah  OUTSIDE Metro (state + PFA):        12.15  mult
+#     Wash-OR / Clackamas INSIDE Metro (state+Metro): 10.90  or_metro
+#     Wash-OR / Clackamas OUTSIDE Metro (state):      9.90  or
+#     Other OR counties (state only):                 9.90  or
+#     Washington State counties (no income tax):      0.00  wa
 # ============================================================
 
 filepath2_tax <- file.path(maps_dir, "map2_tax.png")
@@ -388,26 +389,39 @@ split_by_metro <- function(cnty, rate_in, rate_out) {
 # the fill layer below uses the Metro-split version.
 multnomah_outline <- or_cty_reg |> dplyr::filter(GEOID == "41051")
 
+# Rates are logged by 02_revenue_microsim.do from the globals.do tax parameters;
+# Washington has no income tax. Ascending order = legend order.
+tax_rates <- c(
+  wa         = 0,
+  or         = read_paper_number(home_base, "map_tax_rate_or"),
+  or_metro   = read_paper_number(home_base, "map_tax_rate_or_metro"),
+  mult       = read_paper_number(home_base, "map_tax_rate_mult"),
+  mult_metro = read_paper_number(home_base, "map_tax_rate_mult_metro")
+)
+stopifnot(!is.unsorted(tax_rates, strictly = TRUE))
+tax_rate_labels <- sprintf("%.2f%%", tax_rates)
+names(tax_rate_labels) <- names(tax_rates)
+
 multnomah_split <- split_by_metro(
   multnomah_outline,
-  rate_in  = 13.15,  # state + Metro + PFA
-  rate_out = 12.15   # state + PFA (no Metro SHS)
+  rate_in  = tax_rates[["mult_metro"]],  # state + Metro + PFA
+  rate_out = tax_rates[["mult"]]         # state + PFA (no Metro SHS)
 )
 wash_or_split <- split_by_metro(
   or_cty_reg |> dplyr::filter(GEOID == "41067"),
-  rate_in = 10.9, rate_out = 9.9
+  rate_in = tax_rates[["or_metro"]], rate_out = tax_rates[["or"]]
 )
 clack_split <- split_by_metro(
   or_cty_reg |> dplyr::filter(GEOID == "41005"),
-  rate_in = 10.9, rate_out = 9.9
+  rate_in = tax_rates[["or_metro"]], rate_out = tax_rates[["or"]]
 )
 
 other_or_tax <- or_cty_reg |>
   dplyr::filter(!GEOID %in% c("41051", "41067", "41005")) |>
-  dplyr::mutate(avg_tax_rate = 9.9)
+  dplyr::mutate(avg_tax_rate = tax_rates[["or"]])
 
 wa_cty_tax <- wa_cty_reg |>
-  dplyr::mutate(avg_tax_rate = 0)
+  dplyr::mutate(avg_tax_rate = tax_rates[["wa"]])
 
 cty_tax <- dplyr::bind_rows(
   multnomah_split, wash_or_split, clack_split, other_or_tax, wa_cty_tax
@@ -415,7 +429,7 @@ cty_tax <- dplyr::bind_rows(
   dplyr::mutate(
     rate_label = factor(
       sprintf("%.2f%%", avg_tax_rate),
-      levels = c("0.00%", "9.90%", "10.90%", "12.15%", "13.15%")
+      levels = unname(tax_rate_labels)
     )
   )
 
@@ -435,14 +449,12 @@ tax_label_centroids <- dplyr::bind_rows(or_cty_reg, wa_cty_reg) |>
   sf::st_centroid()
 
 # Discrete blue palette: one tint per tax regime.  Using scale_fill_manual
-# ensures the small 9.9 -> 10.9 step is visually distinct, which a
+# ensures the small state -> state + SHS step is visually distinct, which a
 # continuous gradient across 0-13 could not show clearly.
-tax_palette <- c(
-  "0.00%"  = "gray96",
-  "9.90%"  = ppb_tint(PPB_SEA, 0.80),
-  "10.90%" = ppb_tint(PPB_SEA, 0.60),
-  "12.15%" = ppb_tint(PPB_SEA, 0.35),
-  "13.15%" = ppb_tint(PPB_SEA, 0.10)
+tax_palette <- setNames(
+  c("gray96", ppb_tint(PPB_SEA, 0.80), ppb_tint(PPB_SEA, 0.60),
+    ppb_tint(PPB_SEA, 0.35), ppb_tint(PPB_SEA, 0.10)),
+  tax_rate_labels[c("wa", "or", "or_metro", "mult", "mult_metro")]
 )
 
 map2_tax <- ggplot() +

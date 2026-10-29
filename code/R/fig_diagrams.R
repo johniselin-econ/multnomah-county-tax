@@ -24,6 +24,11 @@ dash_col   <- col_dash_line
 arrow_col  <- col_arrow
 fam        <- "sans"
 
+# --- Balanced ACS county count, read from the Stata in-text numbers register ---
+# (counties the ACS public-use microdata identify in every year 2016-2024;
+# logged by 02_diagnostics.do as acs_n_counties_balanced_panel)
+n_acs_balanced <- read_paper_number(".", "acs_n_counties_balanced_panel")
+
 # --- Shared helpers ---
 bx <- function(cx, cy, w, h, fill, border, lwd = 1.5, r = unit(3, "mm")) {
   grid.roundrect(
@@ -305,7 +310,7 @@ draw_data_comparison <- function(out_file, with_title = FALSE) {
      sz = 10.5, col = green_plus, j = "left")
   tx(acs_x, 140,   "\u2212  1% sample: small N, measurement error",
      sz = 10.5, col = red_minus, j = "left")
-  tx(acs_x, 137.5, "\u2212  County suppressed for small counties (389 obs.)",
+  tx(acs_x, 137.5, paste0("\u2212  County suppressed for small counties (", n_acs_balanced, " counties)"),
      sz = 10.5, col = red_minus, j = "left")
   tx(acs_x, 135,   "\u2212  Residence definition may capture temp. moves",
      sz = 10.5, col = red_minus, j = "left")
@@ -381,7 +386,7 @@ draw_data_comparison <- function(out_file, with_title = FALSE) {
      sz = 10.5, col = desc_col, j = "left")
   tx((c2 + c3) / 2, y1 + 1, na_sym, sz = 9, col = PPB_GREY)
   chk_mark((c3 + c4) / 2, y1 + 1, col = green_plus)
-  tx((c3 + c4) / 2, y1 - 1.2, "(389 counties)", sz = 6.5, col = desc_col)
+  tx((c3 + c4) / 2, y1 - 1.2, paste0("(", n_acs_balanced, " counties)"), sz = 6.5, col = desc_col)
   tx((c4 + tr) / 2, y1, "DiD", sz = 8.5, face = "bold", col = irs_blue)
 
   # Row 2: County-pair flows -- IRS only (ACS not used for flows)

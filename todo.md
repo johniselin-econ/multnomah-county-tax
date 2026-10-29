@@ -18,70 +18,78 @@ false positive (the check matched the echoed source line; fixed in
 
 ## Paper (blocking for submission)
 
-- [ ] **Propagate the V4 (500-rep) bootstrap numbers into the paper.** The
-  publication bootstrap finished 2026-10-26 (`results/bootstrap/`, manifest
-  `reps=500`). Table 2 / `tab:elasticities_shs`, Figure 10, the abstract, and
-  §5.3 / §6 prose still carry the V3 (100-rep) numbers.
-- [ ] **Recompute the PPML placebo shares** for Section 5.2 (share of placebo
-  out-migration coefficients / t-stats larger than Multnomah's; share of
-  in-migration ones smaller). The text still says 5.1% (6.5%) and 15.7% (8.0%)
-  from the pre-zero-flow run; flagged with a `% TODO` in the tex. The 2026-10-29
-  run (unsuffixed `ppml_placebo_pct_*` keys: all counties, excl. 2020): out-
-  migration coefficients 6.5%, t-stats 4.8%; in-migration coefficients 16.6%,
-  t-stats 3.3%. Check which of coefficient / t-stat the text's "X (Y)" means.
-- [ ] **Recompute the revenue spec-curve summary** for Section 6 (PFA loss
-  center and IQR, Oregon center; text still says $16M, $10-22M, $79M). Signed
-  losses (`462a80a`) un-fold the distribution. Source: the revenue spec grid
-  from `02_post_spec.do` / `02_tables_figures.do`. Flagged with a `% TODO`.
-  The 2026-10-29 run (keys `revenue_{pfa,oregon}_loss_spec_*`, 144 specs each):
-  PFA median $10.6M, IQR $9.3-13.4M; Oregon median $58.6M, IQR $49.5-66.8M.
-- [ ] **Convert the prose to `\pn{}` macros** (decided 2026-10-29). The
-  pipeline now writes `tables/paper_numbers.tex` (one macro per register key).
-  In both the paper and the slides: `\input{tables/paper_numbers}` in the
-  preamble, then replace each registered number with `\pn{<key>}` (wrap in
-  `$...$` where a negative needs a math minus). Then run
+- [ ] **Prose fixes still open in the draft** (checked 2026-10-29 against
+  `drafts/overleaf_2026-10-29/` and the 2026-10-29 run). Already current there:
+  the PPML placebo shares (§5.2), the revenue spec-curve summary (§6), the DiD
+  in-migration semi-elasticities (§5.3), and the abstract's ranges, which match
+  Table 2 / Table 3 (§5.3 / §6 prose and Figure 10 not re-read line by line).
+  Still stale:
+  - "About double" (§5.1, line 138; key `sdid_agi_out_in_mean_tau_ratio`:
+    mean |tau| out / in across the AGI SDID spec curve) — the run logs 3.82.
+    On the 2026-10-26 results no reasonable definition gives ~2: in-state data
+    types 3.82 (median 3.68), preferred in-state specs 2.72, all data types
+    3.04, out-of-state data types 2.30. Either rewrite the prose ("nearly four
+    times", and set `fmt(%3.1f)`) or point the key at the out-of-state specs if
+    that is what the sentence means.
+  - Intro (line 74) says the county revenue loss is "5 and 9 percent"; Table 3
+    and the abstract give 5 and 10.
+  - §6 (line 173) says the state baseline is "$2,910 million"; the run gives
+    2,910.7 (Table 3), i.e. "2,911".
+  - Appendix C.8 (line 1306) baselines $189M / $2,886M vs Table 3's $191.9M /
+    $2,910.7M.
+  - Slides: headline bullets (lines 121, 656, 685) carry the old revenue
+    numbers ($76.7M where Table 3 now gives $76.6M); fixed by the generated
+    slides table below.
+- [ ] **Convert the prose to `\pn{}` macros** (decided 2026-10-29; not
+  started — neither .tex uses `\pn{}` yet). Do it after the next full run, so
+  the register carries the fixes below. The pipeline writes
+  `tables/paper_numbers.tex` (one macro per register key). In both the paper
+  and the slides: `\input{tables/paper_numbers}` in the preamble, then replace
+  each registered number with `\pn{<key>}` (wrap in `$...$` where a negative
+  needs a math minus). Then run
   `OVERLEAF_TEX=... OVERLEAF_SLIDES_TEX=... Rscript code/R/audit_paper_numbers.R`:
   fix every UNKNOWN_KEY; for each UNUSED key, convert the literal it lists or
-  drop the key (e.g. the 33 `sdid_meta_*` keys if they are table-only). Watch
-  `fmt` mismatches, e.g. `revenue_baseline_state_musd` logs "2911" but the text
-  writes $2,910.2M. Upload both .tex files to the cluster (`drafts/`) so the
-  manifest / register fixes can be checked there. Known stale
-  already: Appendix C.8 baselines ($189M / $2,886M vs Table 3's $192.0M /
-  $2,910.2M); intro says county revenue loss "5 and 9 percent" vs abstract
-  "5 and 10"; "389 ACS-identified counties" (balanced panel) vs Table C1
-  step 6 = 415 (any year) share one label; keys `acs_n_counties_*` separate them.
-- [ ] **Register / prose fixes on the 2026-10-29 numbers** (the full run they
-  were waiting on is in):
-  - "About double" (§5.1, key `sdid_agi_out_in_mean_tau_ratio`: mean |tau|
-    out / in across the AGI SDID spec curve). The 2026-10-29 run logs 3.82.
-    On the 2026-10-26 results no
-    reasonable definition gives ~2: in-state data types 3.82 (median 3.68),
-    preferred in-state specs 2.72, all data types 3.04, out-of-state data
-    types 2.30. Either rewrite the prose ("nearly four times", and set
-    `fmt(%3.1f)`) or point the key at the out-of-state specs if that is what
-    the sentence means.
-  - DiD in-migration semi-elasticities (§5.3, keys
-    `did_semi_elast_in_{west,48}`) now log at three decimals in
-    `02_post_spec.do`; the 2026-10-29 run gives 0.002 / 0.001. Confirm
-    the tex writes them that way, or drop the keys if it says "essentially zero".
-- [ ] **Check the ACS county count** (Appendix variable list: "restricted to
-  the 389 counties identified in the public-use microdata"). The 2026-10-29
-  register has 534 counties in any year (`acs_n_counties_identified_any_year`)
-  and 437 in the balanced panel (`acs_n_counties_balanced_panel`); the
-  2026-10-26 `diagnostics_obs_counts` table still said 389. Find which count
-  the sentence means and why it moved, then write it as `\pn{}`.
-- [ ] **Generate the slides' revenue table.** The deck's revenue-decomposition
-  frame types the `tbl_revenue_decomposition` rows by hand and went stale on the
-  2026-10-29 run (e.g. Oregon baseline 2910.2 vs 2910.7, IRS all-counties loss
-  76.7 vs 76.6). Write a slide-sized variant from `02_tables_figures.do`,
-  register it in `paper_manifest.csv` with `location=slides`, and `\input` it in
-  the deck.
-- [ ] **Rerun-dependent register fixes (2026-10-29, laptop).**
-  `sdid_n_specs_per_outcome` now counts after the out-of-state drop (it logged
-  288 = county + out-of-state geographies; the paper's 144 is right, with no
-  duplicate specs), and `revenue_baseline_state_musd` logs with `%9.0fc`
-  ("2,911"). Until the next run the paper prints "2911" for the state baseline;
-  after it, convert the "144" in §3 / §5.1 and the slides to `\pn{}`.
+  drop the key (e.g. the 33 `sdid_meta_*` keys if they are table-only; the
+  `map_tax_rate_*` keys feed `map_code.R`, not the text). Upload both .tex
+  files to the cluster (`drafts/`) so the register can be checked there.
+- [ ] **Next full run — register fixes waiting on it.**
+  - `sdid_n_specs_per_outcome` counts after the out-of-state drop (it logged
+    288 = county + out-of-state geographies; the paper's 144 is right). Then
+    `\pn{}` the "144" in §3 / §5.1 and the slides.
+  - `revenue_baseline_state_musd` logs with `%9.0fc` ("2,911").
+  - ACS county count: 389 was right all along (identified in every year
+    2016-2024). The `acs_n_counties_*` keys counted the `county_fips == 0`
+    "rest of state" buckets (48-49 per year) and logged 534 / 437 / 436; fixed
+    in `02_diagnostics.do` and `build_acs_balanced_set`, they should read
+    485 / 389 / 388. New keys `acs_n_counties_sdid_sample` (337) and
+    `acs_n_counties_sdid_donors` (336) come from `02_appendix_descriptives.do`.
+    Then rewrite the Appendix sentence (line 1198: "restricted to the 389
+    counties identified in the public-use microdata") to say "identified in
+    every year 2016-2024", add that 337 (336 donors + Multnomah) remain after
+    the state drops, `\pn{}` both, and `\pn{}` the 389 in the slides (line 231).
+  - `map_tax_rate_{or,or_metro,mult,mult_metro}` (02_revenue_microsim.do)
+    now feed the tax-rate map; `map_code.R` stops on a missing key, so Stage 3
+    cannot run until Stage 2 has logged them. Expect 9.90 / 10.90 / 12.15 /
+    13.15.
+- [ ] **Slides' revenue table: validate, then wire into the deck.**
+  `02_tables_figures.do` (end of Section 4B) now writes
+  `tbl_revenue_decomposition_slides.tex` (bare 7-column tabular, panel headers
+  carry actual revenue) and registers it in `paper_manifest.csv`
+  (`slides:revenue_table`). It also logs the prose revenue numbers:
+  `revenue_{pfa,oregon}_loss_irs_all_{musd,pct}` (headline row),
+  `revenue_{pfa,oregon}_loss_pref_{min,max}_{musd,pct}` (six-spec ranges), and
+  `revenue_acs_college_scale` (0.68). Not yet run — validate with a standalone
+  `02_tables_figures.do` or the next full run. Then in the deck: replace the
+  hand-typed tabular in the "Revenue Decomposition" frame with
+  `\input{tables/tbl_revenue_decomposition_slides}`, and `\pn{}` the bullets
+  (lines 121, 656, 685), the range sentence, and the 0.68 in the source note.
+  The six-spec range keys log whole millions (PFA 10-19, Oregon 45-81), so the
+  slide's range sentence becomes "$10M to $19M".
+- [ ] **Abstract: "$9-$19 million" -> "$10-$19 million"** (decided 2026-10-29:
+  the abstract uses round numbers; the PFA minimum is 9.7). Edit in Overleaf,
+  in both `Conway_Iselin_Rork_2026.tex` and `manuscript_anon.tex`; it becomes
+  `\pn{revenue_pfa_loss_pref_min_musd}`--`\pn{revenue_pfa_loss_pref_max_musd}`
+  with the macro conversion.
 - [ ] **Re-sync the Overleaf folder** from `results/overleaf_export/` (now
   tracked: `git pull`, then rsync per `RUNBOOK.md`). The 2026-10-29 run carries
   the 2026-10-26 table-note fixes (`31f1b6e`, `3eebbff`): `tbl_elasticities_shs.tex` and `tbl_revenue_decomposition.tex` were

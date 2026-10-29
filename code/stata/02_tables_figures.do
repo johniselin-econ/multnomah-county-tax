@@ -1848,6 +1848,89 @@ dis "Wrote: `tex_path'"
 ** Overleaf sync (matches the tab_flow_regression pattern).
 project_save_overleaf "`tex_path'"
 
+** ---- Slide variant: 7 of the 9 columns, from the same two matrices ----------
+** Writes ${results}revenue/tbl_revenue_decomposition_slides.tex, a bare tabular
+** the deck's revenue frame \input's (the frame keeps its own font sizing).
+** Drops Scale and R_m; the actual-revenue column moves into the panel headers.
+local slide_labels `" "IRS, all counties" "IRS, stringency match" "IRS, narrow similar-cities" "ACS college, all counties" "ACS college, stringency match" "ACS college, narrow similar-cities" "'
+local tex_path_slides "${results}revenue/tbl_revenue_decomposition_slides.tex"
+local actual_pfa_lbl   = trim(string(`M_PFA'[1, 8] / 1e6, "%9.1fc"))
+local actual_state_lbl = trim(string(`M_STATE'[1, 8] / 1e6, "%9.1fc"))
+
+tempname fhs
+file open `fhs' using "`tex_path_slides'", write replace text
+file write `fhs' "\begin{tabular}{l cccccc}" _n
+file write `fhs' "\toprule" _n
+file write `fhs' "Spec & \$\hat\tau\$ (pp) & AGI flow (`dol'B) & Baseline (`dol'M) & Dynamic (`dol'M) & Loss (\%) & Implied loss (`dol'M) \\" _n
+file write `fhs' "\midrule" _n
+** Headers written directly (not via a local) so `dol' is expanded only once
+foreach panel in PFA STATE {
+	if "`panel'" == "PFA" {
+		file write `fhs' "\multicolumn{7}{l}{\textit{Panel A: PFA (Multnomah; actual 2022 revenue `dol'`actual_pfa_lbl'M)}} \\" _n
+	}
+	else {
+		file write `fhs' "\midrule" _n
+		file write `fhs' "\multicolumn{7}{l}{\textit{Panel B: Oregon, Multnomah-resident share (actual 2022 revenue `dol'`actual_state_lbl'M)}} \\" _n
+	}
+	forvalues r = 1/6 {
+		local lbl : word `r' of `slide_labels'
+		file write `fhs' "`lbl'"                                          ///
+			" & \$" %5.2f (`M_`panel''[`r', 1]) "\$"                     ///
+			" & " %4.2f (`M_`panel''[`r', 3] / 1e9)                      ///
+			" & " %6.1f (`M_`panel''[`r', 5] / 1e6)                      ///
+			" & " %6.1f (`M_`panel''[`r', 6] / 1e6)                      ///
+			" & " %4.1f (`M_`panel''[`r', 7] * 100)                      ///
+			" & " %5.1f (`M_`panel''[`r', 9])                            ///
+			" \\" _n
+	}
+}
+file write `fhs' "\bottomrule" _n
+file write `fhs' "\end{tabular}" _n
+file close `fhs'
+dis "Wrote: `tex_path_slides'"
+project_save_overleaf "`tex_path_slides'"
+
+** ---- Register: revenue numbers the prose quotes from this table -------------
+** Headline row = IRS, all counties (row 1). Ranges span the six preferred specs;
+** a missing row (preferred spec not found, warned above) logs the range as
+** missing so \pn{} prints ?? rather than a range over fewer specs.
+local rev_src "02_tables_figures.do"
+project_log_number, key(revenue_pfa_loss_irs_all_musd) value(`=`M_PFA'[1, 9]') fmt(%5.1f) unit(usd_millions) ///
+	source(`rev_src') note("Implied PFA revenue loss, IRS all counties preferred spec (Table 3 Panel A)")
+project_log_number, key(revenue_pfa_loss_irs_all_pct) value(`=`M_PFA'[1, 7] * 100') fmt(%4.1f) unit(pct) ///
+	source(`rev_src') note("PFA revenue loss as % of dynamic-scored revenue, IRS all counties (Table 3 Panel A)")
+project_log_number, key(revenue_oregon_loss_irs_all_musd) value(`=`M_STATE'[1, 9]') fmt(%5.1f) unit(usd_millions) ///
+	source(`rev_src') note("Implied Oregon revenue loss, IRS all counties preferred spec (Table 3 Panel B)")
+project_log_number, key(revenue_oregon_loss_irs_all_pct) value(`=`M_STATE'[1, 7] * 100') fmt(%4.2f) unit(pct) ///
+	source(`rev_src') note("Oregon revenue loss as % of Multnomah filers' state income + payroll tax, IRS all counties (Table 3 Panel B)")
+project_log_number, key(revenue_acs_college_scale) value(`=`M_PFA'[4, 2]') fmt(%4.2f) unit(share) ///
+	source(`rev_src') note("College share of AGI scaling ACS college tau before the AGI-flow conversion (Table 3)")
+
+foreach panel in PFA STATE {
+	local pname = cond("`panel'" == "PFA", "pfa", "oregon")
+	local any_missing 0
+	forvalues r = 1/6 {
+		if missing(`M_`panel''[`r', 9]) local any_missing 1
+	}
+	foreach stat in min max {
+		local loss_`stat' = .
+		local pct_`stat'  = .
+		if !`any_missing' {
+			local loss_`stat' = `M_`panel''[1, 9]
+			local pct_`stat'  = `M_`panel''[1, 7] * 100
+			forvalues r = 2/6 {
+				local loss_`stat' = `stat'(`loss_`stat'', `M_`panel''[`r', 9])
+				local pct_`stat'  = `stat'(`pct_`stat'', `M_`panel''[`r', 7] * 100)
+			}
+		}
+		** Whole millions: the abstract and intro quote round numbers ("$10-$19 million")
+		project_log_number, key(revenue_`pname'_loss_pref_`stat'_musd) value(`loss_`stat'') fmt(%3.0f) unit(usd_millions) ///
+			source(`rev_src') note("`stat' implied `pname' revenue loss across the six preferred specs (Table 3)")
+		project_log_number, key(revenue_`pname'_loss_pref_`stat'_pct) value(`pct_`stat'') fmt(%3.0f) unit(pct) ///
+			source(`rev_src') note("`stat' `pname' revenue loss % across the six preferred specs (Table 3)")
+	}
+}
+
 ********************************************************************************
 ** SECTION 5: Preferred-spec event-study overlays
 ********************************************************************************

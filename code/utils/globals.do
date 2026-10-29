@@ -149,6 +149,10 @@ if "${pfa_thresh2_joint}" == ""    global pfa_thresh2_joint    = 400000
 ** Used only as a sensitivity denominator for Kleven-style elasticities; SHS revenue
 ** accrues to Metro, not Multnomah, so it does not enter PFA baseline calcs.
 if "${shs_rate}" == ""             global shs_rate             = 0.01
+** Oregon top marginal income tax rate (2022; applies above $125K single).
+** TAXSIM computes the state tax; this feeds the no-TAXSIM fallback and the
+** tax-rate map (02_revenue_microsim.do logs the map rates).
+if "${or_top_rate}" == ""          global or_top_rate          = 0.099
 ** Actual collections used to rescale simulation output.
 ** actual_pfa_revenue: Multnomah County PFA collections (county-level tax).
 ** statewide_oregon_revenue: Oregon STATEWIDE individual income tax collections.

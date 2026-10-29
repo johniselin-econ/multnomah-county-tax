@@ -66,6 +66,7 @@ local pfa_thresh1_joint    = ${pfa_thresh1_joint}
 local pfa_thresh2_joint    = ${pfa_thresh2_joint}
 local pfa_rate             = ${pfa_rate}
 local shs_rate             = ${shs_rate}
+local or_top_rate          = ${or_top_rate}
 
 ** Create output directory
 capture mkdir "${results}revenue"
@@ -744,6 +745,27 @@ label var pfa_tax "PFA tax liability"
 ** revenue accrues to Metro and does not enter PFA baseline revenue.
 gen double shs_tax = `shs_rate' * max(taxable_income - pfa_thresh1, 0)
 label var shs_tax "SHS tax liability (Metro, 1% flat)"
+
+** Statutory marginal rates for the tax-rate map (map_code.R): the mean of the
+** single-filer marginal rates at two income levels, in percent. Washington
+** (no income tax) is 0 and stays in the R code.
+local map_income_lo = 150000
+local map_income_hi = 300000
+local pfa_mtr_avg = 0
+local shs_mtr_avg = 0
+foreach y in `map_income_lo' `map_income_hi' {
+	local pfa_mtr_avg = `pfa_mtr_avg' + 0.5 * `pfa_rate' * ((`y' > `pfa_thresh1_single') + (`y' > `pfa_thresh2_single'))
+	local shs_mtr_avg = `shs_mtr_avg' + 0.5 * `shs_rate' * (`y' > `pfa_thresh1_single')
+}
+local map_note "mean single-filer marginal rate at taxable income `map_income_lo' and `map_income_hi' USD, percent; tax-rate map"
+project_log_number, key(map_tax_rate_or) value(`=100 * `or_top_rate'') fmt(%5.2f) unit(pct) ///
+	source(02_revenue_microsim.do) note("Oregon state only: `map_note'")
+project_log_number, key(map_tax_rate_or_metro) value(`=100 * (`or_top_rate' + `shs_mtr_avg')') fmt(%5.2f) unit(pct) ///
+	source(02_revenue_microsim.do) note("Oregon + Metro SHS (Washington/Clackamas inside Metro): `map_note'")
+project_log_number, key(map_tax_rate_mult) value(`=100 * (`or_top_rate' + `pfa_mtr_avg')') fmt(%5.2f) unit(pct) ///
+	source(02_revenue_microsim.do) note("Oregon + PFA (Multnomah outside Metro): `map_note'")
+project_log_number, key(map_tax_rate_mult_metro) value(`=100 * (`or_top_rate' + `pfa_mtr_avg' + `shs_mtr_avg')') fmt(%5.2f) unit(pct) ///
+	source(02_revenue_microsim.do) note("Oregon + PFA + Metro SHS (Multnomah inside Metro): `map_note'")
 
 ** Summary
 dis "PFA tax distribution:"

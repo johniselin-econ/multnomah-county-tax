@@ -476,7 +476,7 @@ program define taxsim_fallback_calc
     gen double siitax = 0.05  * min(taxable_income, 3750) ///
         + 0.07  * max(min(taxable_income, 9450)   - 3750, 0) ///
         + 0.09  * max(min(taxable_income, 125000) - 9450, 0) ///
-        + 0.099 * max(taxable_income - 125000, 0)
+        + ${or_top_rate} * max(taxable_income - 125000, 0)
 
     ** Placeholder — fallback does not attempt federal liability
     capture drop fiitax
@@ -753,6 +753,7 @@ program define build_acs_balanced_set
     }
 
     use "`source'", clear
+    drop if county_fips == 0                   // "rest of state" bucket, not a county
     keep year fips
     keep if inrange(year, 2016, 2024)        // ACS analysis window (SDID/DiD)
     bysort fips: gen _ct = _N
