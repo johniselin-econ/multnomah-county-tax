@@ -775,7 +775,7 @@ dis "Baseline PFA revenue: $" %15.0fc baseline_pfa_revenue
 gen double wtd_siitax = siitax * cal_wt
 qui summ wtd_siitax
 scalar baseline_state_revenue = r(sum)
-project_log_number, key(revenue_baseline_state_musd) value(`=scalar(baseline_state_revenue) / 1e6') fmt(%6.0f) unit(usd_millions) ///
+project_log_number, key(revenue_baseline_state_musd) value(`=scalar(baseline_state_revenue) / 1e6') fmt(%9.0fc) unit(usd_millions) ///
 	source(02_revenue_microsim.do) note("Static Oregon state income tax baseline (TAXSIM siitax), Multnomah scope, simulated (Section 6; Appendix C.8)")
 dis "Baseline Oregon state income tax revenue: $" %15.0fc baseline_state_revenue
 

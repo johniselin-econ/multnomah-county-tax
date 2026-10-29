@@ -1587,11 +1587,13 @@ count if preferred == 1
 ********************************************************************************
 preserve
 keep if outcome_type == "agi"
-qui count if migration == "out"
-project_log_number, key(sdid_n_specs_per_outcome) value(`r(N)') fmt(%9.0f) unit(specs) ///
-	source(02_sdid_analysis.do) note("SDID specifications estimated per outcome variable (AGI out-migration, all data types)")
 drop if inlist(data_type, "IRS (Out-of-State)", "IRS (389, Out-of-State)", ///
 					 "ACS All (Out-of-State)", "ACS College (Out-of-State)")
+** Counted after the drop: an outcome variable is one geography, so the
+** out-of-state data types belong to a different outcome (Section 3)
+qui count if migration == "out"
+project_log_number, key(sdid_n_specs_per_outcome) value(`r(N)') fmt(%9.0f) unit(specs) ///
+	source(02_sdid_analysis.do) note("SDID specifications estimated per outcome variable (AGI county out-migration, in-state data types)")
 qui summ tau if migration == "out"
 local tau_out_mean = r(mean)
 qui summ tau if migration == "in"

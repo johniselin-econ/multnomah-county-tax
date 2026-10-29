@@ -64,6 +64,24 @@ false positive (the check matched the echoed source line; fixed in
     `did_semi_elast_in_{west,48}`) now log at three decimals in
     `02_post_spec.do`; the 2026-10-29 run gives 0.002 / 0.001. Confirm
     the tex writes them that way, or drop the keys if it says "essentially zero".
+- [ ] **Check the ACS county count** (Appendix variable list: "restricted to
+  the 389 counties identified in the public-use microdata"). The 2026-10-29
+  register has 534 counties in any year (`acs_n_counties_identified_any_year`)
+  and 437 in the balanced panel (`acs_n_counties_balanced_panel`); the
+  2026-10-26 `diagnostics_obs_counts` table still said 389. Find which count
+  the sentence means and why it moved, then write it as `\pn{}`.
+- [ ] **Generate the slides' revenue table.** The deck's revenue-decomposition
+  frame types the `tbl_revenue_decomposition` rows by hand and went stale on the
+  2026-10-29 run (e.g. Oregon baseline 2910.2 vs 2910.7, IRS all-counties loss
+  76.7 vs 76.6). Write a slide-sized variant from `02_tables_figures.do`,
+  register it in `paper_manifest.csv` with `location=slides`, and `\input` it in
+  the deck.
+- [ ] **Rerun-dependent register fixes (2026-10-29, laptop).**
+  `sdid_n_specs_per_outcome` now counts after the out-of-state drop (it logged
+  288 = county + out-of-state geographies; the paper's 144 is right, with no
+  duplicate specs), and `revenue_baseline_state_musd` logs with `%9.0fc`
+  ("2,911"). Until the next run the paper prints "2911" for the state baseline;
+  after it, convert the "144" in §3 / §5.1 and the slides to `\pn{}`.
 - [ ] **Re-sync the Overleaf folder** from `results/overleaf_export/` (now
   tracked: `git pull`, then rsync per `RUNBOOK.md`). The 2026-10-29 run carries
   the 2026-10-26 table-note fixes (`31f1b6e`, `3eebbff`): `tbl_elasticities_shs.tex` and `tbl_revenue_decomposition.tex` were
