@@ -51,9 +51,12 @@ data/demographic/dol/
 data/covid/
 
 # ========================================
-# Results: all generated from code
+# Results: all generated from code. Tracked exceptions: the Overleaf staging
+# mirror and the in-text numbers register, so the laptop gets each run via git.
 # ========================================
-results/
+results/*
+!results/overleaf_export/
+!results/paper_numbers.csv
 
 # ========================================
 # Archives and deprecated code

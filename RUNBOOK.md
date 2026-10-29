@@ -116,10 +116,19 @@ bootstrap reps whose draw file already exists.
 
 ### Collect artifacts
 
-From your laptop (the Overleaf project is a Dropbox folder there):
+`results/overleaf_export/` and `results/paper_numbers.csv` are tracked. After a
+successful run, commit and push them from the cluster:
 
 ```bash
-rsync -av <cluster>:/path/to/repos/multnomah-county-tax/results/overleaf_export/ ~/Dropbox/Apps/Overleaf/Multnomah\ County/
+git add results/overleaf_export results/paper_numbers.csv
+git commit -m "Results from run <jobid>" && git push
+```
+
+Then on your laptop (the Overleaf project is a Dropbox folder there), `git pull`
+and copy the mirror in:
+
+```bash
+rsync -av results/overleaf_export/ ~/Dropbox/Apps/Overleaf/Multnomah\ County/
 ```
 
 ---
