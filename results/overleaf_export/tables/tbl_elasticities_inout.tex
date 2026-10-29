@@ -1,0 +1,61 @@
+\begin{table}[htbp]
+\centering
+\begin{threeparttable}
+\footnotesize
+\caption{Highlighted Gross AGI Migration Elasticities, PFA-Only Sensitivity}
+\label{tab:elasticities_inout_pfa_only}
+\begin{tabular}{lll cc}
+\toprule
+Data & Sample & Dir.\ & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ \\
+\midrule
+\addlinespace
+\multicolumn{5}{l}{\textit{Panel A: Out-Migration}} \\
+\addlinespace
+ACS College & All & Out & 3.146 & -1.582 \\
+ & & & [2.780, 3.407] & [-1.713, -1.398] \\
+ACS College & Narrow & Out & 2.786 & -1.401 \\
+ & & & [2.233, 3.670] & [-1.845, -1.123] \\
+ACS College & Stringency & Out & 3.875 & -1.948 \\
+ & & & [2.697, 4.473] & [-2.249, -1.356] \\
+\addlinespace
+IRS & All & Out & 2.511 & -1.278 \\
+ & & & [2.459, 2.757] & [-1.404, -1.252] \\
+IRS & Narrow & Out & 1.456 & -0.741 \\
+ & & & [1.112, 2.065] & [-1.051, -0.566] \\
+IRS & Stringency & Out & 2.044 & -1.041 \\
+ & & & [1.710, 2.342] & [-1.193, -0.871] \\
+\addlinespace[0.75em]
+\midrule
+\addlinespace
+\multicolumn{5}{l}{\textit{Panel B: In-Migration}} \\
+\addlinespace
+ACS College & All & In & -0.978 & 0.492 \\
+ & & & [-1.174, -0.777] & [0.391, 0.590] \\
+ACS College & Narrow & In & -0.871 & 0.438 \\
+ & & & [-1.298, -0.466] & [0.234, 0.653] \\
+ACS College & Stringency & In & -1.094 & 0.550 \\
+ & & & [-1.747, -0.484] & [0.244, 0.879] \\
+\addlinespace
+IRS & All & In & -1.319 & 0.672 \\
+ & & & [-1.392, -1.162] & [0.592, 0.709] \\
+IRS & Narrow & In & -0.358 & 0.182 \\
+ & & & [-0.683, -0.173] & [0.088, 0.348] \\
+IRS & Stringency & In & -1.197 & 0.610 \\
+ & & & [-2.415, -0.650] & [0.331, 1.230] \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item \textit{Notes:} 
+PFA-only sensitivity counterpart to Table~\ref{tab:elasticities_inout}. 
+Point estimates of $\hat{\tau}$ are unchanged; only the denominator differs (excludes Metro SHS; average total rate on impacted filers: 41.2\%). 
+Because the denominator is smaller without SHS, $|\varepsilon_{\text{semi}}|$ is correspondingly larger than in Table~\ref{tab:elasticities_inout}. 
+See Appendix~\ref{sec:appb_elast} for formulas. 
+Bracketed values are 95\% percentile confidence intervals from a 
+donor-cluster bootstrap that resamples non-treated counties with replacement, 
+holding the treated county fixed; revenue and tax parameters 
+(federal/Oregon/FICA/PFA rates, AGI base, and microsimulation denominators) 
+are treated as fixed throughout the bootstrap.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}

@@ -1,0 +1,34 @@
+\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l*{4}{c}@{}}
+\toprule
+            &\multicolumn{1}{c}{(1)}&\multicolumn{1}{c}{(2)}&\multicolumn{1}{c}{(3)}&\multicolumn{1}{c}{(4)}\\
+            &\multicolumn{1}{c}{\shortstack{Out-\\migration}}&\multicolumn{1}{c}{\shortstack{Out-of-\\state}}&\multicolumn{1}{c}{\shortstack{In-migration\\(West Coast)}}&\multicolumn{1}{c}{\shortstack{In-migration\\(Lower 48 + DC)}}\\
+\midrule
+\multicolumn{5}{l}{\textit{Panel A: College Degree as Treatment Proxy}}\\[0.3em]
+College Degree $\times$ Post&       1.879***&       1.336***&      -0.006   &      -0.003   \\
+            &     (0.572)   &     (0.443)   &     (0.010)   &     (0.002)   \\
+
+\midrule
+\multicolumn{5}{l}{\textit{Panel B: Age Group as Treatment Proxy (Reference: 45--64)}}\\[0.3em]
+
+Age 25-44 $\times$ Post&       0.106   &      -0.231   &      -0.007   &      -0.002   \\
+            &     (0.647)   &     (0.506)   &     (0.018)   &     (0.003)   \\
+[1em]
+Age 65+ $\times$ Post&      -1.310** &      -0.974** &      -0.003   &       0.000   \\
+            &     (0.575)   &     (0.403)   &     (0.010)   &     (0.002)   \\
+
+\midrule
+\multicolumn{5}{l}{\textit{Panel C: Treatment heterogeneity by age (College $\times$ Age $\times$ Post)}}\\[0.3em]
+
+College $\times$ Post $\times$ Age 25-44&       1.546   &       1.419*  &      -0.011   &      -0.005   \\
+            &     (1.008)   &     (0.780)   &     (0.020)   &     (0.004)   \\
+[1em]
+College $\times$ Post $\times$ Age 45-64&       2.485***&       1.943***&      -0.010   &      -0.004   \\
+            &     (0.811)   &     (0.641)   &     (0.015)   &     (0.003)   \\
+[1em]
+College $\times$ Post $\times$ Age 65+&       1.443*  &       0.122   &       0.014   &       0.003   \\
+            &     (0.826)   &     (0.493)   &     (0.009)   &     (0.002)   \\
+\midrule
+Observations&      43,700   &      43,700   &   2,671,879   &  17,535,332   \\
+\bottomrule
+\end{tabular*}

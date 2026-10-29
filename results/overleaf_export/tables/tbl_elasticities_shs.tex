@@ -1,0 +1,41 @@
+\begin{table}[htbp]
+\centering
+\begin{threeparttable}
+\caption{Highlighted AGI Net-Migration Elasticities}
+\label{tab:elasticities}
+\begin{tabular}{ll ccc}
+\toprule
+Data & Sample & $\hat{\tau}$ (pp) & Semi-$\varepsilon$ & Stock $\varepsilon$ \\
+\midrule
+ACS College & All & -3.873 & 1.325 & 1.726 \\
+ & & [-4.304, -3.397] & [1.162, 1.473] & [1.464, 1.965] \\
+ACS College & Narrow & -3.739 & 1.279 & 1.271 \\
+ & & [-4.715, -3.114] & [1.066, 1.613] & [0.803, 1.767] \\
+ACS College & Stringency & -5.804 & 1.986 & 2.344 \\
+ & & [-6.899, -3.213] & [1.099, 2.360] & [1.378, 2.973] \\
+\addlinespace
+IRS & All & -3.729 & 1.291 & 2.607 \\
+ & & [-4.004, -3.638] & [1.260, 1.386] & [2.530, 2.799] \\
+IRS & Narrow & -2.136 & 0.739 & 1.043 \\
+ & & [-3.009, -1.753] & [0.607, 1.042] & [0.689, 1.813] \\
+IRS & Stringency & -2.794 & 0.967 & 1.768 \\
+ & & [-3.365, -2.214] & [0.766, 1.165] & [1.198, 2.540] \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\small
+\item \textit{Notes:} 
+$\hat{\tau}$ is the SDID coefficient on the AGI net migration rate (percentage points). 
+Semi-elasticity $\varepsilon_{\text{semi}} = (\hat{\tau}/100)/\Delta\ln(1-\tau_\text{total})$ and stock elasticity $\varepsilon_{\text{stock},H} = \Delta\ln S_H / \Delta\ln(1-\tau_\text{total})$, where $S_H$ is the cumulative AGI stock at horizon $H$, are computed against the joint PFA + Metro SHS rate change; both took effect January~1, 2021. 
+Average total marginal rate on impacted filers: 41.8\% (federal + Oregon state + FICA-employee + PFA + SHS). 
+The stock object is the 2-year cumulative AGI-stock change on the total AGI base; see Appendix~\ref{sec:appb_elast} for the recursion and Appendix Table~\ref{tab:elasticities_pfa_only} for a PFA-only-denominator sensitivity. 
+Gross out- and in-migration semi-elasticities are in Appendix Table~\ref{tab:elasticities_inout}. 
+Positive $\varepsilon_{\text{semi}}$ or stock $\varepsilon$ indicates AGI inflow / stock shrinks when the after-tax rate falls. 
+Bracketed values are 95\% percentile confidence intervals from a 
+donor-cluster bootstrap that resamples non-treated counties with replacement, 
+holding the treated county fixed; revenue and tax parameters 
+(federal/Oregon/FICA/PFA rates, AGI base, and microsimulation denominators) 
+are treated as fixed throughout the bootstrap.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}
