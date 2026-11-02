@@ -273,6 +273,18 @@ foreach file in "irs_county_gross_in" "irs_county_gross_out" "irs_county_flow"{
 
 	}
 
+	** Drop excluded counties (globals.do: excluded_fips)
+	if "`file'" == "irs_county_flow" {
+		project_drop_excluded_fips fips_o, tag("`file' origin")
+		project_drop_excluded_fips fips_d, tag("`file' dest.")
+	}
+	else {
+		tempvar fips_excl
+		make_fips state_fips county_fips, gen(`fips_excl')
+		project_drop_excluded_fips `fips_excl', tag("`file'")
+		drop `fips_excl'
+	}
+
 	** Save file
 	save "${data}working/`file'", replace
 	clear

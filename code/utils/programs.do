@@ -59,6 +59,18 @@ program define make_fips
     }
 end
 
+** Drop the counties in ${excluded_fips} (globals.do) and report the count
+capture program drop project_drop_excluded_fips
+program define project_drop_excluded_fips
+    syntax varname(numeric), TAG(string)
+
+    local n_before = _N
+    foreach f of global excluded_fips {
+        quietly drop if `varlist' == `f'
+    }
+    dis as txt "  `tag': dropped " `n_before' - _N " rows for excluded_fips (${excluded_fips})"
+end
+
 ** Reclassify suppressed values as 0
 
 capture program drop unsuppress
@@ -842,8 +854,9 @@ capture program drop project_build_signature
 program define project_build_signature, rclass
     syntax , ARTIFACT(string)
 
+    local excl_fips = subinstr(trim("${excluded_fips}"), " ", "+", .)
     local signature ///
-        "schema=${artifact_schema_version}|artifact=`artifact'|pref=${preferred_spec_version}|seed=${master_seed}|irs_data=${start_year_irs_data}|irs_analysis=${start_year_irs_analysis}|acs_start=${start_year_acs}|acs_end=${end_year_acs}|irs_dl=${start_yy_irs_download}|irs_mig=${end_yy_irs_migration}|irs_agi=${end_yy_irs_agi}|irs_cty=${start_yy_irs_county}-to-${end_yy_irs_county}"
+        "schema=${artifact_schema_version}|artifact=`artifact'|pref=${preferred_spec_version}|seed=${master_seed}|irs_data=${start_year_irs_data}|irs_analysis=${start_year_irs_analysis}|acs_start=${start_year_acs}|acs_end=${end_year_acs}|irs_dl=${start_yy_irs_download}|irs_mig=${end_yy_irs_migration}|irs_agi=${end_yy_irs_agi}|irs_cty=${start_yy_irs_county}-to-${end_yy_irs_county}|excl_fips=`excl_fips'"
 
     return local signature "`signature'"
 end

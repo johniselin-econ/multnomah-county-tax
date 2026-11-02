@@ -99,6 +99,15 @@ if "${end_yy_irs_agi}" == ""       global end_yy_irs_agi       = 22
 if "${start_yy_irs_county}" == ""  global start_yy_irs_county  = 12
 if "${end_yy_irs_county}" == ""    global end_yy_irs_county    = 22
 
+** Counties dropped from every IRS county dataset (01f gross + flows as
+** origin or destination, 01g AGI by bracket), so from all IRS-based
+** analysis. Space-separated 5-digit FIPS.
+**   20081 Haskell County, KS: its 2016 AGI base (non-movers + all movers,
+**         the denominator of every AGI migration rate) is negative
+**         (-$2.0M), giving an AGI out-rate of -302%. As a placebo-treated
+**         donor it alone inflated one SDID placebo SE from 0.55 to 36.
+if "${excluded_fips}" == ""        global excluded_fips        "20081"
+
 ** ------------------------------------------------------------------
 ** Overleaf sync. Enabled iff a (gitignored) user_settings.do at the repo
 ** root defines ${oth_path}; that single switch drives ol_fig / ol_tab and

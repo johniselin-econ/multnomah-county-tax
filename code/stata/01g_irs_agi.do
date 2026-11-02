@@ -102,6 +102,9 @@ forvalues y = $start_yy_irs_download(1)$end_yy_irs_agi {
 ** Generate fips variable
 make_fips state_fips county_fips, gen(fips)
 
+** Drop excluded counties (globals.do: excluded_fips)
+project_drop_excluded_fips fips, tag("irs_county_all")
+
 ** Save file
 compress
 save "${data}working/irs_county_all", replace
