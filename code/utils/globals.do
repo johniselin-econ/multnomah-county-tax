@@ -36,6 +36,14 @@ if "${bootstrap_seed_offset}" == ""  global bootstrap_seed_offset = 60000
 if "${artifact_schema_version}" == "" global artifact_schema_version "2026-03-15"
 if "${preferred_spec_version}" == ""  global preferred_spec_version "2026-03-main"
 
+** k-means donor pools (Covid, demographic, stringency match). Built once with
+** best-of-${kmeans_starts} k-means and saved to ${donor_pool_file} (tracked);
+** every later run reads the file, so a data change cannot redraw the pools.
+** Set rebuild_donor_pools = 1 to rebuild and overwrite the file.
+if "${donor_pool_file}" == ""      global donor_pool_file "${dir}/resources/donor_pools.csv"
+if "${rebuild_donor_pools}" == ""  global rebuild_donor_pools = 0
+if "${kmeans_starts}" == ""        global kmeans_starts = 100
+
 ** ------------------------------------------------------------------
 ** Run-control defaults + parallel resolution. Entry scripts (the
 ** orchestrator's RUN-CONTROL FLAGS panel, or a standalone callee) may set

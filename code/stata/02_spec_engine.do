@@ -461,6 +461,30 @@ end
 **     r(event_res)  four-column matrix: event_year, event_tau,
 **                   event_ci_lo, event_ci_hi
 ** ------------------------------------------------------------------
+** ------------------------------------------------------------------
+** spec_seed_push / spec_seed_pop
+**
+** Give one SDID spec its own placebo-inference seed: master_seed + 70000 +
+** a hash of KEY (the spec's identity). Without it every spec drew from one
+** shared stream, so a spec's placebo SE depended on how many draws the specs
+** before it on the same parallel worker had used -- i.e. on n_clusters and
+** grid order. push saves the caller's RNG state and pop restores it, so the
+** bootstrap's donor-resampling stream is untouched. Always pair them.
+** ------------------------------------------------------------------
+capture program drop spec_seed_push
+program define spec_seed_push
+	syntax, KEY(string)
+	global spec_seed_rngstate "`c(rngstate)'"
+	mata: st_local("key_hash", strofreal(hash1(st_local("key"), 1e6)))
+	set seed `=${master_seed} + 70000 + `key_hash''
+end
+
+capture program drop spec_seed_pop
+program define spec_seed_pop
+	set rngstate ${spec_seed_rngstate}
+	global spec_seed_rngstate
+end
+
 capture program drop fit_spec_sdid
 program define fit_spec_sdid, rclass
 	syntax, SAMPLEDATA(string) SAMPLE(name) OUTCOME(name) ///
@@ -512,13 +536,17 @@ program define fit_spec_sdid, rclass
 	local graphopt ""
 	if `"`graphbase'"' != "" local graphopt `"graph graph_export("`graphbase'", .pdf)"'
 
+	local seed_key "`sample_data'|`sample'|`outcome'|`controls'|`exclusion'"
+	spec_seed_push, key("`seed_key'")
 	capture noisily sdid `outcome' fips year Treated ///
 		if `in_sample' == 1, ///
 		`vceopt' ///
 		`graphopt' ///
 		`covars'
-	if _rc != 0 {
-		local failed_rc = _rc
+	local sdid_rc = _rc
+	spec_seed_pop
+	if `sdid_rc' != 0 {
+		local failed_rc = `sdid_rc'
 		dis as error "fit_spec_sdid: sdid failed for `sample_data' / `sample' / `outcome'"
 		exit `failed_rc'
 	}
@@ -562,10 +590,12 @@ program define fit_spec_sdid, rclass
 		** results survive the restore.
 		preserve
 		qui keep if `in_sample' == 1
+		spec_seed_push, key("`seed_key'|event")
 		capture noisily sdid_event `outcome' fips year Treated, ///
 			`covars_event' ///
 			`eventopts'
 		local event_rc = _rc
+		spec_seed_pop
 		restore
 
 		if `event_rc' == 0 {

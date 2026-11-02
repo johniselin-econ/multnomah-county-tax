@@ -169,13 +169,6 @@ local cutoff = r(p95)
 gen sample_urban95 = percent_urban >= `cutoff'
 label var sample_urban95 "Urban counties (top 5%)"
 
-** Compute top-25% urban threshold for COVID/stringency clustering base
-** Note: must be computed before state drops (like sample_urban95) so
-**       Multnomah is evaluated against the full county distribution
-qui summ percent_urban if year == 2020, de
-local p75 = r(p75)
-gen urban_top75 = percent_urban >= `p75'
-
 ** Drop states (same as main SDID)
 drop if state_name == "Alaska"
 drop if state_name == "Hawaii"
@@ -183,61 +176,29 @@ drop if state_name == "California"
 drop if state_name == "Washington"
 drop if state_name == "Oregon" & multnomah == 0
 
-** Define sample 3: COVID k-means match
-cluster kmeans cases_cum* deaths_cum* if ///
-	urban_top75 == 1 & year == 2020 & covid_merge == 3, k(5) gen(kmean)
-bysort fips: egen kmean_group = mean(kmean)
-
-gen tmp1 = kmean if urban_top75 == 1 & year == 2020 & covid_merge == 3 & multnomah == 1
-egen tmp2 = mean(tmp1)
-gen sample_urban75_covid = urban_top75 == 1 & kmean_group == tmp2
-drop tmp1 tmp2
+** Define samples 3-5 (Covid, demographic, stringency k-means match): read the
+** memberships 02_sdid_analysis.do froze in ${donor_pool_file}, so both analyses
+** use the same pools. (This script used to rerun the three k-means itself, with
+** a different seed and without the narrow_only exclusion, so its pools did not
+** match the main ones.) Counties absent from the file are not pool members.
+capture confirm file "${donor_pool_file}"
+if _rc != 0 {
+	dis as error "02_otherout_sdid.do: ${donor_pool_file} not found. Run 02_sdid_analysis.do first."
+	exit 601
+}
+preserve
+import delimited using "${donor_pool_file}", clear
+tempfile saved_pools
+save `saved_pools'
+restore
+merge m:1 fips using `saved_pools', gen(pool_merge) keep(master match)
+foreach v in sample_urban75_covid sample_demog sample_stringency {
+	replace `v' = 0 if pool_merge == 1
+}
+drop pool_merge
+assert sample_urban75_covid == 1 & sample_demog == 1 & sample_stringency == 1 if multnomah == 1
 label var sample_urban75_covid "Urban counties (top 25%) w. COVID k-means match"
-
-** Define sample 4: Demographic k-means match
-** Same construction as 02_sdid_analysis.do sample 4: standardize over ALL
-** counties in 2020 and k(10). (This script standardized within urban95 and
-** used k(5) while its comment claimed a match, so the "Demog. Match" pool
-** differed between the two analyses. The main script additionally excludes
-** narrow_only counties, which this data block does not carry.)
-gen pci_pre = per_capita_income if year == 2020
-bysort fips: egen pci_pre_fill = mean(pci_pre)
-drop pci_pre
-rename pci_pre_fill pci_pre
-
-gen not_missing = 1
-foreach v in pci_pre pop_census share_under_24 share_over_65 percent_urban {
-	egen std_`v' = std(`v') if year == 2020
-	replace not_missing = 0 if missing(`v')
-}
-
-cluster kmeans std_pci_pre std_pop_census std_share_under_24 std_share_over_65 std_percent_urban if ///
-	year == 2020 & not_missing == 1, k(10) gen(kmean_demog)
-bysort fips: egen kmean_demog_group = mean(kmean_demog)
-
-gen tmp1 = kmean_demog if year == 2020 & not_missing == 1 & multnomah == 1
-egen tmp2 = mean(tmp1)
-gen sample_demog = kmean_demog_group == tmp2
-drop tmp1 tmp2 std_* pci_pre not_missing
 label var sample_demog "Counties with Demographic Kmean Match (excluding AK, CA, HI OR, WA)"
-
-** Define sample 5: COVID stringency k-means match (JII restriction-duration)
-** Standardize 5 stringency vars within urban top-75%
-foreach v in msahodays restclosedays gatherbandays strictgatherbandays maskpubdays {
-	egen std_`v' = std(`v') if urban_top75 == 1 & year == 2020 & jii_merge == 3
-}
-
-** K-means on standardized stringency measures
-cluster kmeans std_msahodays std_restclosedays std_gatherbandays 	///
-	std_strictgatherbandays std_maskpubdays if 						///
-	urban_top75 == 1 & year == 2020 & jii_merge == 3, k(5) gen(kmean_string)
-bysort fips: egen kmean_string_group = mean(kmean_string)
-
-** Identify Multnomah's cluster
-gen tmp1 = kmean_string if urban_top75 == 1 & year == 2020 & jii_merge == 3 & multnomah == 1
-egen tmp2 = mean(tmp1)
-gen sample_stringency = urban_top75 == 1 & kmean_string_group == tmp2
-drop tmp1 tmp2 std_* urban_top75 kmean_string kmean_string_group
 label var sample_stringency "Urban counties (top 25%) w. COVID stringency k-means match"
 
 ********************************************************************************
@@ -430,7 +391,10 @@ if ${use_parallel} == 1 {
 					}
 				}
 
-				** Run SDID
+				** Run SDID. Same per-spec placebo seed as fit_spec_sdid gives
+				** this spec on the sequential path (02_spec_engine.do).
+				local seed_key "otherout|`samp_var'|`out'|`c'|`exl'"
+				spec_seed_push, key("`seed_key'")
 				capture noisily {
 					eststo sdid_`out'_`c': sdid `out' fips year Treated	///
 						if sample == 1,				///
@@ -439,9 +403,11 @@ if ${use_parallel} == 1 {
 						reps(`reps')				///
 						graph graph_export("`path'", .pdf)
 				}
+				local sdid_rc = _rc
+				spec_seed_pop
 
-				if _rc != 0 {
-					local _failed_rc = _rc
+				if `sdid_rc' != 0 {
+					local _failed_rc = `sdid_rc'
 					dis "SDID failed for `out' c=`c' exl=`exl' samp=`samp_var'. Skipping."
 					sdid_log_failure, rc(`_failed_rc') script("02_otherout_sdid") ///
 						tableid("`table_id'") outcome("`out'") c(`c') exl(`exl') ///
@@ -488,6 +454,7 @@ if ${use_parallel} == 1 {
 				** ignores `if` (see fit_spec_sdid in 02_spec_engine.do)
 				preserve
 				qui keep if sample == 1
+				spec_seed_push, key("`seed_key'|event")
 				capture noisily {
 					sdid_event `out' fips year Treated,	///
 						`covars_event'				///
@@ -497,6 +464,7 @@ if ${use_parallel} == 1 {
 				}
 
 				local event_rc = _rc
+				spec_seed_pop
 				restore
 				if `event_rc' != 0 {
 					sdid_log_failure, rc(`event_rc') script("02_otherout_sdid.do") tableid("`table_id'") ///
@@ -765,7 +733,7 @@ if ${use_parallel} == 1 {
 	timer on 2
 
 	capture noisily parallel, prog(parallel_otherout_wrapper run_otherout_table sdid_log_failure ///
-		sdid_event_row_year project_save_overleaf): parallel_otherout_wrapper
+		sdid_event_row_year project_save_overleaf spec_seed_push spec_seed_pop): parallel_otherout_wrapper
 	local parallel_rc = _rc
 
 	timer off 2

@@ -792,6 +792,65 @@ program define project_set_seed
 end
 
 //------------------------------------------------------------------------------
+// project_kmeans_best
+//
+// k-means from STARTS seeded random starts (seeds SEEDBASE+1 .. SEEDBASE+STARTS);
+// keeps the partition with the lowest within-cluster sum of squares. A single
+// `cluster kmeans` run lands in whichever local optimum its random start
+// reaches, and the start picks observations by position, so dropping one
+// unrelated county redrew the donor pools (run 31548600). Leaves the sort
+// order and the caller's cluster analyses as they were.
+// Returns r(seed) (winning start), r(wss), r(n_best) (starts reaching the best
+// WSS: a stability diagnostic; 1 means the optimum was found only once).
+//------------------------------------------------------------------------------
+capture program drop project_kmeans_best
+program define project_kmeans_best, rclass
+    syntax varlist(numeric) [if], K(integer) GENerate(name) ///
+        STARTS(integer) SEEDBASE(integer)
+    marksample touse
+    confirm new variable `generate'
+    tempvar order trial kgroup dev
+    tempname clus
+    gen long `order' = _n
+    local best_wss = .
+    local best_seed = .
+    local n_best = 0
+    forvalues s = 1/`starts' {
+        local seed = `seedbase' + `s'
+        qui cluster kmeans `varlist' if `touse', k(`k') ///
+            start(krandom(`seed')) generate(`kgroup') name(`clus')
+        ** `cluster drop' also deletes the analysis's group variable: copy first
+        qui gen long `trial' = `kgroup'
+        qui cluster drop `clus'
+        local wss = 0
+        foreach v of local varlist {
+            qui bysort `trial': egen double `dev' = mean(`v') if `touse'
+            qui replace `dev' = (`v' - `dev')^2
+            qui summ `dev', meanonly
+            local wss = `wss' + r(sum)
+            drop `dev'
+        }
+        sort `order'
+        if `wss' < `best_wss' * (1 - 1e-9) {
+            capture drop `generate'
+            rename `trial' `generate'
+            local best_wss = `wss'
+            local best_seed = `seed'
+            local n_best = 1
+        }
+        else {
+            if abs(`wss' - `best_wss') <= 1e-9 * `best_wss' local ++n_best
+            drop `trial'
+        }
+    }
+    di as txt "project_kmeans_best: k=`k', `starts' starts, best seed `best_seed'" ///
+        " (WSS " %12.4f `best_wss' ", reached by `n_best' starts)"
+    return scalar seed = `best_seed'
+    return scalar wss = `best_wss'
+    return scalar n_best = `n_best'
+end
+
+//------------------------------------------------------------------------------
 // build_acs_county_sample
 //
 // County flags for R/map_code.R's US pool map (acs_county_sample.xlsx).

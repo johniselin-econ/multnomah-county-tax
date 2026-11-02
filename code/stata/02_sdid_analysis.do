@@ -263,8 +263,9 @@ replace sample_all     = 0 if narrow_only == 1
 replace sample_urban95 = 0 if narrow_only == 1
 
 ** Define sample 3: Counties in top 95 + covid
-cluster kmeans cases_cum* deaths_cum* if 	///
-	urban_top75 == 1 & year == 2020 & covid_merge == 3 & narrow_only == 0, k(5) gen(kmean)
+project_kmeans_best cases_cum* deaths_cum* if 	///
+	urban_top75 == 1 & year == 2020 & covid_merge == 3 & narrow_only == 0, k(5) gen(kmean) 	///
+	starts(${kmeans_starts}) seedbase(`=${master_seed} + 1000')
 bysort fips: egen kmean_group = mean(kmean)
 
 ** Pull out kmeans cluster with Multnomah
@@ -290,8 +291,9 @@ foreach v in pci_pre pop_census share_under_24 share_over_65 percent_urban {
 	replace not_missing = 0 if missing(`v') 
 }
 
-cluster kmeans std_pci_pre std_pop_census std_share_under_24 std_share_over_65 std_percent_urban if ///
-	year == 2020 & not_missing == 1 & narrow_only == 0, k(10) gen(kmean_demog)
+project_kmeans_best std_pci_pre std_pop_census std_share_under_24 std_share_over_65 std_percent_urban if ///
+	year == 2020 & not_missing == 1 & narrow_only == 0, k(10) gen(kmean_demog) ///
+	starts(${kmeans_starts}) seedbase(`=${master_seed} + 2000')
 bysort fips: egen kmean_demog_group = mean(kmean_demog)
 
 ** Pull out kmeans cluster containing Multnomah
@@ -313,9 +315,10 @@ foreach v in msahodays restclosedays gatherbandays strictgatherbandays maskpubda
 
 
 ** K-means on standardized stringency measures
-cluster kmeans std_msahodays std_restclosedays std_gatherbandays 	///
+project_kmeans_best std_msahodays std_restclosedays std_gatherbandays 	///
 	std_strictgatherbandays std_maskpubdays if 						///
-	urban_top75 == 1 & year == 2020 & jii_merge == 3 & narrow_only == 0, k(5) gen(kmean_string)
+	urban_top75 == 1 & year == 2020 & jii_merge == 3 & narrow_only == 0, k(5) gen(kmean_string) ///
+	starts(${kmeans_starts}) seedbase(`=${master_seed} + 3000')
 bysort fips: egen kmean_string_group = mean(kmean_string)
 
 ** Identify Multnomah's cluster
@@ -325,6 +328,47 @@ gen sample_stringency = urban_top75 == 1 & kmean_string_group == tmp2 & narrow_o
 drop tmp1 tmp2 std_* urban_top75 kmean_string kmean_string_group
 label var sample_stringency "Urban counties (top 25%) w. COVID stringency k-means match"
 tab sample_stringency if year == 2020
+
+** Freeze pools 3-5 (see globals.do). Reuse the saved memberships unless a
+** rebuild is requested, and report how many counties today's k-means would
+** assign differently, so drift shows up in the log instead of in the results.
+** 02_otherout_sdid.do reads the same file.
+local pool_vars "sample_urban75_covid sample_demog sample_stringency"
+capture confirm file "${donor_pool_file}"
+if _rc != 0 | ${rebuild_donor_pools} == 1 {
+	preserve
+	qui keep if year == 2020
+	keep fips `pool_vars'
+	sort fips
+	export delimited using "${donor_pool_file}", replace
+	restore
+	dis "Donor pools written to ${donor_pool_file} -- commit this file."
+}
+else {
+	preserve
+	import delimited using "${donor_pool_file}", clear
+	foreach v of local pool_vars {
+		rename `v' saved_`v'
+	}
+	tempfile saved_pools
+	save `saved_pools'
+	restore
+	merge m:1 fips using `saved_pools', gen(pool_merge)
+	foreach v of local pool_vars {
+		qui count if pool_merge == 2 & saved_`v' == 1
+		if r(N) > 0 dis "`v': `r(N)' saved members are not in today's data"
+		qui replace saved_`v' = 0 if pool_merge == 1
+		qui count if year == 2020 & pool_merge != 2 & `v' != saved_`v'
+		dis "`v': `r(N)' counties differ between the saved pool and today's k-means"
+		qui replace `v' = saved_`v'
+		drop saved_`v'
+	}
+	drop if pool_merge == 2
+	drop pool_merge
+	dis "Donor pools read from ${donor_pool_file}"
+}
+assert sample_urban75_covid == 1 & sample_demog == 1 & sample_stringency == 1 if multnomah == 1
+tab1 `pool_vars' if year == 2020
 
 ** Define and standardize covariates
 ** Note: prop_tax_rate added for non-IRS full sample specifications
