@@ -451,9 +451,10 @@ file write `fh' `"\label{tab:tableA2_irs_flow}"' _n
 file write `fh' `"\setlength{\tabcolsep}{3pt}"' _n
 file write `fh' `"\begin{tabular}{l r r r r r r r r}"' _n
 file write `fh' `"\toprule"' _n
-file write `fh' `" & Number of & \multicolumn{3}{c}{Unique counties} & Median count & Mean count & Mean count & Mean AGI \\"' _n
-file write `fh' `"\cmidrule(lr){3-5}"' _n
-file write `fh' `" & county-flows & Overall & Origin & Dest. & of returns & of returns & of exemptions & (USD thousands) \\"' _n
+** Grouped two-row header keeps the table inside the portrait text width
+file write `fh' `" & Number & \multicolumn{3}{c}{Unique counties} & \multicolumn{2}{c}{Returns} & Exemptions & AGI (USD 000s) \\"' _n
+file write `fh' `"\cmidrule(lr){3-5} \cmidrule(lr){6-7} \cmidrule(lr){8-8} \cmidrule(lr){9-9}"' _n
+file write `fh' `" & of flows & Overall & Origin & Dest. & Median & Mean & Mean & Mean \\"' _n
 file write `fh' `"\midrule"' _n
 
 local row_labels `""Multnomah-touching flows" "Non-Multnomah flows""'
@@ -486,7 +487,7 @@ foreach panel in All ACS {
         local mn1 = strtrim("`mn1'")
         local mn2 : di %7.1f `M_FLOW'[`r', 4]
         local mn2 = strtrim("`mn2'")
-        local mag : di %9.1f `M_FLOW'[`r', 5]
+        local mag : di %12.1fc `M_FLOW'[`r', 5]
         local mag = strtrim("`mag'")
         file write `fh' `"`lab' & `nf' & `nce' & `nco' & `ncd' & `md' & `mn1' & `mn2' & `mag' \\"' _n
     }
@@ -496,7 +497,7 @@ file write `fh' `"\bottomrule"' _n
 file write `fh' `"\end{tabular}"' _n
 file write `fh' `"\begin{tablenotes}[flushleft]"' _n
 file write `fh' `"\small"' _n
-file write `fh' `"\item \textit{Notes:} County-pair flow rows from IRS SOI 2016-2022, after dropping state-aggregate rows and Alaska/Hawaii. A flow is Multnomah-touching if either origin or destination is Multnomah County. The ACS-restricted panel keeps only flows where both endpoints are among the counties observed in the ACS in every year 2016-2024 (the balanced ACS county set), matching the PPML specification used in the paper. The Unique-counties columns count distinct counties appearing as either endpoint (Overall), as the origin (Origin), or as the destination (Dest.) of a flow in each row. Mean and median flow sizes are computed across all observed flow rows in the group; returns are tax-filing households, exemptions are individuals, and AGI is in thousands of dollars. The data drop county-pair-years with fewer than ~20 movers (the IRS suppression threshold), so explicit zero-mover rows do not appear."' _n
+file write `fh' `"\item \textit{Notes:} County-pair flow rows from IRS SOI 2016-2022, after dropping state-aggregate rows and Alaska/Hawaii. A flow is Multnomah-touching if either origin or destination is Multnomah County. The ACS-restricted panel keeps only flows where both endpoints are among the counties observed in the ACS in every year 2016-2024 (the balanced ACS county set), matching the PPML specification used in the paper. The Unique-counties columns count distinct counties appearing as either endpoint (Overall), as the origin (Origin), or as the destination (Dest.) of a flow in each row. Median and mean returns, mean exemptions, and mean AGI are per flow row, computed across all observed flow rows in the group; returns are tax-filing households, exemptions are individuals, and AGI is in thousands of dollars. The data drop county-pair-years with fewer than roughly 20 movers (the IRS suppression threshold), so explicit zero-mover rows do not appear."' _n
 file write `fh' `"\item Source: IRS SOI county-to-county migration flows (2016-2022)."' _n
 file write `fh' `"\end{tablenotes}"' _n
 file write `fh' `"\end{threeparttable}"' _n
