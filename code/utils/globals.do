@@ -40,9 +40,12 @@ if "${preferred_spec_version}" == ""  global preferred_spec_version "2026-03-mai
 ** best-of-${kmeans_starts} k-means and saved to ${donor_pool_file} (tracked);
 ** every later run reads the file, so a data change cannot redraw the pools.
 ** Set rebuild_donor_pools = 1 to rebuild and overwrite the file.
+** 1000 starts: at 100 the Covid and stringency optima were each reached by a
+** single start. The three pools' seed bases are 1000 apart, so 1000 is the
+** most starts that keeps their seed ranges disjoint.
 if "${donor_pool_file}" == ""      global donor_pool_file "${dir}/resources/donor_pools.csv"
 if "${rebuild_donor_pools}" == ""  global rebuild_donor_pools = 0
-if "${kmeans_starts}" == ""        global kmeans_starts = 100
+if "${kmeans_starts}" == ""        global kmeans_starts = 1000
 
 ** ------------------------------------------------------------------
 ** Run-control defaults + parallel resolution. Entry scripts (the
