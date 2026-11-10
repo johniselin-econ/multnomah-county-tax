@@ -7,6 +7,11 @@ Called by: 00_multnomah.do
 
 Purpose: Perform DiD analysis on ACS data examining the effect of the
          Multnomah County tax on migration patterns by education level.
+         Main text: College x Post DiD and event study (tab_did_main.tex,
+         fig_es_*_migration.png). DiD appendix: heterogeneity by age, own
+         children, marital status, and WFH potential
+         (tab_did_heterogeneity.tex) and the by-age event studies.
+         Placebo counties: 02_did_placebo.do.
 
 Authors: John Iselin
 
@@ -45,121 +50,25 @@ local col_age3  "`col_mult'"   // dark blue - age 65+
 ** LOAD AND PREPARE DATA
 ********************************************************************************
 
-** Load ACS migration data
-use "${data}working/acs_migration_file", replace
-
-** Sample restrictions
-drop if year < 2016 					// Sample: 2016-2024 (ACS file starts 2012)
-drop if qmigplc1 == 4					// Error in migration place
-project_drop_states state_fips_o state_fips_d, states(${indiv_excluded_states}) tag("02_did_analysis")  // globals.do
-drop if age < 25 						// Dropping under 25
-drop if ftotinc < 0 					// Negative Family Income 	
+** Load the ACS migration file with the DiD sample restrictions, treatment,
+** and covariate cells (programs.do: did_load_acs, create_covariates)
+did_load_acs, tag("02_did_analysis")
 
 ********************************************************************************
-** DEFINE SAMPLES AND TREATMENT
+** DEFINE SAMPLES AND OUTCOMES
 ********************************************************************************
 
-** Multnomah county indicators
-gen multnomah_o = (state_fips_o == 41 & county_fips_o == 51)
-gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
+** Multnomah as the focal county: sample_1, sample_3, out_1-out_3
+** (programs.do: did_define_focal)
+did_define_focal, fips(41051)
 
-** Analysis samples
-gen sample_1 = (multnomah_o == 1) & year != 2020    // Multnomah in origin (out-migration)
+** West Coast in-migration sample (Multnomah-specific; globals.do)
 project_flag_states state_fips_o, states(${indiv_inmig_origin_states}) generate(inmig_origin)
-gen sample_2 = (multnomah_o != 1) & 				///
-				year != 2020 &						/// Not Multnomah in origin
-			   inmig_origin == 1  					// West Coast in-migration (globals.do)
+gen sample_2 = (focal_o != 1) & 				/// Not Multnomah in origin
+				year != 2020 &						///
+			   inmig_origin == 1  					// West Coast in-migration
 drop inmig_origin
-gen sample_3 = (multnomah_o != 1) & 				/// Not Multnomah in origin
-				year != 2020						// 
-
-label var sample_1 "Out-migration Sample"
 label var sample_2 "In-migration Sample (West Coast)"
-label var sample_3 "In-migration Sample (Lower 48 + DC)"
-
-** Outcome variables (scaled to percentages)
-gen out_1 = (same_county == 0) * 100
-label var out_1 "Moved out of Multnomah (%)"
-
-gen out_2 = (multnomah_d == 1) * 100
-label var out_2 "Moved to Multnomah (%)"
-
-gen out_3 = (state_fips_o != state_fips_d) * 100
-label var out_3 "Moved out of Oregon (%)"
-
-** Treatment variables
-gen post = year > 2020
-label var post "Post-2020"
-
-gen high_ed = educd >= 101
-label var high_ed "College Degree"
-
-gen treated = high_ed * post
-label var treated "College Degree × Post"
-
-********************************************************************************
-** COVARIATE CATEGORIES (program definition + first call)
-********************************************************************************
-
-** Define reusable program for categorical covariate creation
-capture program drop create_covariates
-program define create_covariates
-
-	** Age categories
-	recode age ///
-		(25/44   = 1 "25-44") ///
-		(45/64   = 2 "45-64") ///
-		(65/max  = 3 "65+"), ///
-		gen(cat_age)
-	label var cat_age "Age categories"
-
-	** Sex
-	gen cat_sex = (sex == 2)
-	label var cat_sex "Female indicator"
-	label define lb_cat_sex 0 "Male" 1 "Female", replace
-	label values cat_sex lb_cat_sex
-
-	** Marital status
-	recode marst ///
-		(1       = 1 "Married") ///
-		(2/3     = 2 "Separated") ///
-		(4/5     = 3 "Divorced / Widowed") ///
-		(6       = 4 "Single"), ///
-		gen(cat_married)
-	label var cat_married "Marriage categories"
-
-	** Number of children
-	recode nchild ///
-		(0       = 0 "0 Children") ///
-		(1       = 1 "1 Child") ///
-		(2       = 2 "2 Children") ///
-		(3/max   = 3 "3+ Children"), ///
-		gen(cat_child)
-	label var cat_child "Number of Children"
-
-	** Age of youngest child
-	recode yngch ///
-		(99      = 0 "No Children") ///
-		(0/4     = 1 "0-4") ///
-		(5/12    = 2 "5-12") ///
-		(13/17   = 3 "13-17")	///
-		(18/max  = 4 "18+"), ///
-		gen(cat_yngch)
-	label var cat_yngch "Age of youngest child"
-
-	** Education categories
-	recode educd ///
-		(min/61  = 1 "Less than HS") ///
-		(62/71   = 2 "HS Diploma") ///
-		(80/100  = 3 "Some College") ///
-		(101/max = 4 "College Degree"), ///
-		gen(cat_educ)
-	label var cat_educ "Education categories"
-
-end
-
-create_covariates
-
 ********************************************************************************
 ** REGRESSION 1: DIFFERENCE-IN-DIFFERENCES
 ********************************************************************************
@@ -196,22 +105,30 @@ estadd scalar N_unwtd = r(N)
 estimates store did_out_state
 
 ********************************************************************************
-** TABLE: DiD RESULTS (individual panel -- kept for reference)
-** Combined table output moved to after all DiD regressions below
+** MAIN TABLE: DiD RESULTS (College Degree x Post, Multnomah)
 ********************************************************************************
 
 esttab did_out did_out_state did_in_west did_in_48 						///
-	using "${results}did/tab_did_overall.tex",							///
+	using "${results}did/tab_did_main.tex",								///
+	replace 															///
 	starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
-	b(%-9.3f) se(%-9.3f) replace 										///
+	b(%-9.3f) se(%-9.3f) 												///
 	keep(treated) 														///
-	coeflabels(treated  "College Degree $\times$ Post")				///
-	mtitle(	"Out-migration" 											///
-			"Out-of-state"												///
-			"In-migration (West Coast)" 								///
-			"In-migration (Lower 48 + DC)")								///
-	stats(N_unwtd, fmt(%12.0fc) labels("Observations"))
+	coeflabels(treated  "College Degree $\times$ Post")					///
+	mtitle(	"\shortstack{Out-\\migration}" 								///
+			"\shortstack{Out-of-\\state}"								///
+			"\shortstack{In-migration\\(West Coast)}" 					///
+			"\shortstack{In-migration\\(Lower 48 + DC)}")				///
+	prehead("\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}" 				///
+			"\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l*{4}{c}@{}}" 	///
+			"\toprule")													///
+	posthead("\midrule")												///
+	prefoot("\midrule") 												///
+	stats(N_unwtd, fmt(%12.0fc) labels("Observations"))					///
+	postfoot("\bottomrule" 												///
+			 "\end{tabular*}")
 
+project_save_overleaf "${results}did/tab_did_main.tex"
 ********************************************************************************
 ** EXPORT DiD COEFFICIENTS FOR ELASTICITY CALCULATION (consumed in Stage 4)
 ********************************************************************************
@@ -430,68 +347,193 @@ preserve
 restore
 
 ********************************************************************************
-** REGRESSION 3: DIFFERENCE-IN-DIFFERENCES BY AGE
+** REGRESSION 3: TREATMENT HETEROGENEITY (DiD APPENDIX)
+********************************************************************************
+** College x Post x group triple differences, one dimension at a time: age,
+** own children in the household, marital status, and work-from-home (WFH)
+** potential. Each adds year x group and college x group fixed effects to the
+** main specification, so treated_<stub>_<g> is the College x Post effect for
+** group g. p_equal tests equal effects across the dimension's groups.
+** Group variables avoid the cat_ prefix: absorb(cat_*) would pick them up and
+** change the main specification.
+
+** Own children in the household (IPUMS NCHILD: own children present)
+gen het_kids = nchild > 0
+label define lb_het_kids 0 "No own children" 1 "Own children in household", replace
+label values het_kids lb_het_kids
+
+** Married, spouse present (cat_married category 1)
+gen het_married = marst == 1
+label define lb_het_married 0 "Not married" 1 "Married", replace
+label values het_married lb_het_married
+
+** WFH potential: Dingel-Neiman teleworkability of the respondent's occupation
+** (resources/wfh_teleworkable_occ.csv; ${wfh_share_cutoff} in globals.do)
+**   1 teleworkable, 2 not teleworkable, 3 no occupation (IPUMS OCC 0 = not
+**   applicable; 9920 = unemployed, no work in the last 5 years)
+confirm variable occ
+gen occ_vintage = cond(year <= 2017, 2010, 2018)	// ACS 2018+ uses 2018 Census codes
+preserve
+	import delimited using "${wfh_xwalk_file}", clear varnames(1) case(lower)
+	keep occ_vintage occ teleworkable_share
+	tempfile wfh_xwalk
+	save `wfh_xwalk'
+restore
+merge m:1 occ_vintage occ using `wfh_xwalk', keep(master match) gen(wfh_merge)
+gen no_occ = inlist(occ, 0, 9920)
+** Every reported occupation must be in the crosswalk (fail loudly otherwise)
+qui count if no_occ == 0 & wfh_merge != 3
+local n_unmatched = r(N)
+if `n_unmatched' > 0 {
+	tab occ year if no_occ == 0 & wfh_merge != 3
+	di as error "02_did_analysis: `n_unmatched' person-years with an occupation missing from ${wfh_xwalk_file}"
+	exit 459
+}
+gen het_wfh = cond(no_occ == 1, 3, cond(teleworkable_share >= ${wfh_share_cutoff}, 1, 2))
+label define lb_het_wfh 1 "Teleworkable" 2 "Not teleworkable" 3 "No occupation", replace
+label values het_wfh lb_het_wfh
+drop wfh_merge no_occ
+
+capture program drop did_het_triple
+program define did_het_triple
+	syntax varname(numeric), STUB(name)
+
+	local grp `varlist'
+	qui levelsof `grp' if sample_1 == 1 | sample_3 == 1, local(groups)
+	local texpr ""
+	foreach g of local groups {
+		gen treated_`stub'_`g' = treated * (`grp' == `g')
+		local texpr = cond("`texpr'" == "", "treated_`stub'_`g'", "`texpr' = treated_`stub'_`g'")
+	}
+	local fe_het "year#`grp' high_ed#`grp'"
+
+	** Out-migration (Sample 1: Multnomah residents)
+	reghdfe out_1 treated_`stub'_* if sample_1 == 1 [pw = perwt], 	///
+		vce(robust) absorb(year cat_* `fe_het')
+	qui count if e(sample)
+	estadd scalar N_unwtd = r(N)
+	qui test `texpr'
+	estadd scalar p_equal = r(p)
+	estimates store did_`stub'_out
+
+	** In-migration (Sample 2: CA/OR/WA residents)
+	reghdfe out_2 treated_`stub'_* if sample_2 == 1 [pw = perwt], 	///
+		vce(cluster fips_o) absorb(year fips_o cat_* `fe_het')
+	qui count if e(sample)
+	estadd scalar N_unwtd = r(N)
+	qui test `texpr'
+	estadd scalar p_equal = r(p)
+	estimates store did_`stub'_in_west
+
+	** In-migration (Sample 3: Lower 48 + DC residents)
+	reghdfe out_2 treated_`stub'_* if sample_3 == 1 [pw = perwt], 	///
+		vce(cluster fips_o) absorb(year fips_o cat_* `fe_het')
+	qui count if e(sample)
+	estadd scalar N_unwtd = r(N)
+	qui test `texpr'
+	estadd scalar p_equal = r(p)
+	estimates store did_`stub'_in_48
+
+	** Out-of-state migration (Sample 1: Multnomah residents)
+	reghdfe out_3 treated_`stub'_* if sample_1 == 1 [pw = perwt], 	///
+		vce(robust) absorb(year cat_* `fe_het')
+	qui count if e(sample)
+	estadd scalar N_unwtd = r(N)
+	qui test `texpr'
+	estadd scalar p_equal = r(p)
+	estimates store did_`stub'_out_state
+end
+
+did_het_triple cat_age,     stub(age)
+did_het_triple het_kids,    stub(kids)
+did_het_triple het_married, stub(married)
+did_het_triple het_wfh,     stub(wfh)
+
+********************************************************************************
+** APPENDIX TABLE: DiD HETEROGENEITY (Panels A-D in single file)
 ********************************************************************************
 
-** Create age × treatment interactions
-gen treated_age_1 = treated * (cat_age == 1)
-gen treated_age_2 = treated * (cat_age == 2)
-gen treated_age_3 = treated * (cat_age == 3)
+local het_cols `" "\shortstack{Out-\\migration}" "\shortstack{Out-of-\\state}" "\shortstack{In-migration\\(West Coast)}" "\shortstack{In-migration\\(Lower 48 + DC)}" "'
 
-label var treated_age_1 "College x Post x Age 25-44"
-label var treated_age_2 "College x Post x Age 45-64"
-label var treated_age_3 "College x Post x Age 65+"
-
-** Store estimates
-
-** Out-migration regression by age (Sample 1: Multnomah residents)
-reghdfe out_1 treated_age_* if sample_1 == 1 [pw = perwt], 	///
-	vce(robust) absorb(year cat_* year#cat_age high_ed#cat_age)
-qui count if e(sample)
-estadd scalar N_unwtd = r(N)
-estimates store did_age_out
-
-** In-migration regression by age (Sample 2: CA/OR/WA residents)
-reghdfe out_2 treated_age_* if sample_2 == 1 [pw = perwt], 	///
-	vce(cluster fips_o) absorb(year fips_o cat_* year#cat_age high_ed#cat_age)
-qui count if e(sample)
-estadd scalar N_unwtd = r(N)
-estimates store did_age_in_west
-
-** In-migration regression by age (Sample 3: Lower 48 + DC residents)
-reghdfe out_2 treated_age_* if sample_3 == 1 [pw = perwt], 	///
-	vce(cluster fips_o) absorb(year fips_o cat_* year#cat_age high_ed#cat_age)
-qui count if e(sample)
-estadd scalar N_unwtd = r(N)
-estimates store did_age_in_48
-
-** Out-of-state migration regression by age (Sample 1: Multnomah residents)
-reghdfe out_3 treated_age_* if sample_1 == 1 [pw = perwt], 	///
-	vce(robust) absorb(year cat_* year#cat_age high_ed#cat_age)
-qui count if e(sample)
-estadd scalar N_unwtd = r(N)
-estimates store did_age_out_state
-
-********************************************************************************
-** TABLE: DiD BY AGE (individual panel -- kept for reference)
-** Combined table output moved to after all DiD regressions below
-********************************************************************************
-
+** Panel A: Age (creates file with full header)
 esttab did_age_out did_age_out_state did_age_in_west did_age_in_48 		///
-	using "${results}did/tab_did_by_age.tex",							///
+	using "${results}did/tab_did_heterogeneity.tex",					///
+	replace 															///
 	starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
-	b(%-9.3f) se(%-9.3f) replace 										///
+	b(%-9.3f) se(%-9.3f) 												///
 	keep(treated_age_*) 												///
 	order(treated_age_1 treated_age_2 treated_age_3)					///
-	coeflabels(	treated_age_1  "College $\times$ Post $\times$ Age 25-44"	///
-				treated_age_2  "College $\times$ Post $\times$ Age 45-64"	///
+	coeflabels(	treated_age_1  "College $\times$ Post $\times$ Age 25--44"	///
+				treated_age_2  "College $\times$ Post $\times$ Age 45--64"	///
 				treated_age_3  "College $\times$ Post $\times$ Age 65+")	///
-	mtitle(	"Out-migration" 											///
-			"Out-of-state"												///
-			"In-migration (West Coast)" 								///
-			"In-migration (Lower 48 + DC)")								///
-	stats(N_unwtd, fmt(%12.0fc) labels("Observations"))
+	mtitle(`het_cols')													///
+	prehead("\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}" 				///
+			"\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l*{4}{c}@{}}" 	///
+			"\toprule")													///
+	posthead("\midrule" 												///
+			 "\multicolumn{5}{l}{\textit{Panel A: Age}}\\[0.3em]") 		///
+	prefoot("") 														///
+	stats(p_equal, fmt(%9.3f) labels("p-value, equal effects"))		///
+	postfoot("\midrule") 												///
+	noobs
 
+** Panel B: Own children in the household
+esttab did_kids_out did_kids_out_state did_kids_in_west did_kids_in_48 	///
+	using "${results}did/tab_did_heterogeneity.tex",					///
+	append 																///
+	starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
+	b(%-9.3f) se(%-9.3f) 												///
+	keep(treated_kids_*) 												///
+	order(treated_kids_0 treated_kids_1)								///
+	coeflabels(	treated_kids_0  "College $\times$ Post $\times$ No own children"	///
+				treated_kids_1  "College $\times$ Post $\times$ Own children")	///
+	nomtitles nonumbers 												///
+	prehead("\multicolumn{5}{l}{\textit{Panel B: Own children in household}}\\[0.3em]") ///
+	posthead("") 														///
+	prefoot("") 														///
+	stats(p_equal, fmt(%9.3f) labels("p-value, equal effects"))		///
+	postfoot("\midrule") 												///
+	noobs
+
+** Panel C: Marital status
+esttab did_married_out did_married_out_state did_married_in_west did_married_in_48 	///
+	using "${results}did/tab_did_heterogeneity.tex",					///
+	append 																///
+	starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
+	b(%-9.3f) se(%-9.3f) 												///
+	keep(treated_married_*) 											///
+	order(treated_married_0 treated_married_1)							///
+	coeflabels(	treated_married_0  "College $\times$ Post $\times$ Not married"	///
+				treated_married_1  "College $\times$ Post $\times$ Married")	///
+	nomtitles nonumbers 												///
+	prehead("\multicolumn{5}{l}{\textit{Panel C: Marital status}}\\[0.3em]") ///
+	posthead("") 														///
+	prefoot("") 														///
+	stats(p_equal, fmt(%9.3f) labels("p-value, equal effects"))		///
+	postfoot("\midrule") 												///
+	noobs
+
+** Panel D: WFH potential (appends and closes table)
+esttab did_wfh_out did_wfh_out_state did_wfh_in_west did_wfh_in_48 		///
+	using "${results}did/tab_did_heterogeneity.tex",					///
+	append 																///
+	starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
+	b(%-9.3f) se(%-9.3f) 												///
+	keep(treated_wfh_*) 												///
+	order(treated_wfh_1 treated_wfh_2 treated_wfh_3)					///
+	coeflabels(	treated_wfh_1  "College $\times$ Post $\times$ Teleworkable"	///
+				treated_wfh_2  "College $\times$ Post $\times$ Not teleworkable"	///
+				treated_wfh_3  "College $\times$ Post $\times$ No occupation")	///
+	nomtitles nonumbers 												///
+	prehead("\multicolumn{5}{l}{\textit{Panel D: Work-from-home potential}}\\[0.3em]") ///
+	posthead("") 														///
+	prefoot("") 														///
+	stats(p_equal N_unwtd, fmt(%9.3f %12.0fc) 							///
+		labels("p-value, equal effects" "Observations"))				///
+	postfoot("\bottomrule" 												///
+			 "\end{tabular*}")
+
+project_save_overleaf "${results}did/tab_did_heterogeneity.tex"
 ********************************************************************************
 ** REGRESSION 4: EVENT STUDY BY AGE
 ********************************************************************************
@@ -528,6 +570,7 @@ estimates store es_age_out_state
 ********************************************************************************
 
 
+preserve
 	clear
 	set obs 9
 	gen year = 2015 + _n
@@ -594,9 +637,9 @@ estimates store es_age_out_state
 	local es_min = r(min)
 	local es_max = r(max)
 	project_log_number, key(did_es_out_college_age45_64_post22_min) value(`es_min') fmt(%4.1f) unit(pp) ///
-		source(02_did_analysis.do) note("Smallest College x Year coefficient for ages 45-64, out-migration by age, 2022-2024 (Figure 8 Panel B)")
+		source(02_did_analysis.do) note("Smallest College x Year coefficient for ages 45-64, out-migration by age, 2022-2024 (DiD appendix, by-age event study)")
 	project_log_number, key(did_es_out_college_age45_64_post22_max) value(`es_max') fmt(%4.1f) unit(pp) ///
-		source(02_did_analysis.do) note("Largest College x Year coefficient for ages 45-64, out-migration by age, 2022-2024 (Figure 8 Panel B)")
+		source(02_did_analysis.do) note("Largest College x Year coefficient for ages 45-64, out-migration by age, 2022-2024 (DiD appendix, by-age event study)")
 
 	** Offset years slightly for visibility across age groups
 	gen year_age1 = year - 0.15
@@ -675,45 +718,14 @@ estimates store es_age_out_state
 	graph export "${results}did/fig_es_age_out_state_migration.png", replace
 	project_save_overleaf "${results}did/fig_es_age_out_state_migration.png"
 
+restore
 
 ********************************************************************************
 ** REGRESSION 5: DIFFERENCE-IN-DIFFERENCES BY AGE (NO EDUCATION)
 ********************************************************************************
 
-** Restore original data
-use "${data}working/acs_migration_file", replace
-
-** Sample restrictions
-drop if year < 2016					// Sample: 2016-2024 (ACS file starts 2012)
-drop if qmigplc1 == 4
-project_drop_states state_fips_o state_fips_d, states(${indiv_excluded_states}) tag("02_did_analysis")
-drop if age < 25
-drop if ftotinc < 0
-
-** Multnomah county indicators
-gen multnomah_o = (state_fips_o == 41 & county_fips_o == 51)
-gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
-
-** Analysis samples
-gen sample_1 = (multnomah_o == 1) & year != 2020
-project_flag_states state_fips_o, states(${indiv_inmig_origin_states}) generate(inmig_origin)
-gen sample_2 = (multnomah_o != 1) & 				///
-				year != 2020 &						///
-			   inmig_origin == 1
-drop inmig_origin
-gen sample_3 = (multnomah_o != 1) & 				///
-				year != 2020
-
-** Outcome variables
-gen out_1 = (same_county == 0) * 100
-gen out_2 = (multnomah_d == 1) * 100
-gen out_3 = (state_fips_o != state_fips_d) * 100
-
-** Treatment variables
-gen post = year > 2020
-
-** Covariate categories (reuse program from above)
-create_covariates
+** Data from Regressions 1-4 are still in memory (the age event-study
+** plots run inside preserve/restore).
 
 ** Create age × post interactions (omit middle age group: 45-64)
 gen age_post_1 = (cat_age == 1) * post
@@ -780,70 +792,6 @@ esttab did_agep_out did_agep_out_state did_agep_in_west did_agep_in_48 	///
 			"In-migration (Lower 48 + DC)")								///
 	stats(N_unwtd, fmt(%12.0fc) labels("Observations"))
 
-********************************************************************************
-** COMBINED TABLE: DiD RESULTS (Panels A, B, C in single file)
-** Produces tab_did_combined.tex for use in main.tex Table A3
-********************************************************************************
-
-** Panel A: College Degree × Post (creates file with full header)
-esttab did_out did_out_state did_in_west did_in_48 						///
-	using "${results}did/tab_did_combined.tex",							///
-	replace 															///
-	starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
-	b(%-9.3f) se(%-9.3f) 												///
-	keep(treated) 														///
-	coeflabels(treated  "College Degree $\times$ Post")					///
-	mtitle(	"\shortstack{Out-\\migration}" 								///
-			"\shortstack{Out-of-\\state}"								///
-			"\shortstack{In-migration\\(West Coast)}" 					///
-			"\shortstack{In-migration\\(Lower 48 + DC)}")				///
-	prehead("\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}" 				///
-			"\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l*{4}{c}@{}}" 						///
-			"\toprule")												///
-	posthead("\midrule" 													///
-			 "\multicolumn{5}{l}{\textit{Panel A: College Degree as Treatment Proxy}}\\[0.3em]") ///
-	prefoot("") 														///
-	postfoot("\midrule") 													///
-	noobs
-
-** Panel B: Age Group × Post (appends to combined file)
-esttab did_agep_out did_agep_out_state did_agep_in_west did_agep_in_48 	///
-	using "${results}did/tab_did_combined.tex",							///
-	append 																///
-	starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
-	b(%-9.3f) se(%-9.3f) 												///
-	keep(age_post_1 age_post_3) 										///
-	order(age_post_1 age_post_3)										///
-	coeflabels(	age_post_1  "Age 25-44 $\times$ Post"					///
-				age_post_3  "Age 65+ $\times$ Post")					///
-	nomtitles nonumbers 												///
-	prehead("\multicolumn{5}{l}{\textit{Panel B: Age Group as Treatment Proxy (Reference: 45--64)}}\\[0.3em]") ///
-	posthead("") 														///
-	prefoot("") 														///
-	postfoot("\midrule") 													///
-	noobs
-
-** Panel C: Treatment heterogeniety by age (appends and closes table)
-esttab did_age_out did_age_out_state did_age_in_west did_age_in_48 		///
-	using "${results}did/tab_did_combined.tex",							///
-	append 																///
-	starlevel("*" 0.10 "**" 0.05 "***" 0.01)							///
-	b(%-9.3f) se(%-9.3f) 												///
-	keep(treated_age_*) 												///
-	order(treated_age_1 treated_age_2 treated_age_3)					///
-	coeflabels(	treated_age_1  "College $\times$ Post $\times$ Age 25-44"	///
-				treated_age_2  "College $\times$ Post $\times$ Age 45-64"	///
-				treated_age_3  "College $\times$ Post $\times$ Age 65+")	///
-	nomtitles nonumbers 												///
-	prehead("\multicolumn{5}{l}{\textit{Panel C: Treatment heterogeneity by age (College $\times$ Age $\times$ Post)}}\\[0.3em]") ///
-	posthead("") 														///
-	prefoot("\midrule") 													///
-	stats(N_unwtd, fmt(%12.0fc) labels("Observations"))					///
-	postfoot("\bottomrule" 											///
-			 "\end{tabular*}")
-
-project_save_overleaf "${results}did/tab_did_combined.tex"
-			 
 ********************************************************************************
 ** REGRESSION 6: EVENT STUDY BY AGE (NO EDUCATION)
 ********************************************************************************

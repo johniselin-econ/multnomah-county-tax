@@ -33,6 +33,7 @@ multnomah-county-tax/
 │   │   ├── census_age_shares.R   #   Census B01001 age shares (tidycensus)
 │   │   ├── download_public_data.R #  BLS LAUS, DOL childcare, county centroids
 │   │   ├── download_nhgis.R      #   NHGIS demographics (IPUMS API)
+│   │   ├── build_wfh_crosswalk.R #   WFH teleworkability by ACS occupation code (one-off)
 │   │   ├── fig_diagrams.R        #   Conceptual diagrams (PDF)
 │   │   ├── map_code.R            #   Choropleth maps (requires Stata output)
 │   │   ├── colors_plotplainblind.R  # Shared colorblind-safe palette
@@ -51,7 +52,8 @@ multnomah-county-tax/
 │   │   ├── 01h_auxiliary.do       #   DOL childcare + property tax
 │   │   ├── 02_sdid_analysis.do    #   Synthetic DiD estimation (incl. narrow pool)
 │   │   ├── 02_otherout_sdid.do    #   SDID on non-migration outcomes
-│   │   ├── 02_did_analysis.do     #   DiD + event study (ACS)
+│   │   ├── 02_did_analysis.do     #   DiD + event study (ACS); heterogeneity appendix
+│   │   ├── 02_did_placebo.do      #   DiD placebos on screened Policy-match counties
 │   │   ├── 02_flow_analysis.do    #   PPML flow models (IRS)
 │   │   ├── 02_indiv_analysis.do   #   Individual-level analysis
 │   │   ├── 02_descriptives.do     #   Descriptive statistics + maps

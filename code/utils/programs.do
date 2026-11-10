@@ -10,7 +10,8 @@
 *                project_load_paper_manifest, project_save_overleaf,
 *                project_clean_results, project_log_number,
 *                project_write_paper_numbers_tex,
-*                project_paper_numbers_init (programs)
+*                project_paper_numbers_init,
+*                create_covariates, did_load_acs, did_define_focal (programs)
 ******************************************************************************/
 
 //--------------------------------------------------
@@ -1047,7 +1048,7 @@ program define project_export_run_manifest
     ** sdid_data_filter changes which blocks run (and so the placebo RNG
     ** stream); sdid_perspec_figs, bootstrap_reps, show_bootstrap_cis and
     ** ci_level change what the tables and spec curves report.
-    local signature "`r(signature)'|parallel=${use_parallel}|clusters=${n_clusters}|resume=${resume}|event=${event_study_mode}|data_filter=${sdid_data_filter}|perspec_figs=${sdid_perspec_figs}|boot_reps=${bootstrap_reps}|show_cis=${show_bootstrap_cis}|ci=${ci_level}"
+    local signature "`r(signature)'|parallel=${use_parallel}|clusters=${n_clusters}|resume=${resume}|event=${event_study_mode}|data_filter=${sdid_data_filter}|perspec_figs=${sdid_perspec_figs}|boot_reps=${bootstrap_reps}|show_cis=${show_bootstrap_cis}|ci=${ci_level}|wfh_cut=${wfh_share_cutoff}|did_placebo=p${did_placebo_pretest_p}-k${did_placebo_irs_keep}"
 
     preserve
     clear
@@ -1412,4 +1413,133 @@ program define project_paper_numbers_init
     capture erase "${results}paper_numbers.csv"
     capture erase "${results}paper_numbers.tex"
     di as text "paper_numbers: register cleared (${results}paper_numbers.csv)."
+end
+
+** ==================================================================
+** Individual-level ACS DiD helpers (02_did_analysis.do, 02_did_placebo.do)
+** ==================================================================
+
+** create_covariates: categorical demographic cells absorbed as cat_* in every
+** individual-level DiD. Any variable named cat_* enters those regressions
+** through the wildcard, so heterogeneity groups use other names.
+capture program drop create_covariates
+program define create_covariates
+
+	** Age categories
+	recode age ///
+		(25/44   = 1 "25-44") ///
+		(45/64   = 2 "45-64") ///
+		(65/max  = 3 "65+"), ///
+		gen(cat_age)
+	label var cat_age "Age categories"
+
+	** Sex
+	gen cat_sex = (sex == 2)
+	label var cat_sex "Female indicator"
+	label define lb_cat_sex 0 "Male" 1 "Female", replace
+	label values cat_sex lb_cat_sex
+
+	** Marital status
+	recode marst ///
+		(1       = 1 "Married") ///
+		(2/3     = 2 "Separated") ///
+		(4/5     = 3 "Divorced / Widowed") ///
+		(6       = 4 "Single"), ///
+		gen(cat_married)
+	label var cat_married "Marriage categories"
+
+	** Number of children
+	recode nchild ///
+		(0       = 0 "0 Children") ///
+		(1       = 1 "1 Child") ///
+		(2       = 2 "2 Children") ///
+		(3/max   = 3 "3+ Children"), ///
+		gen(cat_child)
+	label var cat_child "Number of Children"
+
+	** Age of youngest child
+	recode yngch ///
+		(99      = 0 "No Children") ///
+		(0/4     = 1 "0-4") ///
+		(5/12    = 2 "5-12") ///
+		(13/17   = 3 "13-17")	///
+		(18/max  = 4 "18+"), ///
+		gen(cat_yngch)
+	label var cat_yngch "Age of youngest child"
+
+	** Education categories
+	recode educd ///
+		(min/61  = 1 "Less than HS") ///
+		(62/71   = 2 "HS Diploma") ///
+		(80/100  = 3 "Some College") ///
+		(101/max = 4 "College Degree"), ///
+		gen(cat_educ)
+	label var cat_educ "Education categories"
+
+end
+
+** did_load_acs: load the person-level ACS migration file with the DiD sample
+** restrictions, the College x Post treatment, and the covariate cells. Loads
+** only the variables the DiD scripts use (occ when the file carries it).
+capture program drop did_load_acs
+program define did_load_acs
+	syntax , TAG(string)
+
+	local file "${data}working/acs_migration_file.dta"
+	quietly describe using "`file'", varlist
+	local have `r(varlist)'
+	local want year qmigplc1 state_fips_o county_fips_o state_fips_d county_fips_d ///
+		fips_o fips_d same_county perwt age ftotinc educd sex marst nchild yngch occ
+	local use_vars : list want & have
+	use `use_vars' using "`file'", clear
+
+	** Sample restrictions
+	drop if year < 2016 					// Sample: 2016-2024 (ACS file starts 2012)
+	drop if qmigplc1 == 4					// Error in migration place
+	project_drop_states state_fips_o state_fips_d, states(${indiv_excluded_states}) tag("`tag'")  // globals.do
+	drop if age < 25 						// Dropping under 25
+	drop if ftotinc < 0 					// Negative Family Income
+
+	** Treatment variables
+	gen post = year > 2020
+	label var post "Post-2020"
+
+	gen high_ed = educd >= 101
+	label var high_ed "College Degree"
+
+	gen treated = high_ed * post
+	label var treated "College Degree × Post"
+
+	create_covariates
+end
+
+** did_define_focal: samples and outcomes with FIPS() as the focal county
+** (Multnomah = 41051 in the main DiD; a donor county in the placebos).
+**   sample_1: focal-county residents a year ago (out-migration samples)
+**   sample_3: everyone else (in-migration, Lower 48 + DC)
+**   out_1 moved out of the county; out_2 moved into it; out_3 changed state.
+** 2020 is excluded from both samples.
+capture program drop did_define_focal
+program define did_define_focal
+	syntax , FIPS(integer)
+
+	capture drop focal_o focal_d sample_1 sample_3 out_1 out_2 out_3
+
+	gen focal_o = fips_o == `fips'
+	gen focal_d = fips_d == `fips'
+
+	gen sample_1 = (focal_o == 1) & year != 2020
+	gen sample_3 = (focal_o != 1) & year != 2020
+	label var sample_1 "Out-migration Sample"
+	label var sample_3 "In-migration Sample (Lower 48 + DC)"
+
+	** Outcome variables (scaled to percentages)
+	gen out_1 = (same_county == 0) * 100
+	label var out_1 "Moved out of focal county (%)"
+
+	gen out_2 = (focal_d == 1) * 100
+	label var out_2 "Moved to focal county (%)"
+
+	gen out_3 = (state_fips_o != state_fips_d) * 100
+	label var out_3 "Moved out of focal state (%)"
 end

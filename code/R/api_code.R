@@ -87,7 +87,8 @@ download_ipums_acs <- function(project_root,
     "incwage","incbus00","incwelfr","incinvst","incsupp","incother","incearn",
     "migrate1","migrate1d","migplac1","migcounty1","pwstate2","pwcounty",
     "qempstat","qworkedy","qincearn","qincbus","qincinvs","qincothe","qincreti",
-    "qincss","qincsupp","qinctot","qftotinc","qincwage","qincwelf","qmigplc1"
+    "qincss","qincsupp","qinctot","qftotinc","qincwage","qincwelf","qmigplc1",
+    "occ"
   )
 
   # Years
@@ -162,7 +163,8 @@ download_ipums_acs <- function(project_root,
           inctot, ftotinc, incwage, incearn, incbus00, incinvst, incwelfr, incsupp, incother,
           gq, workedyr, empstat, empstatd,
           migrate1, migrate1d, migplac1, migcounty1, pwcounty, pwstate2,
-          rent, valueh, proptx99
+          rent, valueh, proptx99,
+          "OCC"
         )
       )
 

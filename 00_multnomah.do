@@ -136,6 +136,11 @@ do "${code}02_did_analysis.do"
 ** Synthetic difference-in-differences (main specification)
 do "${code}02_sdid_analysis.do"
 
+** Placebo runs of the individual DiD on screened Policy-match donor counties
+** (needs the Policy-match pool and sdid_analysis_data.dta from the SDID stage,
+** and did_coefficients.dta from 02_did_analysis.do)
+do "${code}02_did_placebo.do"
+
 
 ** ============================================================================
 ** STAGE 3: DESCRIPTIVE TABLES & CONDITIONAL MEANS

@@ -158,6 +158,22 @@ if "${indiv_inmig_origin_states}" == "" global indiv_inmig_origin_states "6 41 5
 if "${state_policy_file}" == ""    global state_policy_file    "${dir}/resources/state_policy_2019_2020.csv"
 if "${policy_pool_n}" == ""        global policy_pool_n        = 20
 
+** Individual DiD, WFH heterogeneity (02_did_analysis.do): Dingel-Neiman
+** teleworkable share by Census occupation code and vintage (2010 codes for
+** ACS <= 2017, 2018 codes after); an occupation is teleworkable when its share
+** is at least wfh_share_cutoff.
+if "${wfh_xwalk_file}" == ""       global wfh_xwalk_file       "${dir}/resources/wfh_teleworkable_occ.csv"
+if "${wfh_share_cutoff}" == ""     global wfh_share_cutoff     = 0.5
+
+** Individual DiD placebos (02_did_placebo.do): each Policy-match donor county
+** is run as if treated, if it passes two pre-2020 screens:
+**   did_placebo_pretest_p: its own out-migration event study's 2016-2018
+**     College x Year coefficients are jointly insignificant (p above this);
+**   did_placebo_irs_keep: its 2016-2019 IRS AGI out- and in-rate slopes are
+**     among this share of donors closest to Multnomah's (Euclidean distance).
+if "${did_placebo_pretest_p}" == "" global did_placebo_pretest_p = 0.10
+if "${did_placebo_irs_keep}" == ""  global did_placebo_irs_keep  = 0.5
+
 ** ------------------------------------------------------------------
 ** Overleaf sync. Enabled iff a (gitignored) user_settings.do at the repo
 ** root defines ${oth_path}; that single switch drives ol_fig / ol_tab and
