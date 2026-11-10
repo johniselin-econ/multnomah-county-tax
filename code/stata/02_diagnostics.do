@@ -318,14 +318,15 @@ diag_distinct fips
 funnel_post, step(4) label("+ non-zero base, IRS-balanced (2016-2022)") ///
 	ncty(`r(nd)') funnelfile(`funnel')
 
-** Step 5: + state drops (AK, HI, CA, WA, non-Multnomah OR). Dropping ALL of
-**         CA/WA/OR (except Multnomah) matches the SDID's sample_all donor pool,
-**         which sets narrow-pool keepers (Sacramento/Seattle) to sample_all==0.
+** Step 5: + state drops (globals.do: sdid_excluded_states). Dropping ALL of
+**         those states' counties except Multnomah matches the SDID's sample_all
+**         donor pool, which sets the narrow-pool keepers in those states
+**         (narrow_only: Sacramento, Seattle, Clark NV) to sample_all==0.
 **         This is the IRS all-counties donor pool (cf. Panel A).
 gen byte multnomah = state_fips == 41 & county_fips == 51
-drop if inlist(state_fips, 2, 15)                       // Alaska, Hawaii
-drop if inlist(state_fips, 6, 53) & multnomah == 0      // California, Washington
-drop if state_fips == 41 & multnomah == 0               // non-Multnomah Oregon
+project_flag_states state_fips, states(${sdid_excluded_states}) generate(excluded_state)
+drop if excluded_state == 1 & multnomah == 0
+drop excluded_state
 diag_distinct fips
 funnel_post, step(5) label("+ state drops (IRS all-counties donor pool)") ///
 	ncty(`r(nd)') funnelfile(`funnel')
@@ -396,11 +397,11 @@ if _rc == 0 {
 tempfile flow_acs_fips
 build_acs_balanced_set, saving(`flow_acs_fips')
 
-** IRS flows, analysis window, drop AK/HI both endpoints
+** IRS flows, analysis window, drop the flow model's excluded states at both
+** endpoints (globals.do: flow_excluded_states)
 use "${data}working/irs_county_flow", clear
 keep if inrange(year, 2016, 2022)
-drop if inlist(state_fips_o, 2, 15)
-drop if inlist(state_fips_d, 2, 15)
+project_drop_states state_fips_o state_fips_d, states(${flow_excluded_states}) tag("flow diagnostics")
 
 ** Tag flows whose BOTH endpoints are in the balanced ACS county set.
 ** `fips' is a scratch merge key (dropped after each merge); clear any
@@ -471,8 +472,7 @@ drop if year == 2020
 keep if age >= 25
 capture confirm variable qmigplc1
 if !_rc drop if qmigplc1 == 4
-drop if inlist(state_fips_o, 2, 15)
-drop if inlist(state_fips_d, 2, 15)
+project_drop_states state_fips_o state_fips_d, states(${indiv_excluded_states}) tag("DiD diagnostics")
 capture confirm variable ftotinc
 if !_rc drop if ftotinc < 0
 
@@ -492,9 +492,11 @@ diag_post, approach("DiD: out-migration (Multnomah)") sample("Origin = Multnomah
 	datasource("ACS individual") unit("person-year") ncounties("`nc'") ///
 	nyears(`nyr') nobs(`nobs') resultsfile("`resfile'")
 
-** Sample 2: in-migration, West Coast origins (CA/OR/WA, non-Multnomah)
+** Sample 2: in-migration, West Coast origins (globals.do:
+** indiv_inmig_origin_states, non-Multnomah)
 preserve
-	keep if multnomah_o != 1 & inlist(state_fips_o, 6, 41, 53)
+	project_flag_states state_fips_o, states(${indiv_inmig_origin_states}) generate(inmig_origin)
+	keep if multnomah_o != 1 & inmig_origin == 1
 	diag_distinct fips_o
 	local nc = r(nd)
 	qui count

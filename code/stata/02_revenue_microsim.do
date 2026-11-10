@@ -48,6 +48,7 @@ capture log close log_02rev
 log using "${logs}02_log_revenue_microsim_${date}", name(log_02rev) replace text
 
 project_set_seed, context("02_revenue_microsim.do") offset(40)
+project_assert_preferred_pools, caller("02_revenue_microsim.do")
 
 ** effect_agi / effect_agi_oregon are set in Section 0B from sdid_results.dta.
 ** There is deliberately no default: a placeholder would flow silently into
@@ -82,8 +83,8 @@ dis "=============================================="
 
 ** Load SDID estimates from stored results (produced by 02_sdid_analysis.do)
 ** Highlighted specs mirror project_mark_preferred_main in programs.do:
-**   - IRS (16-22) × {sample_all, sample_stringency, sample_narrow} × {domestic, out-of-state}
-**   - ACS College (16-24) × {sample_all, sample_stringency, sample_narrow} × {domestic, out-of-state}
+**   - IRS (16-22) × {sample_all, sample_stringency, sample_policy} × {domestic, out-of-state}
+**   - ACS College (16-24) × {sample_all, sample_stringency, sample_policy} × {domestic, out-of-state}
 ** All with controls == 1 & exclusion == 1 (excl. 2020)
 capture confirm file "${results}sdid/sdid_results.dta"
 if _rc == 0 {
@@ -98,10 +99,10 @@ if _rc == 0 {
 	** Suffixes for scalar names
 	local suf_1 "irs_all"
 	local suf_2 "irs_string"
-	local suf_3 "irs_narrow"
+	local suf_3 "irs_policy"
 	local suf_4 "acs_col_all"
 	local suf_5 "acs_col_string"
-	local suf_6 "acs_col_narrow"
+	local suf_6 "acs_col_policy"
 
 	** Domestic (type 3) — used for PFA county revenue loss
 	local dom_sdata_1 "irs_full_16_22"
@@ -134,18 +135,18 @@ if _rc == 0 {
 	** Samples (shared across domestic and out-of-state)
 	local samp_1 "sample_all"
 	local samp_2 "sample_stringency"
-	local samp_3 "sample_narrow"
+	local samp_3 "sample_policy"
 	local samp_4 "sample_all"
 	local samp_5 "sample_stringency"
-	local samp_6 "sample_narrow"
+	local samp_6 "sample_policy"
 
 	** Labels for display
 	local lbl_1 "IRS, all counties"
 	local lbl_2 "IRS, stringency match"
-	local lbl_3 "IRS, narrow pool"
+	local lbl_3 "IRS, policy match"
 	local lbl_4 "ACS College, all counties"
 	local lbl_5 "ACS College, stringency"
-	local lbl_6 "ACS College, narrow pool"
+	local lbl_6 "ACS College, policy match"
 
 	** ---- Domestic highlighted specs ----
 	dis ""

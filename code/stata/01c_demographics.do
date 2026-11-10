@@ -273,3 +273,18 @@ drop if fips > 60000
 compress
 save "${data}working/pop_centers", replace
 clear
+
+//--------------------------------------------------
+// County land area (Census 2020 Gazetteer)
+//--------------------------------------------------
+
+** Load land area (code/R/download_public_data.R: download_county_land_area)
+import delimited "${data}demographic/county_land_area_2020.csv", clear
+isid fips
+assert aland_sqmi > 0 & !missing(aland_sqmi)
+label var aland_sqmi "Land area, square miles (2020 Gazetteer)"
+
+** Save data
+compress
+save "${data}working/land_area", replace
+clear

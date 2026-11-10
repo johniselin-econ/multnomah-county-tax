@@ -149,10 +149,10 @@ draw_empirical_approach <- function(out_file, with_title = FALSE) {
      "One treated unit (Multnomah County)",
      sz = 10, col = desc_col)
   tx(65, 124,
-     "Donor pools: All, Urban (top 5%), COVID, Demographic, Stringency, Narrow",
+     "Donor pools: All, Policy match, COVID, Demographic, Stringency, Narrow",
      sz = 10, col = desc_col)
   tx(65, 121.5,
-     "Highlighted specs: IRS / ACS College \u00d7 {All, Stringency, Narrow},",
+     "Highlighted specs: IRS / ACS College \u00d7 {All, Stringency, Policy match},",
      sz = 10, col = desc_col)
   tx(65, 119.2,
      "with covariates, excluding 2020",

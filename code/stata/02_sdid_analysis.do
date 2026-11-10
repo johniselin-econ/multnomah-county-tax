@@ -214,18 +214,12 @@ label var Treated "Treatment indicator for Multnomah County, Oregon"
 
 ** Define sample 1: All counties
 gen sample_all = 1
-label var sample_all "All counties (excluding AK, CA, HI OR, WA)"
+label var sample_all "All counties (excluding AK, AZ, CA, HI, ID, NV, OR, WA)"
 
-** Define sample 2: Counties in top 95 percent
-qui summ percent_urban if year == 2020, de
-local cutoff = r(p95)
-tab state_name multnomah if percent_urban >= `cutoff' & year == 2020
-gen sample_urban95 = percent_urban >= `cutoff' // All counties
-label var sample_urban95 "Urban counties (top 5%) (excluding AK, CA, HI OR, WA)"
-tab sample_urban95 if year == 2020
+** Sample 2 (policy match, sample_policy) is defined after the k-means pools.
 
 ** Compute top-25% urban threshold for clustered donor pools
-** Note: must be computed before state drops (like sample_urban95) so
+** Note: must be computed before state drops so
 **       Multnomah is evaluated against the full county distribution
 qui summ percent_urban if year == 2020, de
 local p75 = r(p75)
@@ -240,27 +234,24 @@ gen urban_top75 = percent_urban >= `p75'
 ** Source of truth: resources/narrow_pool_fips.csv (edit there, not here).
 load_narrow_pool
 
-** Flag narrow-only keeper counties (Sacramento, Seattle) so the other 5
-** pools and the k-means clustering steps below can exclude them. Multnomah
-** itself is in narrow but should still appear in every other pool, so the
-** flag is restricted to non-Multnomah CA/WA/OR narrow members.
-gen narrow_only = sample_narrow == 1 & multnomah == 0 & ///
-    inlist(state_name, "California", "Washington", "Oregon")
-label var narrow_only "County belongs only to narrow pool (CA/WA/OR keeper)"
+** Flag narrow-only keeper counties (Sacramento, Seattle, Clark NV) so the
+** other 5 pools and the k-means clustering steps below can exclude them.
+** Multnomah itself is in narrow but should still appear in every other pool,
+** so the flag is restricted to non-Multnomah narrow members in excluded states.
+project_flag_states state_fips, states(${sdid_excluded_states}) generate(excluded_state)
+gen narrow_only = sample_narrow == 1 & multnomah == 0 & excluded_state == 1
+label var narrow_only "County belongs only to narrow pool (excluded-state keeper)"
 
-** Define Sample of States. Drop AK/HI unconditionally; for CA/WA/OR keep
+** Define Sample of States (globals.do: sdid_excluded_states). Keep
 ** narrow-pool members so the similar-cities donor frame is preserved.
-drop if state_name == "Alaska"
-drop if state_name == "Hawaii"
-drop if state_name == "California" & sample_narrow == 0
-drop if state_name == "Washington" & sample_narrow == 0
-drop if state_name == "Oregon" & multnomah == 0 & sample_narrow == 0
+tab state_name narrow_only if excluded_state == 1 & year == 2020
+drop if excluded_state == 1 & multnomah == 0 & sample_narrow == 0
+drop excluded_state
 
-** Force the five main pool indicators to 0 for narrow-only keepers so they
+** Force sample_all to 0 for narrow-only keepers so they
 ** are restricted to the narrow donor pool only. The kmeans-based pools below
 ** add `narrow_only == 0` to their cluster-input cells for the same reason.
 replace sample_all     = 0 if narrow_only == 1
-replace sample_urban95 = 0 if narrow_only == 1
 
 ** Define sample 3: Counties in top 95 + covid
 project_kmeans_best cases_cum* deaths_cum* if 	///
@@ -273,7 +264,7 @@ gen tmp1 = kmean if urban_top75 == 1 & year == 2020 & covid_merge == 3 & multnom
 egen tmp2 = mean(tmp1)
 gen sample_urban75_covid = urban_top75 == 1 & kmean_group == tmp2 & narrow_only == 0
 drop tmp1 tmp2
-label var sample_urban75_covid "Urban counties (top 25%) w. COVID k-means match (excluding AK, CA, HI OR, WA)"
+label var sample_urban75_covid "Urban counties (top 25%) w. COVID k-means match (excluding AK, AZ, CA, HI, ID, NV, OR, WA)"
 tab sample_urban75_covid if year == 2020
 
 ** Define sample 4: Demographic k-means
@@ -301,7 +292,7 @@ gen tmp1 = kmean_demog if year == 2020 & multnomah == 1
 egen tmp2 = mean(tmp1)
 gen sample_demog = kmean_demog_group == tmp2 & narrow_only == 0
 drop tmp1 tmp2 std_* pci_pre
-label var sample_demog "Counties with Demographic Kmean Match (excluding AK, CA, HI OR, WA)"
+label var sample_demog "Counties with Demographic Kmean Match (excluding AK, AZ, CA, HI, ID, NV, OR, WA)"
 tab sample_demog if year == 2020
 
 ** Define sample 5: COVID stringency k-means match (JII restriction-duration)
@@ -329,11 +320,61 @@ drop tmp1 tmp2 std_* urban_top75 kmean_string kmean_string_group
 label var sample_stringency "Urban counties (top 25%) w. COVID stringency k-means match"
 tab sample_stringency if year == 2020
 
-** Freeze pools 3-5 (see globals.do). Reuse the saved memberships unless a
-** rebuild is requested, and report how many counties today's k-means would
-** assign differently, so drift shows up in the log instead of in the results.
-** 02_otherout_sdid.do reads the same file.
-local pool_vars "sample_urban75_covid sample_demog sample_stringency"
+** Define sample 2: policy-matched pool (globals.do: state_policy_file,
+** policy_pool_n). Eligible states had a Democratic governor (DC: mayor) in
+** both 2019 and 2020 and a 2020 top rate on wages at or above the median of
+** the states that taxed wages in both years. Within them, keep the
+** policy_pool_n counties nearest Multnomah: Euclidean distance on z-scores
+** of log population, log population density, 2020 per-capita income, and the
+** under-24 and 65+ age shares. Rebuilt every run and written to
+** ${donor_pool_file} below, so 02_otherout_sdid.do reads identical membership.
+tempfile policy_states
+project_policy_states, saving(`policy_states')
+merge m:1 state_fips using `policy_states', gen(policy_merge) keep(master match)
+project_report_merge, gen(policy_merge) tag("state_policy") required(100)
+
+merge m:1 fips using "${data}working/land_area", gen(land_merge) keep(master match)
+project_report_merge, gen(land_merge) tag("land_area") required(100)
+gen pop_density = pop_census / aland_sqmi
+label var pop_density "Population per square mile of land (2020)"
+
+gen pci_2020 = per_capita_income if year == 2020
+bysort fips: egen policy_pci = mean(pci_2020)
+gen log_pop = ln(pop_census)
+gen log_density = ln(pop_density)
+local policy_match_vars "log_pop log_density policy_pci share_under_24 share_over_65"
+gen policy_dist = 0
+foreach v of local policy_match_vars {
+	qui summ `v' if year == 2020 & narrow_only == 0
+	gen z_`v' = (`v' - r(mean)) / r(sd)
+	qui summ z_`v' if year == 2020 & multnomah == 1
+	replace policy_dist = policy_dist + (z_`v' - r(mean))^2
+}
+replace policy_dist = sqrt(policy_dist)
+gen byte policy_candidate = year == 2020 & policy_state == 1 & multnomah == 0 & narrow_only == 0
+assert !missing(policy_dist) if policy_candidate == 1
+
+** Rank candidates by distance (fips breaks ties); keep the nearest N
+gsort -policy_candidate policy_dist fips
+gen policy_rank = sum(policy_candidate) if policy_candidate == 1
+bysort fips: egen policy_rank_county = min(policy_rank)
+gen sample_policy = multnomah == 1 | policy_rank_county <= ${policy_pool_n}
+label var sample_policy "Policy match: nearest ${policy_pool_n} counties in Dem-governor, top-half-tax states"
+list state_name county_name pop_census pop_density policy_pci policy_dist policy_rank ///
+	if year == 2020 & sample_policy == 1, clean noobs
+tab sample_policy if year == 2020
+drop pci_2020 policy_pci log_pop log_density z_* policy_dist policy_candidate ///
+	policy_rank policy_rank_county policy_state
+sort fips year
+
+** Freeze the k-means pools 3-5 (see globals.do). Reuse the saved memberships
+** unless a rebuild is requested, and report how many counties today's k-means
+** would assign differently, so drift shows up in the log instead of in the
+** results. The policy pool (sample_policy) involves no random draws, so it is
+** never frozen: it is rebuilt from globals.do's settings every run and written
+** into the same file, which is where 02_otherout_sdid.do reads all four pools.
+local kmeans_pool_vars "sample_urban75_covid sample_demog sample_stringency"
+local pool_vars "`kmeans_pool_vars' sample_policy"
 capture confirm file "${donor_pool_file}"
 if _rc != 0 | ${rebuild_donor_pools} == 1 {
 	preserve
@@ -347,14 +388,15 @@ if _rc != 0 | ${rebuild_donor_pools} == 1 {
 else {
 	preserve
 	import delimited using "${donor_pool_file}", clear
-	foreach v of local pool_vars {
+	keep fips `kmeans_pool_vars'
+	foreach v of local kmeans_pool_vars {
 		rename `v' saved_`v'
 	}
 	tempfile saved_pools
 	save `saved_pools'
 	restore
 	merge m:1 fips using `saved_pools', gen(pool_merge)
-	foreach v of local pool_vars {
+	foreach v of local kmeans_pool_vars {
 		qui count if pool_merge == 2 & saved_`v' == 1
 		if r(N) > 0 dis "`v': `r(N)' saved members are not in today's data"
 		qui replace saved_`v' = 0 if pool_merge == 1
@@ -365,9 +407,30 @@ else {
 	}
 	drop if pool_merge == 2
 	drop pool_merge
-	dis "Donor pools read from ${donor_pool_file}"
+
+	** Rewrite the file with the saved k-means memberships (every saved row,
+	** including any county no longer in today's data) and today's policy pool.
+	preserve
+	qui keep if year == 2020
+	keep fips sample_policy
+	tempfile live_policy
+	save `live_policy'
+	use `saved_pools', clear
+	foreach v of local kmeans_pool_vars {
+		rename saved_`v' `v'
+	}
+	merge 1:1 fips using `live_policy', nogen
+	foreach v of local kmeans_pool_vars {
+		qui replace `v' = 0 if missing(`v')
+	}
+	qui replace sample_policy = 0 if missing(sample_policy)
+	order fips `pool_vars'
+	sort fips
+	export delimited using "${donor_pool_file}", replace
+	restore
+	dis "k-means pools read from ${donor_pool_file}; sample_policy rebuilt and written there"
 }
-assert sample_urban75_covid == 1 & sample_demog == 1 & sample_stringency == 1 if multnomah == 1
+assert sample_urban75_covid == 1 & sample_demog == 1 & sample_stringency == 1 & sample_policy == 1 if multnomah == 1
 tab1 `pool_vars' if year == 2020
 
 ** Define and standardize covariates
@@ -525,7 +588,7 @@ if ${use_parallel} == 1 {
 	** Table units are defined by:
 	** - data_var (irs_sample_1, irs_sample_2, acs_period_1, acs_period_2)
 	** - out_type (irs, acs1, acs2) - but tied to data_var
-	** - samp_var (sample_all, sample_urban95, sample_urban75_covid, sample_demog, sample_stringency)
+	** - samp_var (${donor_pool_list})
 	** - exclusion (0, 1)
 	** - migr_type (net, in, out)
 
@@ -570,7 +633,7 @@ if ${use_parallel} == 1 {
 			else if "`data'" == "acs_period_2" & "`type'" == "acs1_outstate" local out_txt "acs_outstate_16_24_all"
 			else if "`data'" == "acs_period_2" & "`type'" == "acs2_outstate" local out_txt "acs_outstate_16_24_col"
 
-			foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" "sample_narrow" {
+			foreach samp of global donor_pool_list {
 
 				forvalues exl = 0/1 {
 					foreach migr in "net" "in" "out" {
@@ -660,7 +723,7 @@ if ${use_parallel} == 1 {
 				local run_event = 1
 				if "${event_study_mode}" == "preferred" {
 					local run_event = 0
-					if inlist("`samp_var'", "sample_all", "sample_stringency", "sample_narrow") & `c' == 1 & `exl' == 1 {
+					if strpos(" ${preferred_pools} ", " `samp_var' ") > 0 & `c' == 1 & `exl' == 1 {
 						if "`out_txt'" == "irs_full_16_22" | "`out_txt'" == "acs_16_24_col" {
 							local run_event = 1
 						}
@@ -675,7 +738,7 @@ if ${use_parallel} == 1 {
 				local render_figs = 1
 				if "${sdid_perspec_figs}" == "preferred" {
 					local render_figs = 0
-					if inlist("`samp_var'", "sample_all", "sample_stringency", "sample_narrow") & `c' == 1 & `exl' == 1 {
+					if strpos(" ${preferred_pools} ", " `samp_var' ") > 0 & `c' == 1 & `exl' == 1 {
 						if "`out_txt'" == "irs_full_16_22" | "`out_txt'" == "acs_16_24_col" {
 							local render_figs = 1
 						}
@@ -792,7 +855,7 @@ if ${use_parallel} == 1 {
 					gen event_se = (event_ci_hi - event_ci_lo) / (2 * 1.96) ///
 						if !missing(event_ci_lo) & !missing(event_ci_hi)
 					gen outstate = strpos("`outcome'", "_outstate") > 0
-					gen preferred = inlist("`samp_var'", "sample_all", "sample_stringency", "sample_narrow") ///
+					gen preferred = strpos(" ${preferred_pools} ", " `samp_var' ") > 0 ///
 						& `c' == 1 & `exl' == 1 ///
 						& inlist("`out_txt'", "irs_full_16_22", "acs_16_24_col", ///
 							"irs_outstate_full_16_22", "acs_outstate_16_24_col")
@@ -953,7 +1016,7 @@ if ${use_parallel} == 1 {
 	** Compute all county counts in a single pass (avoid reloading data).
 	** Note: use numeric index to avoid Stata's 32-char macro name limit
 	local _idx = 0
-	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" "sample_narrow" {
+	foreach samp of global donor_pool_list {
 		foreach data_v in `data_vars' {
 			local _idx = `_idx' + 1
 			qui count if `samp' == 1 & `data_v' == 1 & year == 2021
@@ -974,7 +1037,7 @@ if ${use_parallel} == 1 {
 
 	local _idx = 0
 	local row = 0
-	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" "sample_narrow" {
+	foreach samp of global donor_pool_list {
 		foreach data_v in `data_vars' {
 			local _idx = `_idx' + 1
 			local row = `row' + 1
@@ -1262,7 +1325,7 @@ else {
 			capture mkdir "${results}sdid/`out_txt'"
 
 			** Loop over samples
-			foreach samp of varlist sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency sample_narrow {
+			foreach samp of varlist ${donor_pool_list} {
 
 				** Loop over exclusion of 2020
 				forvalues exl = 1(-1)0 {
@@ -1302,7 +1365,7 @@ else {
 								local run_event = 1
 								if "${event_study_mode}" == "preferred" {
 									local run_event = 0
-									if inlist("`samp'", "sample_all", "sample_stringency", "sample_narrow") & `c' == 1 & `exl' == 1 {
+									if strpos(" ${preferred_pools} ", " `samp' ") > 0 & `c' == 1 & `exl' == 1 {
 										if "`out_txt'" == "irs_full_16_22" | "`out_txt'" == "acs_16_24_col" {
 											local run_event = 1
 										}
@@ -1317,7 +1380,7 @@ else {
 								local render_figs = 1
 								if "${sdid_perspec_figs}" == "preferred" {
 									local render_figs = 0
-									if inlist("`samp'", "sample_all", "sample_stringency", "sample_narrow") & `c' == 1 & `exl' == 1 {
+									if strpos(" ${preferred_pools} ", " `samp' ") > 0 & `c' == 1 & `exl' == 1 {
 										if "`out_txt'" == "irs_full_16_22" | "`out_txt'" == "acs_16_24_col" {
 											local render_figs = 1
 										}
@@ -1420,7 +1483,7 @@ else {
 									gen event_se = (event_ci_hi - event_ci_lo) / (2 * 1.96) ///
 										if !missing(event_ci_lo) & !missing(event_ci_hi)
 									gen outstate = strpos("`out'", "_outstate") > 0
-									gen preferred = inlist("`samp'", "sample_all", "sample_stringency", "sample_narrow") ///
+									gen preferred = strpos(" ${preferred_pools} ", " `samp' ") > 0 ///
 										& `c' == 1 & `exl' == 1 ///
 										& inlist("`out_txt'", "irs_full_16_22", "acs_16_24_col", ///
 											"irs_outstate_full_16_22", "acs_outstate_16_24_col")
@@ -1764,13 +1827,13 @@ foreach otype in "n1" "n2" "agi" {
 		** out-of-state movers). The shared rendering block below builds
 		** y_<ind> scatter layers and ylabel entries from this list.
 		if "`pset'" == "main" {
-			local indic_list spec_all spec_urban95 spec_covid spec_demog ///
+			local indic_list spec_all spec_policy spec_covid spec_demog ///
 				spec_stringency spec_narrow spec_covars spec_excl2020   ///
 				spec_irs spec_irs_389 spec_acs_all spec_acs_col         ///
 				spec_16_22 spec_16_24
 		}
 		else {
-			local indic_list spec_all spec_urban95 spec_covid spec_demog ///
+			local indic_list spec_all spec_policy spec_covid spec_demog ///
 				spec_stringency spec_narrow spec_covars spec_excl2020   ///
 				spec_irs_outstate spec_irs_outstate_389                 ///
 				spec_acs_all_outstate spec_acs_col_outstate             ///
@@ -1782,7 +1845,7 @@ foreach otype in "n1" "n2" "agi" {
 		** the out-of-state qualifier so the indicator-panel row labels stay
 		** identical across psets.
 		local lbl_spec_all              `"All Counties"'
-		local lbl_spec_urban95          `"Urban (Top 5%)"'
+		local lbl_spec_policy           `"Policy Match"'
 		local lbl_spec_covid            `"COVID Match"'
 		local lbl_spec_demog            `"Demographic Match"'
 		local lbl_spec_stringency       `"Stringency Match"'
@@ -1903,12 +1966,12 @@ replace migration = "out" if strpos(outcome, "_out_") > 0
 ** 1. Donor pool (6 levels, base = All Counties)
 gen donor_pool = .
 replace donor_pool = 1 if sample == "sample_all"
-replace donor_pool = 2 if sample == "sample_urban95"
+replace donor_pool = 2 if sample == "sample_policy"
 replace donor_pool = 3 if sample == "sample_urban75_covid"
 replace donor_pool = 4 if sample == "sample_demog"
 replace donor_pool = 5 if sample == "sample_stringency"
 replace donor_pool = 6 if sample == "sample_narrow"
-label define donor_pool_lbl 1 "All Counties" 2 "Urban 95%" 			///
+label define donor_pool_lbl 1 "All Counties" 2 "Policy Match" 		///
 	3 "COVID Match" 4 "Demog. Match" 5 "Stringency" 6 "Narrow"
 label values donor_pool donor_pool_lbl
 
@@ -2012,7 +2075,7 @@ foreach otype in "n1" "n2" "agi" {
 		** (paper_numbers.csv): AGI, out-of-county, every spec indicator.
 		if "`otype'" == "agi" & `geo' == 0 {
 			local meta_terms "2.donor_pool 3.donor_pool 4.donor_pool 5.donor_pool 6.donor_pool 2.data_src 3.data_src 4.data_src period_1624 controls exclusion"
-			local meta_names "urban95 covid_match demog_match stringency narrow irs_389 acs_all acs_college period_16_24 covars excl2020"
+			local meta_names "policy_match covid_match demog_match stringency narrow irs_389 acs_all acs_college period_16_24 covars excl2020"
 			local n_terms : word count `meta_terms'
 			forvalues i = 1/`n_terms' {
 				local term : word `i' of `meta_terms'
@@ -2031,7 +2094,7 @@ foreach otype in "n1" "n2" "agi" {
 			keep(2.donor_pool 3.donor_pool 4.donor_pool 5.donor_pool 6.donor_pool) ///
 			xline(0, lc("`col_zero'") lp(dash)) 					///
 			coeflabels( 											///
-				2.donor_pool = `""Urban" "(Top 5%)""' 				///
+				2.donor_pool = `""Policy" "Match""' 					///
 				3.donor_pool = `""COVID" "Match""' 					///
 				4.donor_pool = `""Demographic" "Match""' 			///
 				5.donor_pool = `""Stringency" "Match""' 			///

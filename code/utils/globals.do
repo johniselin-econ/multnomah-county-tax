@@ -34,12 +34,21 @@ if "${date}" == ""    global date "`: di %tdCY-N-D daily("$S_DATE", "DMY")'"
 if "${master_seed}" == ""            global master_seed = 56403
 if "${bootstrap_seed_offset}" == ""  global bootstrap_seed_offset = 60000
 if "${artifact_schema_version}" == "" global artifact_schema_version "2026-03-15"
-if "${preferred_spec_version}" == ""  global preferred_spec_version "2026-03-main"
+if "${preferred_spec_version}" == ""  global preferred_spec_version "2026-11-policy"
+
+** SDID donor pools, in spec-loop order, and the preferred subset highlighted
+** in Table 2, Table 3, the event studies, and the bootstrap CIs. The table
+** layouts, notes, overlay colours, and revenue-microsim rows are written for
+** exactly these three pools; project_assert_preferred_pools stops those
+** scripts if this list changes without them being updated.
+if "${donor_pool_list}" == ""       global donor_pool_list "sample_all sample_policy sample_urban75_covid sample_demog sample_stringency sample_narrow"
+if "${preferred_pools}" == ""       global preferred_pools "sample_all sample_stringency sample_policy"
 
 ** k-means donor pools (Covid, demographic, stringency match). Built once with
 ** best-of-${kmeans_starts} k-means and saved to ${donor_pool_file} (tracked);
 ** every later run reads the file, so a data change cannot redraw the pools.
-** Set rebuild_donor_pools = 1 to rebuild and overwrite the file.
+** Set rebuild_donor_pools = 1 to rebuild and overwrite the file. The same file
+** also carries sample_policy, which is deterministic and rewritten every run.
 ** 1000 starts: at 100 the Covid and stringency optima were each reached by a
 ** single start. The three pools' seed bases are 1000 apart, so 1000 is the
 ** most starts that keeps their seed ranges disjoint.
@@ -118,6 +127,36 @@ if "${end_yy_irs_county}" == ""    global end_yy_irs_county    = 22
 **         (-$2.0M), giving an AGI out-rate of -302%. As a placebo-treated
 **         donor it alone inflated one SDID placebo SE from 0.55 to 36.
 if "${excluded_fips}" == ""        global excluded_fips        "20081"
+
+** State sample restrictions, one list per model (state FIPS, space-separated).
+** This block is the only place they are set: every script applies them through
+** project_flag_states / project_drop_states (programs.do), never inline.
+**
+** sdid_excluded_states: counties dropped from the SDID donor pools
+**   (02_sdid_analysis, 02_otherout_sdid, and the descriptives/diagnostics that
+**   describe those samples). Multnomah is always kept; narrow-pool members in
+**   these states (resources/narrow_pool_fips.csv) stay, as donors to the narrow
+**   pool only. AK 2, HI 15, CA 6, WA 53, OR 41, plus Oregon's migration
+**   neighbours AZ 4, ID 16, NV 32 (Reviewer 2, comment 2).
+** flow_excluded_states: PPML gravity flows (02_flow_analysis) with either
+**   endpoint in these states are dropped. AK 2, HI 15.
+** indiv_excluded_states: individual-level ACS movers (02_did_analysis,
+**   02_indiv_analysis) with origin or destination in these states are dropped.
+**   AK 2, HI 15.
+** indiv_inmig_origin_states: origins of the individual DiD's West Coast
+**   in-migration sample (sample_2; non-Multnomah). CA 6, OR 41, WA 53.
+if "${sdid_excluded_states}" == ""      global sdid_excluded_states      "2 15 6 53 41 4 16 32"
+if "${flow_excluded_states}" == ""      global flow_excluded_states      "2 15"
+if "${indiv_excluded_states}" == ""     global indiv_excluded_states     "2 15"
+if "${indiv_inmig_origin_states}" == "" global indiv_inmig_origin_states "6 41 53"
+
+** Policy-matched donor pool (sample_policy, 02_sdid_analysis.do): states with
+** a Democratic governor in 2019 and 2020 and a 2020 top income-tax rate on
+** wages at or above the median wage-taxing state (state_policy_file, sourced
+** per row), then the policy_pool_n counties nearest Multnomah on log
+** population, log density, per-capita income, and age shares.
+if "${state_policy_file}" == ""    global state_policy_file    "${dir}/resources/state_policy_2019_2020.csv"
+if "${policy_pool_n}" == ""        global policy_pool_n        = 20
 
 ** ------------------------------------------------------------------
 ** Overleaf sync. Enabled iff a (gitignored) user_settings.do at the repo
@@ -256,3 +295,10 @@ do "${utils}programs.do"
 ** Registry of the paper's artifacts -> ${paper_artifacts} (used by
 ** project_save_overleaf when paper_only = 1).
 project_load_paper_manifest
+
+** Policy-pool eligible states -> ${policy_states} (FIPS list), read by
+** project_build_signature. Computed once here, not inside the signature
+** program, because parallel workers get globals forwarded but only the
+** programs named in prog(): a nested program call there fails with rc=199.
+quietly project_policy_states
+global policy_states "`r(states)'"

@@ -977,10 +977,10 @@ if _rc {
 
 ** ---- Define pool list (consistent across panels) ----
 ** Order: Multnomah first, then 6 donor pools.
-local pool_list "mult sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency sample_narrow"
+local pool_list "mult sample_all sample_policy sample_urban75_covid sample_demog sample_stringency sample_narrow"
 local pool_label_mult                  "Multnomah"
 local pool_label_sample_all            "All donor counties (mean)"
-local pool_label_sample_urban95        "Urban top-5\% (mean)"
+local pool_label_sample_policy         "Policy match (mean)"
 local pool_label_sample_urban75_covid  "Urban top-25\%, Covid match (mean)"
 local pool_label_sample_demog          "Demographic match (mean)"
 local pool_label_sample_stringency     "Stringency match (mean)"
@@ -991,7 +991,7 @@ local pool_label_sample_narrow         "Narrow similar-cities pool (mean)"
 ** own row).
 local cond_mult                  "multnomah == 1"
 local cond_sample_all            "sample_all == 1            & multnomah == 0"
-local cond_sample_urban95        "sample_urban95 == 1        & multnomah == 0"
+local cond_sample_policy         "sample_policy == 1         & multnomah == 0"
 local cond_sample_urban75_covid  "sample_urban75_covid == 1  & multnomah == 0"
 local cond_sample_demog          "sample_demog == 1          & multnomah == 0"
 local cond_sample_stringency     "sample_stringency == 1     & multnomah == 0"
@@ -1004,16 +1004,16 @@ local cond_sample_narrow         "sample_narrow == 1         & multnomah == 0"
 ** (irs_389; IRS data filtered to the balanced ACS panel via
 ** _balanced_acs), ACS all-25+ (acs1), ACS College (acs2). Each uses
 ** the same five donor-pool definitions plus narrow. IRS sees ~3,140
-** counties; the ACS public-use file identifies ~389 counties, of
-** which ~337 (336 donors + Multnomah) satisfy our balanced-panel and
-** state-drop restrictions and appear in Panels B-D. This is the same
+** counties; the ACS public-use file identifies far fewer, and those
+** that satisfy our balanced-panel and state-drop restrictions appear in
+** Panels B-D (counts computed for the table note below). This is the same
 ** county universe used by the IRS-389, ACS-all, and ACS-college SDID
 ** specifications.
 tempname M_IRS M_IRS_389 M_ACS1 M_ACS2
 foreach m in `M_IRS' `M_IRS_389' `M_ACS1' `M_ACS2' {
     matrix `m' = J(7, 8, .)
     matrix colnames `m' = N out_pre out_post in_pre in_post net_pre net_post net_chg
-    matrix rownames `m' = mult all urban95 urban_covid demog stringency narrow
+    matrix rownames `m' = mult all policy urban_covid demog stringency narrow
 }
 
 ** Build per-panel observability flags from a single year-snapshot.
@@ -1107,6 +1107,19 @@ mat list `M_IRS_389'
 mat list `M_ACS1'
 mat list `M_ACS2'
 
+** Table-note counts and excluded-state list, built from the data and
+** ${sdid_excluded_states} the same way as Table A1's note
+** (02_appendix_descriptives.do), so the note tracks the estimation sample.
+preserve
+tempfile acs_balanced_note
+build_acs_balanced_set, saving(`acs_balanced_note')
+local n_acs_balanced = _N
+restore
+local n_acs_donors = `M_ACS1'[2, 1]
+local n_acs_sdid   = `M_ACS1'[1, 1] + `n_acs_donors'
+project_excluded_states_text, states(${sdid_excluded_states})
+local excluded_states_text "`r(text)'"
+
 ** ---- Write LaTeX table ----
 local _dests `""${results}tables/table1_combined.tex""'
 
@@ -1180,7 +1193,7 @@ file write `fh' `"\end{tabular}"' _n
 file write `fh' `"\begin{tablenotes}[flushleft]"' _n
 file write `fh' `"\setstretch{1}\footnotesize"' _n
 file write `fh' `"\setlength{\itemsep}{1pt}"' _n
-file write `fh' `"\item \textit{Notes:} AGI in-, out-, and net-migration rates as a percentage of each county's base filing population, averaged over the indicated pre and post periods (2020 dropped). N counts donor counties per pool. The all-donor pool comprises all U.S.\ counties in each dataset except Alaska, Hawaii, California, Washington, and non-Multnomah Oregon; see Appendix~\ref{sec:appendixb} for the other pools. Panel~A uses all IRS counties (2016--2022); Panels~B--D restrict to the balanced ACS panel (IRS-389, ACS-25+, and ACS-college specifications), for which 337 of the 389 ACS-identified counties (336 donors $+$ Multnomah) survive our balanced-panel and state-drop restrictions. Panel~D restricts to households with at least one college-educated member."' _n
+file write `fh' `"\item \textit{Notes:} AGI in-, out-, and net-migration rates as a percentage of each county's base filing population, averaged over the indicated pre and post periods (2020 dropped). N counts donor counties per pool. The all-donor pool comprises all U.S.\ counties in each dataset except `excluded_states_text'; see Appendix~\ref{sec:appendixb} for the other pools. Panel~A uses all IRS counties (2016--2022); Panels~B--D restrict to the balanced ACS panel (IRS-389, ACS-25+, and ACS-college specifications), of the `n_acs_balanced' counties the ACS public-use microdata identify in every year 2016--2024, `n_acs_sdid' (`n_acs_donors' donors $+$ Multnomah) survive the state-drop restrictions. Panel~D restricts to households with at least one college-educated member."' _n
 file write `fh' `"\item Source: IRS SOI county-to-county migration flows (Panels~A and~B); ACS microdata, all 25+ subsample (Panel~C); ACS microdata, college-educated subsample (Panel~D)."' _n
 file write `fh' `"\end{tablenotes}"' _n
 file write `fh' `"\end{threeparttable}"' _n

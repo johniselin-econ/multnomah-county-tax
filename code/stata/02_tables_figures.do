@@ -67,6 +67,7 @@ capture log close log_02tf
 log using "${logs}02_log_tables_figures_${date}", name(log_02tf) replace text
 
 project_set_seed, context("02_tables_figures.do") offset(60)
+project_assert_preferred_pools, caller("02_tables_figures.do")
 
 ** ------------------------------------------------------------------
 ** Bootstrap-CI flag (Phase B5).
@@ -140,6 +141,7 @@ program define elast_inout_panel
 		local dt     = data_type[`i']
 		local smp    = subinstr(sample[`i'], "sample_", "", .)
 		local smp    = proper("`smp'")
+		if "`smp'" == "Policy" local smp "Policy match"
 		local mg     = migr_label[`i']
 		local t_val  = tau_str[`i']
 		local se_val = se_str[`i']
@@ -189,6 +191,7 @@ program define elast_main_net_panel
 		local dt = data_type[`i']
 		local smp = subinstr(sample[`i'], "sample_", "", .)
 		local smp = proper("`smp'")
+		if "`smp'" == "Policy" local smp "Policy match"
 		local t_val = tau_str[`i']
 		local se_val = se_str[`i']
 		local b = beta_str[`i']
@@ -291,7 +294,7 @@ end
 **     spec_irs_outstate spec_irs_outstate_389
 **     spec_acs_all spec_acs_all_outstate
 **     spec_acs_col spec_acs_col_outstate
-**     spec_all spec_stringency spec_urban95 spec_demog spec_covid
+**     spec_all spec_stringency spec_policy spec_demog spec_covid
 **     spec_16_22 spec_16_24
 **     spec_covars spec_excl2020
 **
@@ -374,7 +377,7 @@ program define elast_speccurve_plot
 	** entries drop the "(Out-of-State)" wording since the figure title
 	** already conveys it.
 	local lbl_spec_all              `"All Counties"'
-	local lbl_spec_urban95          `"Urban (Top 5%)"'
+	local lbl_spec_policy           `"Policy Match"'
 	local lbl_spec_covid            `"COVID Match"'
 	local lbl_spec_demog            `"Demographic Match"'
 	local lbl_spec_stringency       `"Stringency Match"'
@@ -471,35 +474,41 @@ scalar delta_t = avg_mt_rate
 ** ------------------------------------------------------------------
 use "${results}elasticities/spec_results.dta", clear
 
-** Register the narrow-pool attenuation quoted in Section 7 (paper_numbers.csv):
-** preferred all-counties vs narrow-pool tau, in-state net and out-migration,
-** by data type; attenuation = 100 * (1 - tau_narrow / tau_all).
-preserve
-keep if preferred == 1 & outstate == 0 & inlist(migration, "net", "out") ///
-	& inlist(sample, "sample_all", "sample_narrow")
-keep data_type migration sample tau
-qui count
-if r(N) > 0 {
-	** capture: a non-unique preferred row would break the reshape, and this
-	** register entry must never abort the tables build.
-	capture noisily reshape wide tau, i(data_type migration) j(sample) string
-	if _rc == 0 capture confirm variable tausample_all tausample_narrow
-	if _rc == 0 {
-		gen double atten_pct = 100 * (1 - tausample_narrow / tausample_all)
-		forvalues i = 1/`=_N' {
-			local dt_key = lower(subinstr(data_type[`i'], " ", "_", .))
-			local migr   = migration[`i']
-			local a_val  = atten_pct[`i']
-			project_log_number, key(sdid_narrow_attenuation_pct_`dt_key'_`migr') value(`a_val') fmt(%4.1f) unit(percent) ///
-				source(02_tables_figures.do) note("Narrow-pool attenuation of the preferred SDID tau: 100 * (1 - tau_narrow / tau_all), `migr' migration, `=data_type[`i']'")
+** Register pool attenuation (paper_numbers.csv): how much the narrow pool
+** (Section 7) and the policy-match pool shrink the all-counties tau, in-state
+** net and out-migration, by data type; attenuation = 100 * (1 - tau_pool /
+** tau_all). Rows are the preferred-spec cells (IRS 16-22, ACS College 16-24,
+** covariates, excl. 2020) selected directly, not via `preferred', because the
+** narrow pool is no longer a preferred pool.
+foreach pool in narrow policy {
+	preserve
+	keep if outstate == 0 & inlist(migration, "net", "out") & controls == 1 & exclusion == 1 ///
+		& ((data_type == "IRS" & period_type == "16-22") | (data_type == "ACS College" & period_type == "16-24")) ///
+		& inlist(sample, "sample_all", "sample_`pool'")
+	keep data_type migration sample tau
+	qui count
+	if r(N) > 0 {
+		** capture: a non-unique row would break the reshape, and this
+		** register entry must never abort the tables build.
+		capture noisily reshape wide tau, i(data_type migration) j(sample) string
+		if _rc == 0 capture confirm variable tausample_all tausample_`pool'
+		if _rc == 0 {
+			gen double atten_pct = 100 * (1 - tausample_`pool' / tausample_all)
+			forvalues i = 1/`=_N' {
+				local dt_key = lower(subinstr(data_type[`i'], " ", "_", .))
+				local migr   = migration[`i']
+				local a_val  = atten_pct[`i']
+				project_log_number, key(sdid_`pool'_attenuation_pct_`dt_key'_`migr') value(`a_val') fmt(%4.1f) unit(percent) ///
+					source(02_tables_figures.do) note("`pool'-pool attenuation of the all-counties SDID tau: 100 * (1 - tau_`pool' / tau_all), `migr' migration, `=data_type[`i']'")
+			}
+			qui summ atten_pct
+			local atten_max = r(max)
+			project_log_number, key(sdid_`pool'_attenuation_pct_max) value(`atten_max') fmt(%3.0f) unit(percent) ///
+				source(02_tables_figures.do) note("Largest `pool'-pool attenuation across in-state net/out preferred-cell specs")
 		}
-		qui summ atten_pct
-		local atten_max = r(max)
-		project_log_number, key(sdid_narrow_attenuation_pct_max) value(`atten_max') fmt(%3.0f) unit(percent) ///
-			source(02_tables_figures.do) note("Largest narrow-pool attenuation across preferred in-state net/out specs (the 'up to roughly 40%' in Section 7)")
 	}
+	restore
 }
-restore
 dis "Loaded " _N " spec rows."
 
 ** ------------------------------------------------------------------
@@ -611,6 +620,7 @@ keep if preferred == 1 & migration == "net" & outstate == 0
 gen str30 sample_label = ""
 replace sample_label = "All counties" if sample == "sample_all"
 replace sample_label = "COVID-Stringent Counties" if sample == "sample_stringency"
+replace sample_label = "Policy match" if sample == "sample_policy"
 replace sample_label = proper(subinstr(sample, "sample_", "", .)) if sample_label == ""
 
 gen str20 tau_str = string(tau, "%9.3f")
@@ -761,6 +771,7 @@ keep if preferred == 1 & migration == "net" & outstate == 0
 gen str30 sample_label = ""
 replace sample_label = "All counties" if sample == "sample_all"
 replace sample_label = "COVID-Stringent Counties" if sample == "sample_stringency"
+replace sample_label = "Policy match" if sample == "sample_policy"
 replace sample_label = proper(subinstr(sample, "sample_", "", .)) if sample_label == ""
 
 gen str20 tau_str = string(tau, "%9.3f")
@@ -869,7 +880,7 @@ use "${results}sdid/sdid_results.dta", clear
 ** Restrict to highlighted: agi outcomes, controls=1, exclusion=1, county-level
 keep if controls == 1 & exclusion == 1
 keep if inlist(sample_data, "irs_full_16_22", "acs_16_24_col")
-keep if inlist(sample, "sample_all", "sample_stringency", "sample_narrow")
+keep if inlist(sample, "sample_all", "sample_stringency", "sample_policy")
 keep if regexm(outcome, "^agi_(net|in|out)_rate_(irs|acs2)$")
 
 ** Tag direction
@@ -882,7 +893,7 @@ gen str20 data_label = "IRS"          if sample_data == "irs_full_16_22"
 replace data_label   = "ACS College"  if sample_data == "acs_16_24_col"
 gen str20 sample_label = "All counties"  if sample == "sample_all"
 replace sample_label   = "Stringency"    if sample == "sample_stringency"
-replace sample_label   = "Narrow"        if sample == "sample_narrow"
+replace sample_label   = "Policy match"  if sample == "sample_policy"
 
 ** Sort and pre-format
 sort data_label sample_label direction
@@ -909,7 +920,7 @@ file write `fh_sdid' "\midrule" _n
 ** row 1: τ̂ for out / in / net + N
 ** row 2: (SE) for out / in / net (blank N cell)
 foreach dt in "IRS" "ACS College" {
-	foreach smp in "All counties" "Stringency" "Narrow" {
+	foreach smp in "All counties" "Stringency" "Policy match" {
 		** Find the three direction values for this cell
 		local tau_out = ""
 		local se_out  = ""
@@ -950,7 +961,7 @@ file write `fh_sdid' "\bottomrule" _n
 file write `fh_sdid' "\end{tabular}" _n
 file write `fh_sdid' "\begin{tablenotes}" _n
 file write `fh_sdid' "\small" _n
-file write `fh_sdid' "\item \textit{Notes:} SDID treatment-effect estimates ($\hat{\tau}$, in percentage points) for the six highlighted specifications: IRS full sample (2016--2022) and ACS college sample (2016--2024), each with the all-counties donor pool, the stringency-matched donor pool, and the narrow similar-cities donor pool. All specifications include time-varying covariates and exclude 2020. Standard errors in parentheses are from SDID placebo inference. \textit{N counties} is the number of donor counties in the synthetic-control pool plus Multnomah." _n
+file write `fh_sdid' "\item \textit{Notes:} SDID treatment-effect estimates ($\hat{\tau}$, in percentage points) for the six highlighted specifications: IRS full sample (2016--2022) and ACS college sample (2016--2024), each with the all-counties donor pool, the stringency-matched donor pool, and the policy-matched donor pool (the ${policy_pool_n} counties nearest Multnomah in states with a Democratic governor and a top-half state income tax on wages in 2019--2020). All specifications include time-varying covariates and exclude 2020. Standard errors in parentheses are from SDID placebo inference. \textit{N counties} is the number of donor counties in the synthetic-control pool plus Multnomah; the ACS college rows keep only the pool's counties that the ACS identifies in every year 2016--2024, so their pools can be smaller." _n
 file write `fh_sdid' "\end{tablenotes}" _n
 file write `fh_sdid' "\end{threeparttable}" _n
 file write `fh_sdid' "\end{table}" _n
@@ -1105,6 +1116,7 @@ keep if preferred == 1 & migration == "net" & outstate == 0
 gen str30 table_sample = ""
 replace table_sample = "All counties" if sample == "sample_all"
 replace table_sample = "COVID-Stringent Counties" if sample == "sample_stringency"
+replace table_sample = "Policy match" if sample == "sample_policy"
 replace table_sample = proper(subinstr(sample, "sample_", "", .)) if table_sample == ""
 
 keep data_type table_sample tau stock_dln_ntr beta_kleven ///
@@ -1134,6 +1146,7 @@ keep if preferred == 1 & migration == "net" & outstate == 0
 gen str30 table_sample = ""
 replace table_sample = "All counties" if sample == "sample_all"
 replace table_sample = "COVID-Stringent Counties" if sample == "sample_stringency"
+replace table_sample = "Policy match" if sample == "sample_policy"
 replace table_sample = proper(subinstr(sample, "sample_", "", .)) if table_sample == ""
 
 keep data_type table_sample tau stock_dln_ntr_shs beta_kleven_shs ///
@@ -1200,7 +1213,7 @@ tempfile guide
 postfile `guideh' str20 sheet str40 variable_name str244 description using `guide', replace
 
 post `guideh' ("recalc_components") ("spec_sample_data") ("Underlying source panel used for the SDID estimate, such as irs_full_16_22 or acs_16_24_col.")
-post `guideh' ("recalc_components") ("spec_sample") ("Donor-pool restriction used in the specification, such as sample_all, sample_stringency, or sample_narrow.")
+post `guideh' ("recalc_components") ("spec_sample") ("Donor-pool restriction used in the specification, such as sample_all, sample_stringency, or sample_policy.")
 post `guideh' ("recalc_components") ("spec_outcome") ("Outcome variable used in the SDID estimate.")
 post `guideh' ("recalc_components") ("spec_controls") ("Indicator for whether the SDID specification includes covariates.")
 post `guideh' ("recalc_components") ("spec_exclusion") ("Indicator for whether the specification excludes 2020 from estimation.")
@@ -1315,7 +1328,7 @@ post `guideh' ("run_parameters") ("delta_ln_ntr_total_col_shs") ("Change in log 
 ** entries below stay regardless so the workbook structure is stable.
 post `guideh' ("bootstrap_cis") ("spec_id") ("Highlighted-spec identifier (1..36); matches the spec grid in 02_bootstrap.do.")
 post `guideh' ("bootstrap_cis") ("sample_data") ("Source panel block: irs_full_16_22, irs_outstate_full_16_22, acs_16_24_col, or acs_outstate_16_24_col.")
-post `guideh' ("bootstrap_cis") ("sample") ("Donor-pool sample: sample_all, sample_stringency, or sample_narrow.")
+post `guideh' ("bootstrap_cis") ("sample") ("Donor-pool sample: sample_all, sample_stringency, or sample_policy.")
 post `guideh' ("bootstrap_cis") ("migration") ("Migration direction: net, in, or out.")
 post `guideh' ("bootstrap_cis") ("outstate") ("1 if the spec uses out-of-state migration data, 0 otherwise.")
 post `guideh' ("bootstrap_cis") ("data_type") ("Presentation label: IRS, IRS (Out-of-State), ACS College, or ACS College (Out-of-State).")
@@ -1380,8 +1393,8 @@ dis "=============================================="
 ** that the outstate variant uses the *_outstate data_type indicators.
 ** ACS outstate runs at both 16-22 and 16-24 windows, so spec_16_22 /
 ** spec_16_24 belong in both templates.
-local indic_county   `"spec_all spec_urban95 spec_covid spec_demog spec_stringency spec_narrow spec_covars spec_excl2020 spec_irs spec_irs_389 spec_acs_all spec_acs_col spec_16_22 spec_16_24"'
-local indic_outstate `"spec_all spec_urban95 spec_covid spec_demog spec_stringency spec_narrow spec_covars spec_excl2020 spec_irs_outstate spec_irs_outstate_389 spec_acs_all_outstate spec_acs_col_outstate spec_16_22 spec_16_24"'
+local indic_county   `"spec_all spec_policy spec_covid spec_demog spec_stringency spec_narrow spec_covars spec_excl2020 spec_irs spec_irs_389 spec_acs_all spec_acs_col spec_16_22 spec_16_24"'
+local indic_outstate `"spec_all spec_policy spec_covid spec_demog spec_stringency spec_narrow spec_covars spec_excl2020 spec_irs_outstate spec_irs_outstate_389 spec_acs_all_outstate spec_acs_col_outstate spec_16_22 spec_16_24"'
 
 ** ---- β spec curves (PFA + SHS) for each migration direction ----
 foreach migr in "net" "in" "out" {
@@ -1577,8 +1590,8 @@ dis "=============================================="
 ** outstate data_type rows. State loss is the mirror — outstate==1 only.
 ** IRS (389) variants are included so the corresponding dots in the upper
 ** panel are tied to a labelled row in the indicator panel.
-local indic_instate  `"spec_irs spec_irs_389 spec_acs_all spec_acs_col spec_all spec_stringency spec_urban95 spec_demog spec_covid spec_narrow spec_16_22 spec_16_24 spec_covars spec_excl2020"'
-local indic_outstate `"spec_irs_outstate spec_irs_outstate_389 spec_acs_all_outstate spec_acs_col_outstate spec_all spec_stringency spec_urban95 spec_demog spec_covid spec_narrow spec_16_22 spec_16_24 spec_covars spec_excl2020"'
+local indic_instate  `"spec_irs spec_irs_389 spec_acs_all spec_acs_col spec_all spec_stringency spec_policy spec_demog spec_covid spec_narrow spec_16_22 spec_16_24 spec_covars spec_excl2020"'
+local indic_outstate `"spec_irs_outstate spec_irs_outstate_389 spec_acs_all_outstate spec_acs_col_outstate spec_all spec_stringency spec_policy spec_demog spec_covid spec_narrow spec_16_22 spec_16_24 spec_covars spec_excl2020"'
 
 ** PFA: net-domestic specs, pfa_loss column
 preserve
@@ -1686,8 +1699,8 @@ matrix colnames `M_PFA'   = tau scale X Rm baseline dynamic ratio actual implied
 matrix colnames `M_STATE' = tau scale X Rm baseline dynamic ratio actual implied
 
 local r 0
-foreach spec in `"IRS sample_all"' `"IRS sample_stringency"' `"IRS sample_narrow"' ///
-		`"ACS College sample_all"' `"ACS College sample_stringency"' `"ACS College sample_narrow"' {
+foreach spec in `"IRS sample_all"' `"IRS sample_stringency"' `"IRS sample_policy"' ///
+		`"ACS College sample_all"' `"ACS College sample_stringency"' `"ACS College sample_policy"' {
 
 	local ++r
 	local dtype : word 1 of `spec'
@@ -1765,7 +1778,7 @@ forvalues r = 1/6 {
 
 ** Spec labels used in the tabular's first column (must match the row order
 ** of the spec foreach loop above).
-local spec_labels `" "IRS, all counties" "IRS, stringency match" "IRS, narrow similar-cities" "ACS college (2016--24), all counties" "ACS college (2016--24), stringency match" "ACS college (2016--24), narrow similar-cities" "'
+local spec_labels `" "IRS, all counties" "IRS, stringency match" "IRS, policy match" "ACS college (2016--24), all counties" "ACS college (2016--24), stringency match" "ACS college (2016--24), policy match" "'
 
 ** Build the tabular fragment. Columns: spec | tau | scale | X | R_m |
 ** baseline | dynamic | ratio | actual | implied. tau is in pp; X is
@@ -1852,7 +1865,7 @@ project_save_overleaf "`tex_path'"
 ** Writes ${results}revenue/tbl_revenue_decomposition_slides.tex, a bare tabular
 ** the deck's revenue frame \input's (the frame keeps its own font sizing).
 ** Drops Scale and R_m; the actual-revenue column moves into the panel headers.
-local slide_labels `" "IRS, all counties" "IRS, stringency match" "IRS, narrow similar-cities" "ACS college, all counties" "ACS college, stringency match" "ACS college, narrow similar-cities" "'
+local slide_labels `" "IRS, all counties" "IRS, stringency match" "IRS, policy match" "ACS college, all counties" "ACS college, stringency match" "ACS college, policy match" "'
 local tex_path_slides "${results}revenue/tbl_revenue_decomposition_slides.tex"
 local actual_pfa_lbl   = trim(string(`M_PFA'[1, 8] / 1e6, "%9.1fc"))
 local actual_state_lbl = trim(string(`M_STATE'[1, 8] / 1e6, "%9.1fc"))
@@ -1937,10 +1950,10 @@ foreach panel in PFA STATE {
 ** Reads sdid_event_results.dta (preferred==1 rows) and writes 18 overlay
 ** figures into ${results}sdid/preferred_overlays/. Two complementary views:
 **   Set 1 (12 figs): donor-pool comparison — sample_all vs
-**     sample_stringency vs sample_narrow, one figure per
+**     sample_stringency vs sample_policy, one figure per
 **     (sample_data × migration). 3 lines per figure.
 **   Set 2 (6 figs): donor-pool × dataset — IRS vs ACS College ×
-**     {sample_all, sample_stringency, sample_narrow}, one figure per
+**     {sample_all, sample_stringency, sample_policy}, one figure per
 **     (scope × migration). 6 lines per figure.
 ** In-state and out-of-state stay on separate figures.
 
@@ -1978,7 +1991,7 @@ local lbl_sd_acs_outstate_16_24_col  `"ACS College (Out-of-State)"'
 ** ----------------------------------------------------------------
 ** sample_all       = vermillion    (col_sig_pref,    213 94 0)
 ** sample_stringency = sea          (col_sig_notpref,   0 114 178)
-** sample_narrow    = bluish green ( 0 158 115; Okabe-Ito P4)
+** sample_policy    = bluish green ( 0 158 115; Okabe-Ito P4)
 ** x-offset -0.15 / 0 / +0.15 to disambiguate same-year rcaps.
 
 ** Save current data to a tempfile (avoids nested-preserve r(621) inside loops).
@@ -2002,7 +2015,7 @@ foreach sd in irs_full_16_22 acs_16_24_col irs_outstate_full_16_22 acs_outstate_
 		preserve
 		keep if sample_data == "`sd'"
 		keep if regexm(outcome, "_`migr'_rate_")
-		keep if inlist(sample, "sample_all", "sample_stringency", "sample_narrow")
+		keep if inlist(sample, "sample_all", "sample_stringency", "sample_policy")
 
 		qui count
 		if r(N) == 0 {
@@ -2019,7 +2032,7 @@ foreach sd in irs_full_16_22 acs_16_24_col irs_outstate_full_16_22 acs_outstate_
 		gen double event_year_off = event_year
 		replace event_year_off = event_year_off - 0.15 if sample == "sample_all"
 		replace event_year_off = event_year_off + 0.00 if sample == "sample_stringency"
-		replace event_year_off = event_year_off + 0.15 if sample == "sample_narrow"
+		replace event_year_off = event_year_off + 0.15 if sample == "sample_policy"
 
 		** Group-masked tau / lo / hi so each gets its own twoway layer.
 		gen double tau_g1  = event_tau   if sample == "sample_all"
@@ -2028,15 +2041,15 @@ foreach sd in irs_full_16_22 acs_16_24_col irs_outstate_full_16_22 acs_outstate_
 		gen double tau_g2  = event_tau   if sample == "sample_stringency"
 		gen double lo_g2   = event_ci_lo if sample == "sample_stringency"
 		gen double hi_g2   = event_ci_hi if sample == "sample_stringency"
-		gen double tau_g3  = event_tau   if sample == "sample_narrow"
-		gen double lo_g3   = event_ci_lo if sample == "sample_narrow"
-		gen double hi_g3   = event_ci_hi if sample == "sample_narrow"
+		gen double tau_g3  = event_tau   if sample == "sample_policy"
+		gen double lo_g3   = event_ci_lo if sample == "sample_policy"
+		gen double hi_g3   = event_ci_hi if sample == "sample_policy"
 
-		** Narrow-pool color: bluish green (Okabe-Ito P4), distinct from the
+		** Policy-pool color: bluish green (Okabe-Ito P4), distinct from the
 		** vermillion (all) / sea (stringency) pair used in the rest of the
 		** pipeline. Inlined RGB so we don't churn the project-wide colour
 		** globals just for this overlay.
-		local col_narrow "0 158 115"
+		local col_policy "0 158 115"
 
 		** Title suppressed when ${clean_figs} == 1 (paper version).
 		local _title_opt `"title(`"`sd_label', `migr_label': Donor Pool Comparison"', size(medsmall))"'
@@ -2046,13 +2059,13 @@ foreach sd in irs_full_16_22 acs_16_24_col irs_outstate_full_16_22 acs_outstate_
 		       (scatter tau_g1 event_year_off,   mc("${col_sig_pref}")    ms(O) msize(small)) ///
 		       (rcap lo_g2 hi_g2 event_year_off, lc("${col_sig_notpref}") lw(medthin)) ///
 		       (scatter tau_g2 event_year_off,   mc("${col_sig_notpref}") ms(O) msize(small)) ///
-		       (rcap lo_g3 hi_g3 event_year_off, lc("`col_narrow'")       lw(medthin)) ///
-		       (scatter tau_g3 event_year_off,   mc("`col_narrow'")       ms(O) msize(small)), ///
+		       (rcap lo_g3 hi_g3 event_year_off, lc("`col_policy'")       lw(medthin)) ///
+		       (scatter tau_g3 event_year_off,   mc("`col_policy'")       ms(O) msize(small)), ///
 		    yline(0, lc("${col_zero}") lp(dash))                          ///
 		    xline(2020.5, lc(black) lp(solid))                            ///
 		    xlabel(2016(1)2024, labsize(small))                           ///
 		    ylabel(, format(%9.1f) labsize(small))                        ///
-		    legend(order(2 "All Counties" 4 "Stringency Match" 6 "Narrow Pool") ///
+		    legend(order(2 "All Counties" 4 "Stringency Match" 6 "Policy Match") ///
 		           rows(1) pos(6) size(small) region(lcolor(white)))      ///
 		    `_title_opt'                                                  ///
 		    ytitle(`"Event-study coefficient {&tau}{subscript:t} (pp)"', size(small)) ///
@@ -2075,11 +2088,11 @@ foreach sd in irs_full_16_22 acs_16_24_col irs_outstate_full_16_22 acs_outstate_
 ** Color mnemonic (Okabe-Ito colorblind-safe palette):
 **   IRS_all       = vermillion        (213  94   0; col_sig_pref)
 **   IRS_string    = orangebrown       (230 159   0; col_insig_pref)
-**   IRS_narrow    = reddish purple    (204 121 167; Okabe-Ito P8)
+**   IRS_policy    = reddish purple    (204 121 167; Okabe-Ito P8)
 **   ACS_all       = sea / blue        (  0 114 178; col_sig_notpref)
 **   ACS_string    = sky               ( 86 180 233; col_insig_notpref)
-**   ACS_narrow    = bluish green      (  0 158 115; Okabe-Ito P4)
-** Warm-family encodes IRS; cool-family encodes ACS; the narrow line
+**   ACS_policy    = bluish green      (  0 158 115; Okabe-Ito P4)
+** Warm-family encodes IRS; cool-family encodes ACS; the policy line
 ** in each family lifts to a third, hue-shifted shade.
 ** x-offsets -0.25 / -0.15 / -0.05 / +0.05 / +0.15 / +0.25.
 
@@ -2103,7 +2116,7 @@ foreach scope in instate outstate {
 
 		preserve
 		keep if inlist(sample_data, "`sd_irs'", "`sd_acs'")
-		keep if inlist(sample, "sample_all", "sample_stringency", "sample_narrow")
+		keep if inlist(sample, "sample_all", "sample_stringency", "sample_policy")
 		keep if regexm(outcome, "_`migr'_rate_")
 
 		qui count
@@ -2119,10 +2132,10 @@ foreach scope in instate outstate {
 		gen double event_year_off = event_year
 		replace event_year_off = event_year_off - 0.25 if sample_data == "`sd_irs'" & sample == "sample_all"
 		replace event_year_off = event_year_off - 0.15 if sample_data == "`sd_irs'" & sample == "sample_stringency"
-		replace event_year_off = event_year_off - 0.05 if sample_data == "`sd_irs'" & sample == "sample_narrow"
+		replace event_year_off = event_year_off - 0.05 if sample_data == "`sd_irs'" & sample == "sample_policy"
 		replace event_year_off = event_year_off + 0.05 if sample_data == "`sd_acs'" & sample == "sample_all"
 		replace event_year_off = event_year_off + 0.15 if sample_data == "`sd_acs'" & sample == "sample_stringency"
-		replace event_year_off = event_year_off + 0.25 if sample_data == "`sd_acs'" & sample == "sample_narrow"
+		replace event_year_off = event_year_off + 0.25 if sample_data == "`sd_acs'" & sample == "sample_policy"
 
 		** Group masks (IRS = g1/g2/g3; ACS = g4/g5/g6).
 		gen double tau_g1 = event_tau   if sample_data == "`sd_irs'" & sample == "sample_all"
@@ -2131,23 +2144,23 @@ foreach scope in instate outstate {
 		gen double tau_g2 = event_tau   if sample_data == "`sd_irs'" & sample == "sample_stringency"
 		gen double lo_g2  = event_ci_lo if sample_data == "`sd_irs'" & sample == "sample_stringency"
 		gen double hi_g2  = event_ci_hi if sample_data == "`sd_irs'" & sample == "sample_stringency"
-		gen double tau_g3 = event_tau   if sample_data == "`sd_irs'" & sample == "sample_narrow"
-		gen double lo_g3  = event_ci_lo if sample_data == "`sd_irs'" & sample == "sample_narrow"
-		gen double hi_g3  = event_ci_hi if sample_data == "`sd_irs'" & sample == "sample_narrow"
+		gen double tau_g3 = event_tau   if sample_data == "`sd_irs'" & sample == "sample_policy"
+		gen double lo_g3  = event_ci_lo if sample_data == "`sd_irs'" & sample == "sample_policy"
+		gen double hi_g3  = event_ci_hi if sample_data == "`sd_irs'" & sample == "sample_policy"
 		gen double tau_g4 = event_tau   if sample_data == "`sd_acs'" & sample == "sample_all"
 		gen double lo_g4  = event_ci_lo if sample_data == "`sd_acs'" & sample == "sample_all"
 		gen double hi_g4  = event_ci_hi if sample_data == "`sd_acs'" & sample == "sample_all"
 		gen double tau_g5 = event_tau   if sample_data == "`sd_acs'" & sample == "sample_stringency"
 		gen double lo_g5  = event_ci_lo if sample_data == "`sd_acs'" & sample == "sample_stringency"
 		gen double hi_g5  = event_ci_hi if sample_data == "`sd_acs'" & sample == "sample_stringency"
-		gen double tau_g6 = event_tau   if sample_data == "`sd_acs'" & sample == "sample_narrow"
-		gen double lo_g6  = event_ci_lo if sample_data == "`sd_acs'" & sample == "sample_narrow"
-		gen double hi_g6  = event_ci_hi if sample_data == "`sd_acs'" & sample == "sample_narrow"
+		gen double tau_g6 = event_tau   if sample_data == "`sd_acs'" & sample == "sample_policy"
+		gen double lo_g6  = event_ci_lo if sample_data == "`sd_acs'" & sample == "sample_policy"
+		gen double hi_g6  = event_ci_hi if sample_data == "`sd_acs'" & sample == "sample_policy"
 
-		** Narrow-pool colours (Okabe-Ito P8 / P4). See header comment for
+		** Policy-pool colours (Okabe-Ito P8 / P4). See header comment for
 		** the warm-family / cool-family mnemonic.
-		local col_narrow_irs "204 121 167"
-		local col_narrow_acs "0 158 115"
+		local col_policy_irs "204 121 167"
+		local col_policy_acs "0 158 115"
 
 		** Title suppressed when ${clean_figs} == 1 (paper version).
 		local _title_opt `"title(`"`scope_label', `migr_label': Dataset and Donor Pool Comparison"', size(medsmall))"'
@@ -2157,21 +2170,21 @@ foreach scope in instate outstate {
 		       (scatter tau_g1 event_year_off,   mc("${col_sig_pref}")      ms(O) msize(small)) ///
 		       (rcap lo_g2 hi_g2 event_year_off, lc("${col_insig_pref}")    lw(medthin)) ///
 		       (scatter tau_g2 event_year_off,   mc("${col_insig_pref}")    ms(O) msize(small)) ///
-		       (rcap lo_g3 hi_g3 event_year_off, lc("`col_narrow_irs'")     lw(medthin)) ///
-		       (scatter tau_g3 event_year_off,   mc("`col_narrow_irs'")     ms(O) msize(small)) ///
+		       (rcap lo_g3 hi_g3 event_year_off, lc("`col_policy_irs'")     lw(medthin)) ///
+		       (scatter tau_g3 event_year_off,   mc("`col_policy_irs'")     ms(O) msize(small)) ///
 		       (rcap lo_g4 hi_g4 event_year_off, lc("${col_sig_notpref}")   lw(medthin)) ///
 		       (scatter tau_g4 event_year_off,   mc("${col_sig_notpref}")   ms(O) msize(small)) ///
 		       (rcap lo_g5 hi_g5 event_year_off, lc("${col_insig_notpref}") lw(medthin)) ///
 		       (scatter tau_g5 event_year_off,   mc("${col_insig_notpref}") ms(O) msize(small)) ///
-		       (rcap lo_g6 hi_g6 event_year_off, lc("`col_narrow_acs'")     lw(medthin)) ///
-		       (scatter tau_g6 event_year_off,   mc("`col_narrow_acs'")     ms(O) msize(small)), ///
+		       (rcap lo_g6 hi_g6 event_year_off, lc("`col_policy_acs'")     lw(medthin)) ///
+		       (scatter tau_g6 event_year_off,   mc("`col_policy_acs'")     ms(O) msize(small)), ///
 		    yline(0, lc("${col_zero}") lp(dash))                            ///
 		    xline(2020.5, lc(black) lp(solid))                              ///
 		    xlabel(2016(1)2024, labsize(small))                             ///
 		    ylabel(, format(%9.1f) labsize(small))                          ///
 		    legend(order(2 "IRS, All"          4 "IRS, Stringency"          ///
-		                 6 "IRS, Narrow"       8 "ACS College, All"         ///
-		                10 "ACS College, Stringency" 12 "ACS College, Narrow") ///
+		                 6 "IRS, Policy"       8 "ACS College, All"         ///
+		                10 "ACS College, Stringency" 12 "ACS College, Policy") ///
 		           rows(2) pos(6) size(small) region(lcolor(white)))        ///
 		    `_title_opt'                                                    ///
 		    ytitle(`"Event-study coefficient {&tau}{subscript:t} (pp)"', size(small)) ///

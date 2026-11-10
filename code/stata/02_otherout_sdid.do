@@ -11,9 +11,9 @@ Purpose: Perform synthetic difference-in-difference estimation on non-migration
 
          Supports both sequential and parallel processing modes.
 
-         Donor pools: the five pools of the main SDID (all, urban top-5%,
-         COVID k-means, demographic k-means, stringency k-means) are rebuilt
-         here from the IRS county panel with the main script's constructions.
+         Donor pools: the five pools of the main SDID (all, policy match,
+         COVID k-means, demographic k-means, stringency k-means); the last
+         four are read from the file 02_sdid_analysis.do froze.
          The narrow pool (resources/narrow_pool_fips.csv) is intentionally
          NOT carried over: it is a migration-specific robustness pool and the
          paper's non-migration tables report the five pools only. Extending
@@ -161,23 +161,17 @@ label var Treated "Treatment indicator"
 
 ** Define sample 1: All counties
 gen sample_all = 1
-label var sample_all "All counties (excluding AK, CA, HI, OR, WA)"
+label var sample_all "All counties (excluding AK, AZ, CA, HI, ID, NV, OR, WA)"
 
-** Define sample 2: Urban counties (top 5% urbanization)
-qui summ percent_urban if year == 2020, de
-local cutoff = r(p95)
-gen sample_urban95 = percent_urban >= `cutoff'
-label var sample_urban95 "Urban counties (top 5%)"
+** Drop states (same list as main SDID, globals.do: sdid_excluded_states).
+** This script has no narrow pool, so narrow members in those states go too.
+project_flag_states state_fips, states(${sdid_excluded_states}) generate(excluded_state)
+drop if excluded_state == 1 & multnomah == 0
+drop excluded_state
 
-** Drop states (same as main SDID)
-drop if state_name == "Alaska"
-drop if state_name == "Hawaii"
-drop if state_name == "California"
-drop if state_name == "Washington"
-drop if state_name == "Oregon" & multnomah == 0
-
-** Define samples 3-5 (Covid, demographic, stringency k-means match): read the
-** memberships 02_sdid_analysis.do froze in ${donor_pool_file}, so both analyses
+** Define samples 2-5 (policy match; Covid, demographic, stringency k-means
+** match): read the memberships 02_sdid_analysis.do wrote to ${donor_pool_file}
+** (k-means pools frozen, policy pool rebuilt each run), so both analyses
 ** use the same pools. (This script used to rerun the three k-means itself, with
 ** a different seed and without the narrow_only exclusion, so its pools did not
 ** match the main ones.) Counties absent from the file are not pool members.
@@ -188,17 +182,24 @@ if _rc != 0 {
 }
 preserve
 import delimited using "${donor_pool_file}", clear
+capture confirm variable sample_policy
+if _rc != 0 {
+	dis as error "02_otherout_sdid.do: ${donor_pool_file} has no sample_policy column."
+	dis as error "  Run 02_sdid_analysis.do first; it writes sample_policy there every run."
+	exit 111
+}
 tempfile saved_pools
 save `saved_pools'
 restore
 merge m:1 fips using `saved_pools', gen(pool_merge) keep(master match)
-foreach v in sample_urban75_covid sample_demog sample_stringency {
+foreach v in sample_policy sample_urban75_covid sample_demog sample_stringency {
 	replace `v' = 0 if pool_merge == 1
 }
 drop pool_merge
-assert sample_urban75_covid == 1 & sample_demog == 1 & sample_stringency == 1 if multnomah == 1
+assert sample_policy == 1 & sample_urban75_covid == 1 & sample_demog == 1 & sample_stringency == 1 if multnomah == 1
+label var sample_policy "Policy match: nearest ${policy_pool_n} counties in Dem-governor, top-half-tax states"
 label var sample_urban75_covid "Urban counties (top 25%) w. COVID k-means match"
-label var sample_demog "Counties with Demographic Kmean Match (excluding AK, CA, HI OR, WA)"
+label var sample_demog "Counties with Demographic Kmean Match (excluding AK, AZ, CA, HI, ID, NV, OR, WA)"
 label var sample_stringency "Urban counties (top 25%) w. COVID stringency k-means match"
 
 ********************************************************************************
@@ -264,7 +265,7 @@ if ${use_parallel} == 1 {
 
 	** Create table-level specification grid
 	** Table units are defined by:
-	** - samp_var (sample_all, sample_urban95, sample_urban75_covid, sample_demog, sample_stringency)
+	** - samp_var (sample_all, sample_policy, sample_urban75_covid, sample_demog, sample_stringency)
 	** - exclusion (0, 1)
 	** Total: 5 x 2 = 10 table units
 	** Each table unit runs 4 outcomes x 2 covariate settings = 8 SDID specs
@@ -283,7 +284,7 @@ if ${use_parallel} == 1 {
 	save "${data}working/otherout_table_grid.dta", replace
 
 	** Build table grid
-	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
+	foreach samp in "sample_all" "sample_policy" "sample_urban75_covid" "sample_demog" "sample_stringency" {
 		forvalues exl = 0/1 {
 
 			local table_id = `table_id' + 1
@@ -626,7 +627,7 @@ if ${use_parallel} == 1 {
 	** Step 1: Count distinct counties per sample
 	use "${data}working/otherout_sdid_data.dta", clear
 
-	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
+	foreach samp in "sample_all" "sample_policy" "sample_urban75_covid" "sample_demog" "sample_stringency" {
 		qui count if `samp' == 1 & year == 2021
 		local nc_`samp' = r(N)
 	}
@@ -639,7 +640,7 @@ if ${use_parallel} == 1 {
 	gen cost = .
 
 	local row = 0
-	foreach samp in "sample_all" "sample_urban95" "sample_urban75_covid" "sample_demog" "sample_stringency" {
+	foreach samp in "sample_all" "sample_policy" "sample_urban75_covid" "sample_demog" "sample_stringency" {
 		local row = `row' + 1
 		qui replace samp_var = "`samp'" in `row'
 		local nc = `nc_`samp''
@@ -823,7 +824,7 @@ else {
 	local covariates "population per_capita_income"
 
 	** Loop over samples
-	foreach samp of varlist sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency {
+	foreach samp of varlist sample_all sample_policy sample_urban75_covid sample_demog sample_stringency {
 
 		** Loop over exclusion of 2020
 		forvalues exl = 1(-1)0 {
@@ -950,7 +951,7 @@ else {
 	**      county count, and pre-treatment mean. ----
 	preserve
 	use "${results}sdid/otherout/otherout_sdid_results.dta", clear
-	foreach samp in sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency {
+	foreach samp in sample_all sample_policy sample_urban75_covid sample_demog sample_stringency {
 		forvalues exl = 0/1 {
 			if `exl' == 0 local tabfname "tab_otherout_`samp'.tex"
 			if `exl' == 1 local tabfname "tab_otherout_`samp'_excl2020.tex"
@@ -1055,7 +1056,7 @@ use "${results}sdid/otherout/otherout_sdid_results.dta", clear
 
 ** Create specification indicators for bottom panel
 gen spec_all = sample == "sample_all"
-gen spec_urban95 = sample == "sample_urban95"
+gen spec_policy = sample == "sample_policy"
 gen spec_covid = sample == "sample_urban75_covid"
 gen spec_demog = sample == "sample_demog"
 gen spec_stringency = sample == "sample_stringency"
@@ -1160,7 +1161,7 @@ foreach out of local outcomes {
 	local yp7 = `ind_top' - 6
 
 	gen y_all        = `yp1' if spec_all == 1
-	gen y_urban      = `yp2' if spec_urban95 == 1
+	gen y_policy     = `yp2' if spec_policy == 1
 	gen y_covid      = `yp3' if spec_covid == 1
 	gen y_demog      = `yp4' if spec_demog == 1
 	gen y_stringency = `yp5' if spec_stringency == 1
@@ -1186,7 +1187,7 @@ foreach out of local outcomes {
 				mc("`col_insig_pref'") ms(D) msize(small)) 			///
 			(scatter y_all spec_rank, 									///
 				mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
-			(scatter y_urban spec_rank, 								///
+			(scatter y_policy spec_rank, 								///
 				mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
 			(scatter y_covid spec_rank, 								///
 				mc("`col_sig_notpref'") ms(O) msize(vsmall)) 			///
@@ -1202,7 +1203,7 @@ foreach out of local outcomes {
 		yline(0, lc("`col_zero'") lp(dash)) 							///
 		ylabel(`tick_lo'(1)`tick_hi', labsize(vsmall) nogrid) 			///
 		ylabel(`yp1' "All Counties" 									///
-			   `yp2' "Urban (Top 5%)" 									///
+			   `yp2' "Policy Match" 									///
 			   `yp3' "COVID Match" 										///
 			   `yp4' "Demographic Match" 								///
 			   `yp5' "Stringency Match" 								///

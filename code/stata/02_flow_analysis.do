@@ -88,8 +88,7 @@ use "${data}working/irs_county_flow.dta", clear
 keep if inrange(year, 2016, 2022)
 
 ** Sample restrictions
-drop if inlist(state_fips_o, 2, 15)   	// Alaska and Hawaii
-drop if inlist(state_fips_d, 2, 15)   	// Alaska and Hawaii
+project_drop_states state_fips_o state_fips_d, states(${flow_excluded_states}) tag("02_flow_analysis")  // globals.do
 
 ** Clean up variables
 drop fips

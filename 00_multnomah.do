@@ -62,6 +62,7 @@ if "${dir}" == "" {
 ** Stages
 global run_cleaning          = 1        // 1 to rebuild data/working from raw inputs (01_clean_data.do); 0 to reuse it
 global run_indiv_analysis    = 1        // 1 to run the individual-level conditional-mean margins (02_indiv_analysis.do)
+global rebuild_donor_pools   = 0        // 1 to redraw the k-means pools and overwrite resources/donor_pools.csv; set back to 0 once the new file is committed
 
 ** Bootstrap
 global run_bootstrap         = 1        // 1 to (re)run bootstrap; 0 to skip the stage

@@ -71,6 +71,103 @@ program define project_drop_excluded_fips
     dis as txt "  `tag': dropped " `n_before' - _N " rows for excluded_fips (${excluded_fips})"
 end
 
+** State sample restrictions. STATES() takes one of the per-model lists set
+** in globals.do (sdid_excluded_states, flow_excluded_states,
+** indiv_excluded_states, indiv_inmig_origin_states), so every model's sample
+** is set in that one place.
+**
+** project_flag_states: flag rows whose state is in STATES(); the caller decides
+** which flagged rows to keep (e.g. Multnomah, narrow-pool keepers).
+capture program drop project_flag_states
+program define project_flag_states
+    syntax varname(numeric), STATES(numlist integer) GENerate(name)
+
+    gen byte `generate' = 0
+    foreach s of local states {
+        quietly replace `generate' = 1 if `varlist' == `s'
+    }
+    label var `generate' "`varlist' in states (`states')"
+end
+
+** project_drop_states: drop rows where ANY of VARLIST (e.g. state_fips_o and
+** state_fips_d) is in STATES(), and report how many rows went.
+capture program drop project_drop_states
+program define project_drop_states
+    syntax varlist(numeric), STATES(numlist integer) TAG(string)
+
+    local n_before = _N
+    foreach v of local varlist {
+        foreach s of local states {
+            quietly drop if `v' == `s'
+        }
+    }
+    dis as txt "  `tag': dropped " `n_before' - _N " rows with `varlist' in states (`states')"
+end
+
+** Policy-pool eligible states (02_sdid_analysis.do, sample_policy): a
+** Democratic governor (DC: mayor) in 2019 and 2020 and a 2020 top rate on
+** wages at or above the median of the states that taxed wages in both years.
+** Leaves the data in memory untouched unless SAVing() is given, in which case
+** it writes state_fips + policy_state there. Returns r(states) (FIPS list)
+** and r(median_top_rate).
+capture program drop project_policy_states
+program define project_policy_states, rclass
+    syntax [, SAVing(string)]
+    preserve
+    quietly {
+        import delimited using "${state_policy_file}", clear varnames(1)
+        gen byte wage_tax = taxes_wages_2019 == 1 & taxes_wages_2020 == 1
+        summ top_rate_2020 if wage_tax == 1 & state_abbr != "DC", detail
+        local median_top_rate = r(p50)
+        gen byte policy_state = gov_party_2019 == "D" & gov_party_2020 == "D" ///
+            & wage_tax == 1 & top_rate_2020 >= `median_top_rate'
+        sort state_fips
+        levelsof state_fips if policy_state == 1, local(states)
+    }
+    dis as txt "Policy pool: median 2020 top rate among wage-taxing states = `median_top_rate'"
+    list state_abbr top_rate_2020 if policy_state == 1, clean noobs
+    if "`saving'" != "" {
+        keep state_fips policy_state
+        quietly save "`saving'", replace
+    }
+    restore
+    return local states "`states'"
+    return scalar median_top_rate = `median_top_rate'
+end
+
+** A state list as table-note prose ("Alaska, ..., and non-Multnomah Oregon"),
+** names read from ${state_policy_file}, so notes track the globals.do lists
+** instead of hard-coding them. Oregon is written "non-Multnomah Oregon", which
+** fits the SDID list (Multnomah is always kept there).
+capture program drop project_excluded_states_text
+program define project_excluded_states_text, rclass
+    syntax , STATES(numlist integer)
+    preserve
+    quietly {
+        import delimited using "${state_policy_file}", clear varnames(1)
+        project_flag_states state_fips, states(`states') generate(excluded)
+        keep if excluded == 1
+        if _N != wordcount("`states'") {
+            noisily dis as error "project_excluded_states_text: ${state_policy_file} does not have exactly one row per state in (`states')"
+            exit 459
+        }
+        replace state_name = "non-Multnomah " + state_name if state_fips == 41
+        gen byte oregon_last = state_fips == 41
+        sort oregon_last state_name
+    }
+    local n = _N
+    local text ""
+    forvalues i = 1/`n' {
+        local sep ", "
+        if `i' == 1 local sep ""
+        else if `i' == `n' & `n' == 2 local sep " and "
+        else if `i' == `n' local sep ", and "
+        local text "`text'`sep'`=state_name[`i']'"
+    }
+    restore
+    return local text "`text'"
+end
+
 ** Reclassify suppressed values as 0
 
 capture program drop unsuppress
@@ -647,7 +744,7 @@ end
 **   outstate       0 | 1
 **
 ** With option INDICATORS: also generates the spec_* indicator family used
-** by spec-curve indicator panels (spec_all / urban95 / covid / demog /
+** by spec-curve indicator panels (spec_all / policy / covid / demog /
 ** stringency / narrow / covars / excl2020 / irs / irs_389 / irs_outstate /
 ** irs_outstate_389 / acs_all / acs_all_outstate / acs_col / acs_col_outstate
 ** / 16_22 / 16_24).
@@ -699,7 +796,7 @@ program define project_parse_outcome_components
     gen byte outstate = regexm(outcome, "_outstate") | regexm(sample_data, "outstate")
 
     if "`indicators'" != "" {
-        foreach s in spec_all spec_urban95 spec_covid spec_demog            ///
+        foreach s in spec_all spec_policy spec_covid spec_demog             ///
                      spec_stringency spec_narrow spec_covars spec_excl2020  ///
                      spec_irs spec_irs_389 spec_irs_outstate                ///
                      spec_irs_outstate_389 spec_acs_all spec_acs_all_outstate ///
@@ -707,7 +804,7 @@ program define project_parse_outcome_components
             capture drop `s'
         }
         gen byte spec_all              = sample == "sample_all"
-        gen byte spec_urban95          = sample == "sample_urban95"
+        gen byte spec_policy           = sample == "sample_policy"
         gen byte spec_covid            = sample == "sample_urban75_covid"
         gen byte spec_demog            = sample == "sample_demog"
         gen byte spec_stringency       = sample == "sample_stringency"
@@ -809,9 +906,8 @@ program define project_kmeans_best, rclass
         STARTS(integer) SEEDBASE(integer)
     marksample touse
     confirm new variable `generate'
-    tempvar order trial kgroup dev
+    tempvar trial kgroup
     tempname clus
-    gen long `order' = _n
     local best_wss = .
     local best_seed = .
     local n_best = 0
@@ -822,15 +918,15 @@ program define project_kmeans_best, rclass
         ** `cluster drop' also deletes the analysis's group variable: copy first
         qui gen long `trial' = `kgroup'
         qui cluster drop `clus'
+        ** WSS from per-cluster variances: (N - 1) * Var is each cluster's sum
+        ** of squared deviations, with no sort of the full panel per start.
         local wss = 0
-        foreach v of local varlist {
-            qui bysort `trial': egen double `dev' = mean(`v') if `touse'
-            qui replace `dev' = (`v' - `dev')^2
-            qui summ `dev', meanonly
-            local wss = `wss' + r(sum)
-            drop `dev'
+        forvalues c = 1/`k' {
+            foreach v of local varlist {
+                qui summ `v' if `trial' == `c' & `touse'
+                if r(N) > 1 local wss = `wss' + (r(N) - 1) * r(Var)
+            }
         }
-        sort `order'
         if `wss' < `best_wss' * (1 - 1e-9) {
             capture drop `generate'
             rename `trial' `generate'
@@ -914,9 +1010,29 @@ program define project_build_signature, rclass
     syntax , ARTIFACT(string)
 
     local excl_fips = subinstr(trim("${excluded_fips}"), " ", "+", .)
+    foreach m in sdid_excluded_states flow_excluded_states indiv_excluded_states indiv_inmig_origin_states {
+        local `m' = subinstr(trim("${`m'}"), " ", "+", .)
+    }
+    local pools = subinstr(trim("${donor_pool_list}"), " ", "+", .)
+    local pref_pools = subinstr(trim("${preferred_pools}"), " ", "+", .)
+    ** The policy pool's state inputs enter as the eligible-state set they
+    ** produce (not a file checksum, which differs between LF and CRLF
+    ** checkouts). ${policy_states} is set by globals.do; this program calls no
+    ** other project program, so parallel workers can run it from prog() alone.
+    if "${policy_states}" == "" {
+        di as error "project_build_signature: \${policy_states} is empty; source globals.do first"
+        exit 459
+    }
+    local policy_states = subinstr(trim("${policy_states}"), " ", "+", .)
     local signature ///
-        "schema=${artifact_schema_version}|artifact=`artifact'|pref=${preferred_spec_version}|seed=${master_seed}|irs_data=${start_year_irs_data}|irs_analysis=${start_year_irs_analysis}|acs_start=${start_year_acs}|acs_end=${end_year_acs}|irs_dl=${start_yy_irs_download}|irs_mig=${end_yy_irs_migration}|irs_agi=${end_yy_irs_agi}|irs_cty=${start_yy_irs_county}-to-${end_yy_irs_county}|excl_fips=`excl_fips'"
+        "schema=${artifact_schema_version}|artifact=`artifact'|pref=${preferred_spec_version}|seed=${master_seed}|irs_data=${start_year_irs_data}|irs_analysis=${start_year_irs_analysis}|acs_start=${start_year_acs}|acs_end=${end_year_acs}|irs_dl=${start_yy_irs_download}|irs_mig=${end_yy_irs_migration}|irs_agi=${end_yy_irs_agi}|irs_cty=${start_yy_irs_county}-to-${end_yy_irs_county}|excl_fips=`excl_fips'|sdid_excl=`sdid_excluded_states'|flow_excl=`flow_excluded_states'|indiv_excl=`indiv_excluded_states'|indiv_inmig=`indiv_inmig_origin_states'|pools=`pools'|pref_pools=`pref_pools'|policy_n=${policy_pool_n}|policy_states=`policy_states'"
 
+    ** Manifests store the signature as str2045; a longer one would be truncated
+    ** there and then fail every project_assert_manifest check (rc=459).
+    if strlen("`signature'") > 2045 {
+        di as error "project_build_signature: signature is " strlen("`signature'") " characters; manifests hold at most 2045"
+        exit 459
+    }
     return local signature "`signature'"
 end
 
@@ -939,7 +1055,7 @@ program define project_export_run_manifest
 
     gen str40 project_name = "${pr_name}"
     gen str120 project_dir = "${dir}"
-    gen str400 config_signature = "`signature'"    // str244 would truncate
+    gen str2045 config_signature = "`signature'"    // widest str#; project_build_signature enforces the cap
     gen str20 run_date = "${date}"
     gen str20 run_time = "`c(current_time)'"
     gen double master_seed = real("${master_seed}")
@@ -983,8 +1099,8 @@ program define project_write_manifest
 
     gen str80 artifact = "`artifact'"
     gen str120 script_name = "`script'"
-    gen str400 config_signature = "`signature'"    // str244 would truncate
-    gen str244 upstream_signature = "`upstream'"
+    gen str2045 config_signature = "`signature'"    // widest str#; project_build_signature enforces the cap
+    gen str2045 upstream_signature = "`upstream'"
     gen str20 created_date = "${date}"
     gen str20 created_time = "`c(current_time)'"
     gen double master_seed = real("${master_seed}")
@@ -1033,40 +1149,54 @@ program define project_assert_manifest
     }
 end
 
+** Tripwire for the scripts whose presentation is written for exactly the
+** three preferred pools (02_tables_figures.do, 02_revenue_microsim.do):
+** stop if ${preferred_pools} (globals.do) no longer matches them.
+capture program drop project_assert_preferred_pools
+program define project_assert_preferred_pools
+    syntax , CALLER(string)
+    if "${preferred_pools}" != "sample_all sample_stringency sample_policy" {
+        dis as error "`caller': its tables, notes, and figures are written for"
+        dis as error "  preferred_pools = sample_all sample_stringency sample_policy,"
+        dis as error "  but globals.do now sets: ${preferred_pools}. Update `caller' first."
+        exit 459
+    }
+end
+
 capture program drop project_mark_preferred_main
 program define project_mark_preferred_main
     capture drop preferred
     gen preferred = 0
 
     ** Highlighted main SDID specifications:
-    ** IRS x {All Counties, Stringency Match, Narrow Pool}
-    ** ACS College x {All Counties, Stringency Match, Narrow Pool}
+    ** IRS x ${preferred_pools}
+    ** ACS College x ${preferred_pools}
 
     replace preferred = 1 if                                                    ///
         data_type == "IRS" &                                                    ///
         period_type == "16-22" &                                                ///
-        inlist(sample, "sample_all", "sample_stringency", "sample_narrow") &    ///
+        strpos(" ${preferred_pools} ", " " + sample + " ") > 0 &               ///
         controls == 1 &                                                         ///
         exclusion == 1
 
     replace preferred = 1 if                                                    ///
         data_type == "ACS College" &                                            ///
         period_type == "16-24" &                                                ///
-        inlist(sample, "sample_all", "sample_stringency", "sample_narrow") &    ///
+        strpos(" ${preferred_pools} ", " " + sample + " ") > 0 &               ///
         controls == 1 &                                                         ///
         exclusion == 1
 
     replace preferred = 1 if                                                    ///
         data_type == "IRS (Out-of-State)" &                                     ///
         period_type == "16-22" &                                                ///
-        inlist(sample, "sample_all", "sample_stringency", "sample_narrow") &    ///
+        strpos(" ${preferred_pools} ", " " + sample + " ") > 0 &               ///
         controls == 1 &                                                         ///
         exclusion == 1
 
     replace preferred = 1 if                                                    ///
         data_type == "ACS College (Out-of-State)" &                             ///
         period_type == "16-24" &                                                ///
-        inlist(sample, "sample_all", "sample_stringency", "sample_narrow") &    ///
+        strpos(" ${preferred_pools} ", " " + sample + " ") > 0 &               ///
         controls == 1 &                                                         ///
         exclusion == 1
 end

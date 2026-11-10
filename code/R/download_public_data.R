@@ -9,6 +9,7 @@
 #   download_bls_laus(dir_data, overwrite = FALSE)
 #   download_dol_childcare(dir_data, overwrite = FALSE)
 #   download_county_centroids(dir_data, overwrite = FALSE)
+#   download_county_land_area(dir_data, overwrite = FALSE)
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -179,6 +180,62 @@ download_county_centroids <- function(dir_data, overwrite = FALSE) {
     stringsAsFactors = FALSE,
     check.names = FALSE
   )
+
+  write_csv(out, dest)
+  message("   Saved: ", dest, " (", nrow(out), " counties)")
+  invisible(TRUE)
+}
+
+
+# ---- Census county land area -------------------------------------------------
+
+#' Download Census 2020 Gazetteer county land area
+#'
+#' Writes data/demographic/county_land_area_2020.csv (fips, aland_sqmi), the
+#' denominator of the population density used by the policy-matched donor pool.
+#'
+#' @param dir_data Path to the project's data/ directory
+#' @param overwrite If FALSE, skip download when file already exists
+download_county_land_area <- function(dir_data, overwrite = FALSE) {
+
+  dest <- file.path(dir_data, "demographic", "county_land_area_2020.csv")
+
+  if (file.exists(dest) && !isTRUE(overwrite)) {
+    message("   Skipping county land area (file exists). Set overwrite=TRUE to re-download.")
+    return(invisible(TRUE))
+  }
+
+  url <- "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2020_Gazetteer/2020_Gaz_counties_national.zip"
+  message("   Downloading Census 2020 Gazetteer counties ...")
+
+  dir_tmp <- tempfile("gazetteer_")
+  dir.create(dir_tmp)
+  on.exit(unlink(dir_tmp, recursive = TRUE), add = TRUE)
+  zip_path <- file.path(dir_tmp, "gazetteer.zip")
+
+  dl <- tryCatch(
+    {
+      download.file(url, zip_path, mode = "wb", quiet = TRUE)
+      0L
+    },
+    error = function(e) {
+      message("   Download failed: ", conditionMessage(e))
+      -1L
+    }
+  )
+
+  if (dl != 0 || !file.exists(zip_path) || file.size(zip_path) < 1000) {
+    stop("Failed to download Census Gazetteer from:\n  ", url, call. = FALSE)
+  }
+
+  txt <- unzip(zip_path, exdir = dir_tmp)
+  gaz <- read_tsv(txt[1], col_types = cols(.default = "c"), trim_ws = TRUE)
+
+  out <- data.frame(
+    fips       = as.integer(gaz$GEOID),
+    aland_sqmi = as.numeric(gaz$ALAND_SQMI)
+  )
+  if (anyNA(out)) stop("Gazetteer land area has missing values.", call. = FALSE)
 
   write_csv(out, dest)
   message("   Saved: ", dest, " (", nrow(out), " counties)")

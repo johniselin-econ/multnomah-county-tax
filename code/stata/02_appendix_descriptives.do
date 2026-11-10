@@ -83,10 +83,10 @@ if _rc {
     gen byte multnomah = (state_fips == 41 & county_fips == 51)
 }
 
-local pool_list "mult sample_all sample_urban95 sample_urban75_covid sample_demog sample_stringency sample_narrow"
+local pool_list "mult sample_all sample_policy sample_urban75_covid sample_demog sample_stringency sample_narrow"
 local pool_label_mult                  "Multnomah"
 local pool_label_sample_all            "All donor counties"
-local pool_label_sample_urban95        "Urban top-5\%"
+local pool_label_sample_policy         "Policy match"
 local pool_label_sample_urban75_covid  "Urban top-25\%, Covid match"
 local pool_label_sample_demog          "Demographic match"
 local pool_label_sample_stringency     "Stringency match"
@@ -97,7 +97,7 @@ local pool_label_sample_narrow         "Narrow similar-cities pool"
 ** own row).
 local cond_mult                  "multnomah == 1"
 local cond_sample_all            "sample_all == 1            & multnomah == 0"
-local cond_sample_urban95        "sample_urban95 == 1        & multnomah == 0"
+local cond_sample_policy         "sample_policy == 1         & multnomah == 0"
 local cond_sample_urban75_covid  "sample_urban75_covid == 1  & multnomah == 0"
 local cond_sample_demog          "sample_demog == 1          & multnomah == 0"
 local cond_sample_stringency     "sample_stringency == 1     & multnomah == 0"
@@ -114,7 +114,7 @@ tempname M_SDID_IRS M_SDID_IRS_389 M_SDID_ACS1 M_SDID_ACS2
 foreach m in `M_SDID_IRS' `M_SDID_IRS_389' `M_SDID_ACS1' `M_SDID_ACS2' {
     matrix `m' = J(7, 7, .)
     matrix colnames `m' = N out_cty in_cty net_cty out_st in_st net_st
-    matrix rownames `m' = mult all urban95 urban_covid demog stringency narrow
+    matrix rownames `m' = mult all policy urban_covid demog stringency narrow
 }
 
 ** _balanced_acs = county-level flag: 1 iff the county is in the balanced
@@ -326,9 +326,9 @@ keep if inrange(year, 2016, 2022)
 ** Drop suppressed totals (county_fips == 0 means state-aggregate row)
 drop if county_fips_o == 0 | county_fips_d == 0
 
-** Drop Alaska and Hawaii flows (mirrors 02_flow_analysis.do)
-drop if inlist(state_fips_o, 2, 15)
-drop if inlist(state_fips_d, 2, 15)
+** Drop the flow model's excluded states (globals.do: flow_excluded_states;
+** mirrors 02_flow_analysis.do)
+project_drop_states state_fips_o state_fips_d, states(${flow_excluded_states}) tag("flow descriptives")
 
 ** Tag Multnomah-touching flows: origin OR destination = Multnomah (41051)
 gen byte mult_flow = (state_fips_o == 41 & county_fips_o == 51) | ///
@@ -533,8 +533,7 @@ use "${data}working/acs_migration_file.dta", clear
 ** descriptive table reflects the same universe used for paper estimates.
 keep if inrange(year, 2016, 2024) & year != 2020   // the DiD samples exclude 2020
 drop if qmigplc1 == 4                    // bad migration place
-drop if inlist(state_fips_o, 2, 15)      // Alaska / Hawaii origin
-drop if inlist(state_fips_d, 2, 15)      // Alaska / Hawaii destination
+project_drop_states state_fips_o state_fips_d, states(${indiv_excluded_states}) tag("individual descriptives")  // globals.do
 drop if ftotinc < 0                      // negative family income
 drop if age < 25                         // 25+ subsample
 

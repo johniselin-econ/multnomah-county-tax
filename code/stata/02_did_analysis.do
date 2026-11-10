@@ -51,8 +51,7 @@ use "${data}working/acs_migration_file", replace
 ** Sample restrictions
 drop if year < 2016 					// Sample: 2016-2024 (ACS file starts 2012)
 drop if qmigplc1 == 4					// Error in migration place
-drop if inlist(state_fips_o, 2, 15)   	// Alaska and Hawaii
-drop if inlist(state_fips_d, 2, 15)   	// Alaska and Hawaii
+project_drop_states state_fips_o state_fips_d, states(${indiv_excluded_states}) tag("02_did_analysis")  // globals.do
 drop if age < 25 						// Dropping under 25
 drop if ftotinc < 0 					// Negative Family Income 	
 
@@ -66,9 +65,11 @@ gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
 
 ** Analysis samples
 gen sample_1 = (multnomah_o == 1) & year != 2020    // Multnomah in origin (out-migration)
+project_flag_states state_fips_o, states(${indiv_inmig_origin_states}) generate(inmig_origin)
 gen sample_2 = (multnomah_o != 1) & 				///
 				year != 2020 &						/// Not Multnomah in origin
-			   inlist(state_fips_o, 6, 41, 53)  	// CA, OR, WA (in-migration)
+			   inmig_origin == 1  					// West Coast in-migration (globals.do)
+drop inmig_origin
 gen sample_3 = (multnomah_o != 1) & 				/// Not Multnomah in origin
 				year != 2020						// 
 
@@ -685,8 +686,7 @@ use "${data}working/acs_migration_file", replace
 ** Sample restrictions
 drop if year < 2016					// Sample: 2016-2024 (ACS file starts 2012)
 drop if qmigplc1 == 4
-drop if inlist(state_fips_o, 2, 15)
-drop if inlist(state_fips_d, 2, 15)
+project_drop_states state_fips_o state_fips_d, states(${indiv_excluded_states}) tag("02_did_analysis")
 drop if age < 25
 drop if ftotinc < 0
 
@@ -696,9 +696,11 @@ gen multnomah_d = (state_fips_d == 41 & county_fips_d == 51)
 
 ** Analysis samples
 gen sample_1 = (multnomah_o == 1) & year != 2020
+project_flag_states state_fips_o, states(${indiv_inmig_origin_states}) generate(inmig_origin)
 gen sample_2 = (multnomah_o != 1) & 				///
 				year != 2020 &						///
-			   inlist(state_fips_o, 6, 41, 53)
+			   inmig_origin == 1
+drop inmig_origin
 gen sample_3 = (multnomah_o != 1) & 				///
 				year != 2020
 

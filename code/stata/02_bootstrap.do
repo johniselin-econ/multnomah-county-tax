@@ -34,7 +34,7 @@ Purpose:        Donor-cluster bootstrap driver for the highlighted SDID
                 Only the highlighted specs that feed published tables
                 are bootstrapped: IRS and ACS College (including their
                 out-of-state variants) × {sample_all, sample_stringency,
-                sample_narrow} × {net, in, out} with controls=1, exclusion=1.
+                sample_policy} × {net, in, out} with controls=1, exclusion=1.
                 Mirrors project_mark_preferred_main in programs.do.
 
 Called by:      00_multnomah.do (guarded by ${run_bootstrap})
@@ -128,7 +128,7 @@ load_revenue_params
 ** ------------------------------------------------------------------
 ** The bootstrap only covers specs that appear in published tables.
 ** Mirrors project_mark_preferred_main: controls=1, exclusion=1, and
-** sample ∈ {sample_all, sample_stringency, sample_narrow} for the six
+** sample ∈ ${preferred_pools} for the six
 ** preferred (sample_data, out_type) blocks.
 **
 ** Saved to ${data}working/bootstrap_spec_grid.dta so run_bootstrap_rep
@@ -139,7 +139,7 @@ load_revenue_params
 **   spec_id     sequential integer, 1..36
 **   sample_data panel block key (understood by load_spec_panel)
 **   out_type    per-panel outcome suffix
-**   sample      donor-pool indicator (sample_all / sample_stringency / sample_narrow)
+**   sample      donor-pool indicator (one of ${preferred_pools})
 **   migration   "net" | "in" | "out"
 **   outcome     full outcome variable name (agi_<mig>_rate_<out_type>)
 **   data_type   presentation label consumed by spec_engine programs
@@ -174,7 +174,7 @@ foreach sd_block in "irs_full_16_22 irs IRS 0" ///
 	local ot `2'
 	local dt = subinstr("`3'", "_", " ", .)
 	local os `4'
-	foreach samp in "sample_all" "sample_stringency" "sample_narrow" {
+	foreach samp of global preferred_pools {
 		foreach mig in "net" "in" "out" {
 			local ++row
 			qui replace sample_data = "`sd'"  in `row'
