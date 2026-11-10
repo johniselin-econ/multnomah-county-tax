@@ -1,0 +1,175 @@
+% =============================================================================
+% Individual-level DiD results: main College x Post DiD, heterogeneity, and
+% placebo counties. Conway, Iselin & Rork, "Mult-No-More?"
+%
+% Compile from the Overleaf project root (next to figures/ and tables/, the
+% folders mirrored from results/overleaf_export/). Every number in the text
+% comes from the in-text numbers register via \pn{<key>}; unknown keys print ??.
+%
+% Slide titles are placeholders: [TITLE: what the slide shows].
+% Outputs used (all from code/stata/02_did_analysis.do, 02_did_placebo.do):
+%   tables/tab_did_main.tex, tables/tab_did_heterogeneity.tex,
+%   tables/tab_did_placebo.tex, figures/fig_es_*_migration.png,
+%   figures/fig_es_age_*_migration.png, figures/fig_did_placebo.pdf
+% =============================================================================
+\documentclass[aspectratio=169,10pt]{beamer}
+\usetheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\input{tables/paper_numbers}
+
+\newcommand{\slidenote}[1]{\par\vfill{\scriptsize #1}}
+
+\title{[TITLE: deck title]}
+\author{Conway, Iselin \& Rork}
+\date{}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\begin{frame}{[TITLE: DiD design]}
+  \begin{itemize}
+    \item ACS person-level microdata, 2016--2024; adults 25+; 2020 excluded
+    \item Treatment proxy: \textbf{College degree $\times$ Post-2020}
+      \begin{itemize}
+        \item Preschool for All's thresholds (\$125k single / \$200k joint) fall
+              mostly on college graduates
+      \end{itemize}
+    \item Outcomes (percentage points)
+      \begin{itemize}
+        \item Out-migration and out-of-state moves: last year's Multnomah residents
+        \item In-migration: residents of the West Coast, or of the Lower 48 + DC,
+              who moved into Multnomah
+      \end{itemize}
+    \item Fixed effects: year and demographic cells (age, sex, marital status,
+          children, education); origin county for in-migration
+    \item Robust SEs (out-migration); clustered by origin county (in-migration)
+  \end{itemize}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\begin{frame}{[TITLE: main DiD table]}
+  \centering
+  \resizebox{0.9\textwidth}{!}{\input{tables/tab_did_main}}
+  \slidenote{College $\times$ Post coefficient, percentage points. $^{*}p<0.10$,
+  $^{**}p<0.05$, $^{***}p<0.01$. Implied semi-elasticities:
+  out-migration \pn{did_semi_elast_out_county}, out-of-state \pn{did_semi_elast_out_state}.}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\begin{frame}{[TITLE: DiD event studies]}
+  \centering
+  \begin{tabular}{@{}cc@{}}
+    \scriptsize Out-migration & \scriptsize Out-of-state \\
+    \includegraphics[height=0.33\textheight]{figures/fig_es_out_migration.png} &
+    \includegraphics[height=0.33\textheight]{figures/fig_es_out_state_migration.png} \\
+    \scriptsize In-migration (West Coast) & \scriptsize In-migration (Lower 48 + DC) \\
+    \includegraphics[height=0.33\textheight]{figures/fig_es_in_migration_west.png} &
+    \includegraphics[height=0.33\textheight]{figures/fig_es_in_migration_48.png}
+  \end{tabular}
+  \slidenote{College $\times$ Year coefficients relative to 2019 (2020 excluded), 95\% CIs.
+  Post-2020 out-migration coefficients range from \pn{did_es_out_college_post_min}
+  to \pn{did_es_out_college_post_max} pp.}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\begin{frame}{[TITLE: heterogeneity table]}
+  \centering
+  \resizebox*{!}{0.78\textheight}{\input{tables/tab_did_heterogeneity}}
+  \slidenote{College $\times$ Post $\times$ group triple differences, with year $\times$ group and
+  college $\times$ group fixed effects. WFH: Dingel--Neiman teleworkability of the
+  respondent's occupation; ``no occupation'' is mostly retirees and non-workers.}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\begin{frame}{[TITLE: heterogeneity takeaways]}
+  \begin{itemize}
+    \item Age: out-migration response concentrated among 45--64 year-olds
+    \item Larger for those without own children and for the unmarried
+          (differences not significant)
+    \item WFH: response \textbf{larger in non-teleworkable occupations}; near zero
+          with no occupation
+      \begin{itemize}
+        \item Not consistent with a ``remote workers left'' story
+      \end{itemize}
+    \item No heterogeneity in in-migration: effects near zero for every group
+  \end{itemize}
+  \slidenote{Each statement reads off the heterogeneity table; equal-effects $p$-values are in
+  its last row per panel.}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\begin{frame}{[TITLE: event studies by age]}
+  \centering
+  \begin{tabular}{@{}cc@{}}
+    \scriptsize Out-migration & \scriptsize Out-of-state \\
+    \includegraphics[height=0.6\textheight]{figures/fig_es_age_out_migration.png} &
+    \includegraphics[height=0.6\textheight]{figures/fig_es_age_out_state_migration.png}
+  \end{tabular}
+  \slidenote{Ages 45--64: post-2022 out-migration coefficients between
+  \pn{did_es_out_college_age45_64_post22_min} and \pn{did_es_out_college_age45_64_post22_max} pp.}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\begin{frame}{[TITLE: placebo design]}
+  \begin{itemize}
+    \item Rerun the main DiD as if each Policy-match donor county were treated
+      \begin{itemize}
+        \item \pn{did_placebo_n_candidates} donors identifiable as ACS origin counties
+      \end{itemize}
+    \item Keep counties with reasonable pre-2020 trends --- two screens:
+      \begin{enumerate}
+        \item \textbf{Within county:} its own 2016--18 College $\times$ Year
+              coefficients jointly insignificant ($p > 0.10$)
+        \item \textbf{Like Multnomah:} 2016--19 IRS AGI out- and in-migration rate
+              slopes among the closest half of donors to Multnomah's
+      \end{enumerate}
+    \item \pn{did_placebo_n_screened} counties pass both
+    \item Inference: one-sided permutation $p$-value, the share of placebos (plus
+          Multnomah) with a response at least as large as Multnomah's
+  \end{itemize}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\begin{frame}{[TITLE: placebo estimates]}
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig_did_placebo.pdf}
+  \slidenote{One-sided permutation $p$-values, screened placebos: out-migration
+  \pn{did_placebo_perm_p_out_screened}, out-of-state \pn{did_placebo_perm_p_out_state_screened},
+  in-migration \pn{did_placebo_perm_p_in_48_screened}. All \pn{did_placebo_n_candidates} donors:
+  \pn{did_placebo_perm_p_out_all}, \pn{did_placebo_perm_p_out_state_all},
+  \pn{did_placebo_perm_p_in_48_all}. With \pn{did_placebo_n_screened} placebos the smallest
+  attainable $p$-value is $1/(\text{placebos}+1)$.}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\begin{frame}{[TITLE: Orleans Parish]}
+  \begin{itemize}
+    \item Orleans Parish, LA passes both screens but shows a large
+          \textbf{negative} College $\times$ Post response (see placebo table)
+    \item {[DISCUSS: why college out-migration from New Orleans fell after 2020]}
+    \item A two-sided test would count Orleans against Multnomah; the one-sided
+          test asks only whether a similar county saw college out-migration rise as much
+  \end{itemize}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\appendix
+\begin{frame}{[TITLE: placebo table (backup)]}
+  \centering
+  \resizebox*{!}{0.8\textheight}{\input{tables/tab_did_placebo}}
+  \slidenote{New Jersey raised its rate on income of \$1--5M from 8.97\% to 10.75\% from tax year
+  2020; New York added 9.65--10.9\% brackets above about \$1.1M (single) from tax year 2021.
+  Excluding NJ and NY counties, one-sided $p$-values (screened):
+  \pn{did_placebo_perm_p_out_nonjny}, \pn{did_placebo_perm_p_out_state_nonjny},
+  \pn{did_placebo_perm_p_in_48_nonjny}.}
+\end{frame}
+
+\end{document}
