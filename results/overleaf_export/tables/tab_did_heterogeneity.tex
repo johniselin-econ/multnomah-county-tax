@@ -1,0 +1,53 @@
+\def\sym#1{\ifmmode^{#1}\else\(^{#1}\)\fi}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l*{4}{c}@{}}
+\toprule
+            &\multicolumn{1}{c}{(1)}&\multicolumn{1}{c}{(2)}&\multicolumn{1}{c}{(3)}&\multicolumn{1}{c}{(4)}\\
+            &\multicolumn{1}{c}{\shortstack{Out-\\migration}}&\multicolumn{1}{c}{\shortstack{Out-of-\\state}}&\multicolumn{1}{c}{\shortstack{In-migration\\(West Coast)}}&\multicolumn{1}{c}{\shortstack{In-migration\\(Lower 48 + DC)}}\\
+\midrule
+\multicolumn{5}{l}{\textit{Panel A: Age}}\\[0.3em]
+College $\times$ Post $\times$ Age 25--44&       1.546   &       1.419*  &      -0.011   &      -0.005   \\
+            &     (1.008)   &     (0.780)   &     (0.020)   &     (0.004)   \\
+[1em]
+College $\times$ Post $\times$ Age 45--64&       2.485***&       1.943***&      -0.010   &      -0.004   \\
+            &     (0.811)   &     (0.641)   &     (0.015)   &     (0.003)   \\
+[1em]
+College $\times$ Post $\times$ Age 65+&       1.443*  &       0.122   &       0.014   &       0.003   \\
+            &     (0.826)   &     (0.493)   &     (0.009)   &     (0.002)   \\
+
+p-value, equal effects&       0.623   &       0.061   &       0.208   &       0.051   \\
+\midrule
+\multicolumn{5}{l}{\textit{Panel B: Own children in household}}\\[0.3em]
+
+College $\times$ Post $\times$ No own children&       2.323***&       1.367** &      -0.015   &      -0.004   \\
+            &     (0.731)   &     (0.578)   &     (0.014)   &     (0.003)   \\
+[1em]
+College $\times$ Post $\times$ Own children&       0.964   &       1.179*  &       0.007   &      -0.001   \\
+            &     (0.893)   &     (0.643)   &     (0.009)   &     (0.002)   \\
+
+p-value, equal effects&       0.239   &       0.828   &       0.150   &       0.319   \\
+\midrule
+\multicolumn{5}{l}{\textit{Panel C: Marital status}}\\[0.3em]
+
+College $\times$ Post $\times$ Not married&       2.571***&       1.629** &      -0.011   &      -0.004   \\
+            &     (0.900)   &     (0.730)   &     (0.019)   &     (0.004)   \\
+[1em]
+College $\times$ Post $\times$ Married&       0.922   &       0.845   &      -0.004   &      -0.002   \\
+            &     (0.710)   &     (0.515)   &     (0.010)   &     (0.002)   \\
+
+p-value, equal effects&       0.150   &       0.381   &       0.741   &       0.739   \\
+\midrule
+\multicolumn{5}{l}{\textit{Panel D: Work-from-home potential}}\\[0.3em]
+
+College $\times$ Post $\times$ Teleworkable&       1.510   &       1.157   &      -0.003   &      -0.003   \\
+            &     (0.968)   &     (0.752)   &     (0.015)   &     (0.003)   \\
+[1em]
+College $\times$ Post $\times$ Not teleworkable&       2.104** &       2.193***&      -0.030   &      -0.009** \\
+            &     (0.989)   &     (0.747)   &     (0.022)   &     (0.004)   \\
+[1em]
+College $\times$ Post $\times$ No occupation&       0.276   &      -0.903   &       0.010   &       0.002   \\
+            &     (1.150)   &     (0.909)   &     (0.007)   &     (0.002)   \\
+
+p-value, equal effects&       0.478   &       0.030   &       0.311   &       0.069   \\
+Observations&      43,700   &      43,700   &   2,671,879   &  17,535,332   \\
+\bottomrule
+\end{tabular*}
