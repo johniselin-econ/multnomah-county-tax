@@ -95,8 +95,15 @@ fig_es_age_out_migration.png,figure,fig:did_events_age,TBD,appendix_A,02_did_ana
 fig_es_age_out_state_migration.png,figure,fig:did_events_age,TBD,appendix_A,02_did_analysis.do
 fig_es_age_in_migration_west.png,figure,fig:did_events_age,TBD,appendix_A,02_did_analysis.do
 fig_es_age_in_migration_48.png,figure,fig:did_events_age,TBD,appendix_A,02_did_analysis.do
+fig_es_kids_out_migration.png,figure,fig:did_events_kids,TBD,appendix_A,02_did_analysis.do
+fig_es_kids_out_state_migration.png,figure,fig:did_events_kids,TBD,appendix_A,02_did_analysis.do
+fig_es_married_out_migration.png,figure,fig:did_events_married,TBD,appendix_A,02_did_analysis.do
+fig_es_married_out_state_migration.png,figure,fig:did_events_married,TBD,appendix_A,02_did_analysis.do
+fig_es_wfh_out_migration.png,figure,fig:did_events_wfh,TBD,appendix_A,02_did_analysis.do
+fig_es_wfh_out_state_migration.png,figure,fig:did_events_wfh,TBD,appendix_A,02_did_analysis.do
 tab_did_placebo.tex,table,tab:did_placebo,TBD,appendix_A,02_did_placebo.do
 fig_did_placebo.pdf,figure,fig:did_placebo,TBD,appendix_A,02_did_placebo.do
+fig_did_placebo_es.pdf,figure,fig:did_placebo_es,TBD,appendix_A,02_did_placebo.do
 fig_dq_timeseries_out.png,figure,fig:dq_irs_timeseries,C1,appendix_C,02_appendix_data_quality.do
 fig_dq_timeseries_in.png,figure,fig:dq_irs_timeseries,C1,appendix_C,02_appendix_data_quality.do
 fig_dq_dist_n1.png,figure,fig:dq_irs_dist_n1,C2,appendix_C,02_appendix_data_quality.do

@@ -721,6 +721,95 @@ preserve
 restore
 
 ********************************************************************************
+** REGRESSION 4b: EVENT STUDIES BY CHILDREN, MARITAL STATUS, AND WFH
+********************************************************************************
+** Same design as Regression 4 for the other heterogeneity dimensions, on the
+** two out-migration outcomes (Multnomah residents; in-migration effects are
+** near zero for every group). Each legend label carries the group's
+** pre-trend test: its 2016-2018 College x Year coefficients jointly zero.
+
+capture program drop did_het_es
+program define did_het_es
+	syntax varname(numeric), STUB(name) COLORS(string asis) REFcolor(string)
+
+	local grp `varlist'
+	local years 2016 2017 2018 2021 2022 2023 2024
+	local symbols "O T S"
+	qui levelsof `grp' if sample_1 == 1, local(groups)
+	local n_groups : word count `groups'
+	local vlab : value label `grp'
+	foreach g of local groups {
+		local lab_`g' : label `vlab' `g'
+		foreach y of local years {
+			gen x_`stub'_`y'_g`g' = high_ed * (year == `y') * (`grp' == `g')
+		}
+	}
+
+	foreach o in out out_state {
+		if "`o'" == "out" {
+			local dv "out_1"
+			local ytl "Effect on Out-Migration (pp)"
+			local fname "out_migration"
+		}
+		else {
+			local dv "out_3"
+			local ytl "Effect on Out-of-State Migration (pp)"
+			local fname "out_state_migration"
+		}
+
+		reghdfe `dv' x_`stub'_*_g* if sample_1 == 1 [pw = perwt], 	///
+			vce(robust) absorb(year cat_* year#`grp' high_ed#`grp')
+		foreach g of local groups {
+			qui test x_`stub'_2016_g`g' x_`stub'_2017_g`g' x_`stub'_2018_g`g'
+			local p_`g' : di %4.2f r(p)
+		}
+		tempname es_est
+		estimates store `es_est'
+
+		preserve
+			clear
+			set obs 9
+			gen year = 2015 + _n
+			local plots ""
+			local legend ""
+			local k = 0
+			foreach g of local groups {
+				local ++k
+				estimates restore `es_est'
+				gen coef_g`g' = 0 if year == 2019		// base year; 2020 excluded
+				gen lo_g`g'   = 0 if year == 2019
+				gen hi_g`g'   = 0 if year == 2019
+				foreach y of local years {
+					replace coef_g`g' = _b[x_`stub'_`y'_g`g'] if year == `y'
+					replace lo_g`g' = _b[x_`stub'_`y'_g`g'] - 1.96 * _se[x_`stub'_`y'_g`g'] if year == `y'
+					replace hi_g`g' = _b[x_`stub'_`y'_g`g'] + 1.96 * _se[x_`stub'_`y'_g`g'] if year == `y'
+				}
+				gen year_g`g' = year + (`k' - (`n_groups' + 1) / 2) * 0.15
+				local col : word `k' of `colors'
+				local sym : word `k' of `symbols'
+				local plots `"`plots' (rcap lo_g`g' hi_g`g' year_g`g', lc("`col'")) (scatter coef_g`g' year_g`g', mc("`col'") ms(`sym'))"'
+				local legend `"`legend' `=2*`k'' "`lab_`g'' (pre-trend p = `p_`g'')""'
+			}
+			twoway `plots', 												///
+				yline(0, lc("`refcolor'") lp(dash)) 						///
+				xline(2020.5, lc(black) lp(solid))							///
+				xlabel(2016(1)2024) 										///
+				ytitle("`ytl'") 											///
+				xtitle("Year")												///
+				legend(order(`legend') pos(6) rows(`n_groups') size(small))	///
+				graphregion(color(white)) plotregion(color(white))
+
+			graph export "${results}did/fig_es_`stub'_`fname'.png", replace
+			project_save_overleaf "${results}did/fig_es_`stub'_`fname'.png"
+		restore
+	}
+end
+
+did_het_es het_kids,    stub(kids)    colors("`col_out'" "`col_in'") refcolor("`col_ref'")
+did_het_es het_married, stub(married) colors("`col_out'" "`col_in'") refcolor("`col_ref'")
+did_het_es het_wfh,     stub(wfh)     colors("`col_out'" "`col_in'" "`col_state'") refcolor("`col_ref'")
+
+********************************************************************************
 ** REGRESSION 5: DIFFERENCE-IN-DIFFERENCES BY AGE (NO EDUCATION)
 ********************************************************************************
 

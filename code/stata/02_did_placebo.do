@@ -25,6 +25,7 @@ Purpose: Placebo runs of the main individual-level DiD (College x Post,
 Outputs: results/did/did_placebo_results.csv
          results/did/tab_did_placebo.tex
          results/did/fig_did_placebo.pdf
+         results/did/fig_did_placebo_es.pdf (event studies vs placebos)
 
 Authors: John Iselin
 
@@ -132,6 +133,11 @@ tempfile placebo_post
 postfile `pf' double fips str12 outcome double(b se n_unwtd pre_p) byte acs_ok ///
 	using `placebo_post', replace
 
+** Event-study coefficients (College x Year, base 2019) for the figure
+tempname pes
+tempfile placebo_es
+postfile `pes' double fips str12 outcome int year double(b se) using `placebo_es', replace
+
 foreach c in `mult_fips' `donor_fips' {
 
 	did_define_focal, fips(`c')
@@ -151,6 +157,16 @@ foreach c in `mult_fips' `donor_fips' {
 		vce(robust) absorb(year cat_*)
 	qui test x_high_ed_2016 x_high_ed_2017 x_high_ed_2018
 	local pre_p = r(p)
+	foreach y in 2016 2017 2018 2021 2022 2023 2024 {
+		post `pes' (`c') ("out") (`y') (_b[x_high_ed_`y']) (_se[x_high_ed_`y'])
+	}
+
+	** Out-of-state event study (figure only; not part of the screen)
+	qui reghdfe out_3 x_high_ed_* if sample_1 == 1 [pw = perwt], 	///
+		vce(robust) absorb(year cat_*)
+	foreach y in 2016 2017 2018 2021 2022 2023 2024 {
+		post `pes' (`c') ("out_state") (`y') (_b[x_high_ed_`y']) (_se[x_high_ed_`y'])
+	}
 
 	** Main DiD, as 02_did_analysis.do Regression 1, for this focal county
 	foreach o of local outcomes {
@@ -172,6 +188,7 @@ foreach c in `mult_fips' `donor_fips' {
 	}
 }
 postclose `pf'
+postclose `pes'
 
 
 ********************************************************************************
@@ -344,6 +361,56 @@ foreach o of local outcomes {
 graph combine `graphs', rows(1) graphregion(color(white)) xsize(12) ysize(5)
 graph export "${results}did/fig_did_placebo.pdf", replace
 project_save_overleaf "${results}did/fig_did_placebo.pdf"
+
+** Figure: event studies, Multnomah against the screened placebos
+keep fips grp
+tempfile groups
+save `groups'
+use `placebo_es', clear
+merge m:1 fips using `groups', keep(match) nogen
+keep if grp <= 2								// Multnomah and screened placebos
+** Base year 2019 = 0 for every county and outcome
+preserve
+	keep fips outcome grp
+	duplicates drop
+	gen year = 2019
+	gen b = 0
+	gen se = 0
+	tempfile base
+	save `base'
+restore
+append using `base'
+gen lo = b - 1.96 * se if grp == 1
+gen hi = b + 1.96 * se if grp == 1
+sort fips outcome year
+
+qui levelsof fips if grp == 2, local(screened_fips)
+local graphs ""
+local k = 0
+foreach o in out out_state {
+	local ++k
+	if "`o'" == "out"       local ttl "Out-migration"
+	if "`o'" == "out_state" local ttl "Out-of-state"
+	local lines ""
+	foreach f of local screened_fips {
+		local lines `"`lines' (line b year if fips == `f' & outcome == "`o'" & year < 2020, lc("`col_pass'%50") lw(thin))"'
+		local lines `"`lines' (line b year if fips == `f' & outcome == "`o'" & year > 2020, lc("`col_pass'%50") lw(thin))"'
+	}
+	local leg `"legend(off)"'
+	if `k' == 2 local leg `"legend(order(1 "Screened placebo" `=2*`: word count `screened_fips'' + 2' "Multnomah") rows(1) pos(6))"'
+	twoway `lines' ///
+		(rcap lo hi year if grp == 1 & outcome == "`o'", lc("`col_mult'")) ///
+		(connected b year if grp == 1 & outcome == "`o'" & year < 2020, lc("`col_mult'") mc("`col_mult'") ms(D)) ///
+		(connected b year if grp == 1 & outcome == "`o'" & year > 2020, lc("`col_mult'") mc("`col_mult'") ms(D)), ///
+		yline(0, lc("`col_ref'") lp(dash)) xline(2020.5, lc(black) lp(solid)) ///
+		xlabel(2016(1)2024) xtitle("Year") ytitle("College × Year (pp)") ///
+		title("`ttl'", size(medium)) `leg' ///
+		graphregion(color(white)) plotregion(color(white)) name(e`k', replace)
+	local graphs "`graphs' e`k'"
+}
+graph combine `graphs', rows(1) graphregion(color(white)) xsize(10) ysize(4.5)
+graph export "${results}did/fig_did_placebo_es.pdf", replace
+project_save_overleaf "${results}did/fig_did_placebo_es.pdf"
 
 ********************************************************************************
 ** CLEANUP

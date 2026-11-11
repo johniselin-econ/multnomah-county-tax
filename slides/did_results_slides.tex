@@ -118,6 +118,42 @@
 \end{frame}
 
 % -----------------------------------------------------------------------------
+\begin{frame}{[TITLE: event studies by own children]}
+  \centering
+  \begin{tabular}{@{}cc@{}}
+    \scriptsize Out-migration & \scriptsize Out-of-state \\
+    \includegraphics[height=0.6\textheight]{figures/fig_es_kids_out_migration.png} &
+    \includegraphics[height=0.6\textheight]{figures/fig_es_kids_out_state_migration.png}
+  \end{tabular}
+  \slidenote{College $\times$ Year $\times$ group coefficients relative to 2019, 95\% CIs. Legend: each group's
+  pre-trend $p$-value (2016--18 coefficients jointly zero).}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\begin{frame}{[TITLE: event studies by marital status]}
+  \centering
+  \begin{tabular}{@{}cc@{}}
+    \scriptsize Out-migration & \scriptsize Out-of-state \\
+    \includegraphics[height=0.6\textheight]{figures/fig_es_married_out_migration.png} &
+    \includegraphics[height=0.6\textheight]{figures/fig_es_married_out_state_migration.png}
+  \end{tabular}
+  \slidenote{College $\times$ Year $\times$ group coefficients relative to 2019, 95\% CIs. Legend: each group's
+  pre-trend $p$-value (2016--18 coefficients jointly zero).}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\begin{frame}{[TITLE: event studies by WFH potential]}
+  \centering
+  \begin{tabular}{@{}cc@{}}
+    \scriptsize Out-migration & \scriptsize Out-of-state \\
+    \includegraphics[height=0.6\textheight]{figures/fig_es_wfh_out_migration.png} &
+    \includegraphics[height=0.6\textheight]{figures/fig_es_wfh_out_state_migration.png}
+  \end{tabular}
+  \slidenote{College $\times$ Year $\times$ group coefficients relative to 2019, 95\% CIs. Legend: each group's
+  pre-trend $p$-value (2016--18 coefficients jointly zero).}
+\end{frame}
+
+% -----------------------------------------------------------------------------
 \begin{frame}{[TITLE: placebo design]}
   \begin{itemize}
     \item Rerun the main DiD as if each Policy-match donor county were treated
@@ -147,6 +183,14 @@
   \pn{did_placebo_perm_p_out_all}, \pn{did_placebo_perm_p_out_state_all},
   \pn{did_placebo_perm_p_in_48_all}. With \pn{did_placebo_n_screened} placebos the smallest
   attainable $p$-value is $1/(\text{placebos}+1)$.}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+\begin{frame}{[TITLE: placebo event studies]}
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig_did_placebo_es.pdf}
+  \slidenote{College $\times$ Year coefficients relative to 2019: Multnomah (with 95\% CIs) and the
+  \pn{did_placebo_n_screened} screened placebo counties. 2020 excluded.}
 \end{frame}
 
 % -----------------------------------------------------------------------------
