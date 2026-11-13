@@ -163,6 +163,7 @@ run_multnomah_data_pulls <- function(cfg) {
   download_dol_childcare(cfg$dir_data, overwrite = cfg$overwrite_csv)
   download_county_centroids(cfg$dir_data, overwrite = cfg$overwrite_csv)
   download_county_land_area(cfg$dir_data, overwrite = cfg$overwrite_csv)
+  download_county_adjacency(cfg$dir_data, overwrite = cfg$overwrite_csv)
   cat("   Done.\n\n")
 
   cat(">> NHGIS demographics (IPUMS API)\n")

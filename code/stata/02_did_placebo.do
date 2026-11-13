@@ -23,6 +23,8 @@ Purpose: Placebo runs of the main individual-level DiD (College x Post,
          analogue for a non-Oregon county and is not run.
 
 Outputs: results/did/did_placebo_results.csv
+         results/did/did_placebo_es.csv (College x Year coefficients, every
+           ACS-identified county; read by code/R/donor_onepagers.R)
          results/did/tab_did_placebo.tex
          results/did/fig_did_placebo.pdf
          results/did/fig_did_placebo_es.pdf (event studies vs placebos)
@@ -272,6 +274,13 @@ order fips state_name county_name acs_ok pre_p pass_pretrend irs_slope_out irs_s
 	irs_dist pass_irs in_screen nj_ny b* se* n_unwtd*
 gsort -multnomah -in_screen county_name
 export delimited using "${results}did/did_placebo_results.csv", replace
+
+** Event-study coefficients, all ACS-identified counties (base 2019, 2020 out)
+preserve
+	use `placebo_es', clear
+	sort fips outcome year
+	export delimited using "${results}did/did_placebo_es.csv", replace
+restore
 
 ********************************************************************************
 ** STEP 6: TABLE AND FIGURE

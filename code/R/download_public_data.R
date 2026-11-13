@@ -10,6 +10,7 @@
 #   download_dol_childcare(dir_data, overwrite = FALSE)
 #   download_county_centroids(dir_data, overwrite = FALSE)
 #   download_county_land_area(dir_data, overwrite = FALSE)
+#   download_county_adjacency(dir_data, overwrite = FALSE)
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -239,5 +240,62 @@ download_county_land_area <- function(dir_data, overwrite = FALSE) {
 
   write_csv(out, dest)
   message("   Saved: ", dest, " (", nrow(out), " counties)")
+  invisible(TRUE)
+}
+
+
+# ---- Census county adjacency -------------------------------------------------
+
+#' Download the Census county adjacency file (2010 counties)
+#'
+#' Writes data/demographic/county_adjacency.csv (fips, neighbor_fips; one row
+#' per ordered pair of adjacent counties, water boundaries included, a county
+#' is not its own neighbor). Read by code/R/donor_onepagers.R for the
+#' border-county and bordering-state shares of migration flows. The 2010
+#' vintage keeps Connecticut's counties, as the IRS migration files do.
+#'
+#' @param dir_data Path to the project's data/ directory
+#' @param overwrite If FALSE, skip download when file already exists
+download_county_adjacency <- function(dir_data, overwrite = FALSE) {
+
+  dest <- file.path(dir_data, "demographic", "county_adjacency.csv")
+
+  if (file.exists(dest) && !isTRUE(overwrite)) {
+    message("   Skipping county adjacency (file exists). Set overwrite=TRUE to re-download.")
+    return(invisible(TRUE))
+  }
+
+  url <- "https://www2.census.gov/geo/docs/reference/county_adjacency.txt"
+  message("   Downloading Census county adjacency file ...")
+
+  tmp <- tempfile(fileext = ".txt")
+  on.exit(unlink(tmp), add = TRUE)
+
+  dl <- tryCatch(
+    {
+      download.file(url, tmp, mode = "wb", quiet = TRUE)
+      0L
+    },
+    error = function(e) {
+      message("   Download failed: ", conditionMessage(e))
+      -1L
+    }
+  )
+
+  if (dl != 0 || !file.exists(tmp) || file.size(tmp) < 1000) {
+    stop("Failed to download Census county adjacency from:\n  ", url, call. = FALSE)
+  }
+
+  # Four tab-separated columns; the county's own name and GEOID appear only on
+  # the first row of its block, so fill them down.
+  adj <- read_tsv(tmp, col_names = c("county", "fips", "neighbor", "neighbor_fips"),
+                  col_types = "cici", locale = locale(encoding = "latin1"))
+  adj$fips <- adj$fips[!is.na(adj$fips)][cumsum(!is.na(adj$fips))]
+
+  out <- adj[adj$fips != adj$neighbor_fips, c("fips", "neighbor_fips")]
+  if (anyNA(out)) stop("County adjacency file has missing values.", call. = FALSE)
+
+  write_csv(out, dest)
+  message("   Saved: ", dest, " (", nrow(out), " adjacent pairs)")
   invisible(TRUE)
 }
